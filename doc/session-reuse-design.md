@@ -1,6 +1,6 @@
 # 公文流转 Session 复用设计方案
 
-> 目标：电子公文在工作流中多轮流转时，同一公文的多次提交复用同一个 Claude Agent SDK session，
+> 目标：文档在工作流中多轮流转时，同一文档的多次提交复用同一个 Claude Agent SDK session，
 > 让模型能看到上一次的上下文（看过的文件、做过的判断、填过的字段），从而做出更连贯、更准确的决策。
 
 ---
@@ -48,7 +48,7 @@ linkid（一份公文）
 
 ### 2.1 跨 path 共享 session（已确认）
 
-同一公文在整个审批流程中会调用 dp_agt 的**多个不同 path**（例如先 `doc/classify` 分类、之后 `doc/review` 审核）。
+同一文档在整个审批流程中会调用 AI 数字员工的**多个不同 path**（例如先 `doc/classify` 分类、之后 `doc/review` 审核）。
 
 **决策：跨 path 共享同一个 session。** 即 session 只与 linkid 绑定，不区分 path。
 

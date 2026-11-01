@@ -57,7 +57,7 @@
                     <div id="csvResult" style="margin-top:12px;"></div>
                     <!-- 已配置 key 列表 -->
                     <div id="configKeysWrap" style="margin-top:16px;display:none;">
-                        <div style="font-weight:600;margin-bottom:8px;color:#555;">已配置的 Key（点击眼睛图标查看明文）</div>
+                        <div style="font-weight:600;margin-bottom:8px;color:#555;">已配置的 Key（🔒 项点击眼睛图标查看明文）</div>
                         <div id="configKeysTable" style="overflow-x:auto;"></div>
                     </div>
                 </div>
@@ -71,7 +71,7 @@
                         <span style="color:#888;font-size:0.82rem;margin-left:12px;">首次使用时内置默认模板，上传后下载即为上次上传的内容</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:12px;">
-                        <input type="file" id="tarFileInput" accept=".tar.gz,.tgz" style="flex:1;">
+                        <input type="file" id="tarFileInput" accept=".tar,.tar.gz,.tgz,.zip" style="flex:1;">
                         <button class="cfg-btn cfg-btn-save" onclick="uploadTar()"><i class="fas fa-upload"></i> 上传</button>
                     </div>
                     <div id="tarResult" style="margin-top:12px;"></div>
@@ -432,7 +432,7 @@ async function uploadCsv() {
     toast('CSV 配置已导入');
 }
 
-// 加载配置 key 列表（脱敏 + 眼睛图标）
+// 加载配置 key 列表
 async function loadConfigKeys() {
     const res = await fetch(API + '/prompt-config');
     const json = await res.json();
@@ -444,50 +444,63 @@ async function loadConfigKeys() {
         return;
     }
     wrap.style.display = 'block';
-    table.innerHTML = `<table class="result-table" style="font-size:0.85rem;">
-        <thead><tr><th>Key</th><th>值</th><th>说明</th><th>敏感</th></tr></thead>
-        <tbody>${rows.map(r => {
-            const key = escHtml(r.key);
-            const note = escHtml(r.note || '-');
-            const secretBadge = r.is_secret ? '<span style="color:#e53935;">🔒 敏感</span>' : '<span style="color:#888;">公开</span>';
-            const eye = r.is_secret
-                ? `<button class="cfg-btn-sm" onclick="revealValue(this, ${JSON.stringify(r.key)})" title="查看明文"><i class="fas fa-eye"></i></button>`
-                : '';
-            return `<tr>
-                <td><code>${key}</code></td>
-                <td><span id="val-${escHtml(r.key)}">${escHtml(r.value)}</span> ${eye}</td>
-                <td>${note}</td>
-                <td>${secretBadge}</td>
-            </tr>`;
-        }).join('')}</tbody>
-    </table>`;
-}
 
-// 眼睛图标：切换显示明文
-async function revealValue(btn, key) {
-    const res = await fetch(API + '/prompt-config?reveal=1');
-    const json = await res.json();
-    const rows = (json.data && json.data.rows) || [];
-    const row = rows.find(r => r.key === key);
-    if (!row) return toast('未找到该 key', 'error');
-    const span = document.getElementById('val-' + key);
-    if (span) {
-        // 如果当前是脱敏值，切换到明文
-        span.textContent = row.value;
-        btn.innerHTML = '<i class="fas fa-eye-slash"></i>';
-        btn.onclick = () => {
-            span.textContent = '****';
-            btn.innerHTML = '<i class="fas fa-eye"></i>';
-            btn.onclick = () => revealValue(btn, key);
-        };
-    }
+    // 先获取明文（供敏感项切换用）
+    let revealMap = {};
+    try {
+        const rr = await fetch(API + '/prompt-config?reveal=1');
+        const rj = await rr.json();
+        const rrows = (rj.data && rj.data.rows) || [];
+        rrows.forEach(r => { revealMap[r.key] = r.value; });
+    } catch {}
+
+    let html = '<table class="result-table" style="font-size:0.85rem;">';
+    html += '<thead><tr><th>Key</th><th>值</th><th>说明</th></tr></thead><tbody>';
+    rows.forEach((r, idx) => {
+        const key = escHtml(r.key);
+        const note = escHtml(r.note || '-');
+        const uid = 'val-' + idx;
+        if (r.is_secret) {
+            html += '<tr><td><code>' + key + '</code></td>'
+                + '<td><span id="' + uid + '">' + escHtml(r.value) + '</span> '
+                + '<button class="cfg-btn-sm eye-btn" data-idx="' + idx + '" data-key="' + key + '"><i class="fas fa-eye"></i></button></td>'
+                + '<td>' + note + '</td></tr>';
+        } else {
+            html += '<tr><td><code>' + key + '</code></td>'
+                + '<td>' + escHtml(r.value) + '</td>'
+                + '<td>' + note + '</td></tr>';
+        }
+    });
+    html += '</tbody></table>';
+    table.innerHTML = html;
+
+    // 事件委托：眼睛按钮
+    table.querySelectorAll('.eye-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const idx = parseInt(this.dataset.idx);
+            const key = this.dataset.key;
+            const span = document.getElementById('val-' + idx);
+            if (!span) return;
+            if (span.dataset.revealed === '1') {
+                // 切回脱敏
+                span.textContent = rows[idx].value;
+                span.dataset.revealed = '0';
+                this.innerHTML = '<i class="fas fa-eye"></i>';
+            } else {
+                // 切到明文
+                span.textContent = revealMap[key] || rows[idx].value;
+                span.dataset.revealed = '1';
+                this.innerHTML = '<i class="fas fa-eye-slash"></i>';
+            }
+        });
+    });
 }
 
 // 上传 Tar
 async function uploadTar() {
     const input = document.getElementById('tarFileInput');
     const file = input.files[0];
-    if (!file) return toast('请选择 tar.gz 文件', 'error');
+    if (!file) return toast('请选择 .tar / .tar.gz / .tgz / .zip 文件', 'error');
 
     const fd = new FormData();
     fd.append('file', file);
@@ -877,7 +890,7 @@ async function loadSysConfig() {
             const sysName = json.data.sys.name || 'AI 数字员工';
             document.getElementById('sysName').value = sysName;
             // 同步更新页面标题和 header
-            const title = sysName + ' 管理平台';
+            const title = sysName;
             document.getElementById('pageTitle').textContent = title;
             document.getElementById('sysNameHeader').textContent = title;
             const apiEnabled = json.data.api && json.data.api.auth_enabled;

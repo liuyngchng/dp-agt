@@ -1,4 +1,4 @@
-# dp_agt — 电子公文智能处理 Agent
+# AI 数字员工 — 自主任务执行平台（设计文档）
 
 **版本**: V1.0-DRAFT  
 **日期**: 2026-10-27  
@@ -41,7 +41,7 @@
 ## 2. 系统架构
 
 ```
-电子公文系统                                              dp_agt
+外部业务系统                                              AI 数字员工
      |                                                         |
      |  POST /api/v1/document/classify                         |
      |  {                                                      |
@@ -247,7 +247,7 @@
 ```markdown
 # 文档处理任务
 
-你需要处理一份电子公文。以下是请求信息：
+你需要处理一份文件。以下是请求信息：
 
 ```json
 {{request.body}}
@@ -307,9 +307,9 @@ await fs.mkdir(workDir, { recursive: true });
 
 // 写入 CLAUDE.md 设定基本行为规范
 await fs.writeFile(path.join(workDir, 'CLAUDE.md'),
-  `# dp_agt 工作规范
+  `# AI 数字员工 工作规范
 
-你是电子公文处理智能体。你的任务是根据提示词分析电子公文并输出结构化结果。
+你是 AI 数字员工。你的任务是根据提示词分析文件并输出结构化结果。
 
 文件下载：
 - 对方传递的 JSON 中的文件 URL 开放白名单，无认证
@@ -357,7 +357,7 @@ for await (const message of q) {
 ### 5.3 项目结构
 
 ```
-dp_agt/
+AI 数字员工/
 ├── package.json
 ├── tsconfig.json
 ├── src/
@@ -476,7 +476,7 @@ pending → processing → success → completed (回调成功)
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  dp_agt 管理后台                           │
+│  AI 数字员工 管理后台                           │
 │──────────────────────────────────────────────────────│
 │                                                      │
 │  [接口管理] [任务日志] [系统设置]                        │
@@ -553,7 +553,7 @@ pending → processing → success → completed (回调成功)
 
 ## 7. 认证体系
 
-### 7.1 电子公文系统 → Agent
+### 7.1 外部业务系统 → Agent
 
 ```
 X-Api-Key: edoc_sk_xxxxxxxxxxxx
@@ -561,7 +561,7 @@ X-Api-Key: edoc_sk_xxxxxxxxxxxx
 
 在 `cfg.yml` 的 `api_keys` 数组中配置。
 
-### 7.2 Agent → 电子公文系统回调
+### 7.2 Agent → 外部业务系统回调
 
 ```
 Authorization: Bearer {cfg.sys.callback_url_token}
@@ -581,7 +581,7 @@ admin / 初始密码 (首次登录强制修改)
 ### 8.1 目录挂载
 
 ```
-dp_agt 容器:
+AI 数字员工 容器:
   挂载点: /app/data/
   内容:
     data/cfg.yml        — 配置文件

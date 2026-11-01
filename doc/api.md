@@ -1,4 +1,4 @@
-# dp_agt 对外接口文档
+# AI 数字员工 对外接口文档
 
 Base URL: `https://<host>:20001`
 
@@ -43,7 +43,7 @@ POST /api/v1/<path>
 | 1003 | 401 | API Token 无效 |
 | 2002 | 503 | 任务队列已满 |
 
-**回调格式**（dp_agt → callback_url）
+**回调格式**（AI 数字员工 → callback_url）
 
 成功：
 ```json

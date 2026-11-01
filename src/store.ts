@@ -188,7 +188,7 @@ function seedDefaults(db: Database.Database) {
 // ═══════════════════════════════════════════════════════════════════
 
 export const promptConfigStore = {
-  /** 批量导入 CSV 行。isSecret: value 以 '$' 或 '_TOKEN' 结尾标记为敏感 */
+  /** 批量导入 CSV 行。key 以 .token/.key/.secret/.password 或 _token/_key/_secret/_password 结尾的视为敏感。 */
   importRows(rows: Array<{ key: string; value: string; is_secret: boolean; note?: string }>): number {
     let count = 0;
     const stmt = db.prepare(
@@ -213,20 +213,26 @@ export const promptConfigStore = {
     return decryptValue(row.value_enc, row.iv, row.tag);
   },
 
-  /** 列出所有 key（value 脱敏返回，除非 reveal=true） */
+  /** 列出所有 key。敏感项默认脱敏，公开项直接明文；reveal=true 时敏感项也明文 */
   list(reveal = false): Array<{ key: string; value: string; is_secret: boolean; note: string; updated_at: string }> {
     const rows = db.prepare('SELECT key, value_enc, iv, tag, is_secret, note, updated_at FROM prompt_config ORDER BY key').all() as Array<{
       key: string; value_enc: string; iv: string; tag: string; is_secret: number; note: string; updated_at: string;
     }>;
-    return rows.map((r) => ({
-      key: r.key,
-      value: reveal && r.value_enc
-        ? (decryptValue(r.value_enc, r.iv, r.tag) ?? '<解密失败>')
-        : (r.value_enc ? maskValue(r.key, decryptValue(r.value_enc, r.iv, r.tag)) : ''),
-      is_secret: r.is_secret === 1,
-      note: r.note ?? '',
-      updated_at: r.updated_at,
-    }));
+    return rows.map((r) => {
+      const plain = r.value_enc ? decryptValue(r.value_enc, r.iv, r.tag) : '';
+      const isSecret = r.is_secret === 1;
+      // 公开项直接返回明文；敏感项默认脱敏，reveal 时返回明文
+      const value = isSecret
+        ? (reveal ? (plain ?? '<解密失败>') : maskValue(plain))
+        : (plain ?? '');
+      return {
+        key: r.key,
+        value,
+        is_secret: isSecret,
+        note: r.note ?? '',
+        updated_at: r.updated_at,
+      };
+    });
   },
 
   /** 获取所有 key→明文映射（内部渲染用） */
@@ -257,7 +263,7 @@ export const promptConfigStore = {
   },
 };
 
-function maskValue(_key: string, plain: string | null): string {
+function maskValue(plain: string | null): string {
   if (!plain) return '';
   if (plain.length <= 4) return '****';
   return plain.substring(0, 2) + '****' + plain.substring(plain.length - 2);

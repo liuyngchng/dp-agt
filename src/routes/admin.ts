@@ -1,3 +1,5 @@
+import { gunzipSync } from 'node:zlib';
+import AdmZip from 'adm-zip';
 import { Router, Request, Response } from 'express';
 import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, rmSync, createReadStream, createWriteStream } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -478,7 +480,6 @@ export function createAdminRouter(cfg: Config): Router {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line || line.startsWith('#')) continue;
-      // 简单 CSV 解析：按逗号切分，支持 value 中含逗号
       const parts = parseCsvLine(line);
       if (parts.length < 2) {
         res.status(400).json({ code: 1001, message: `第 ${i + 1} 行格式错误，需要至少 key,value 两列: ${line}` });
@@ -487,11 +488,14 @@ export function createAdminRouter(cfg: Config): Router {
       const key = parts[0].trim();
       const value = parts[1].trim();
       const note = (parts[2] || '').trim();
+      // 跳过 CSV 表头行
+      if (key === 'key' && value === 'value') continue;
       if (!key || !value) {
         res.status(400).json({ code: 1001, message: `第 ${i + 1} 行 key 或 value 为空: ${line}` });
         return;
       }
-      const isSecret = /_(token|secret|password|key)$/i.test(key);
+      // 敏感检测：key 以 .token /.key /.secret /.password 或 _token/_key/_secret/_password 结尾
+      const isSecret = /[._](token|secret|password|key)$/i.test(key);
       rows.push({ key, value, is_secret: isSecret, note });
     }
 
@@ -544,18 +548,64 @@ export function createAdminRouter(cfg: Config): Router {
 
   // ═══════════════════════════════════════════════════════════════
   // Prompt Tar — 上传 / 下载 / 校验
+  // 支持 .tar / .tar.gz / .tgz / .zip
   // ═══════════════════════════════════════════════════════════════
 
   const uploadTar = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: { fileSize: 10 * 1024 * 1024 },
   });
 
-  // Upload tar — with proper async extraction
+  /** 检测格式并解压 → { [filename]: content } */
+  async function extractArchive(buf: Buffer, origName: string): Promise<Record<string, string> | null> {
+    // ── Zip ──
+    if (origName.endsWith('.zip') || (buf[0] === 0x50 && buf[1] === 0x4b)) {
+      const zip = new AdmZip(buf);
+      const files: Record<string, string> = {};
+      for (const entry of zip.getEntries()) {
+        if (entry.isDirectory) continue;
+        const name = entry.entryName.replace(/^\.?\/?/, '');
+        if (!name.endsWith('.md')) continue;
+        files[name] = entry.getData().toString('utf8');
+      }
+      return files;
+    }
+
+    // ── Tar / Tar.gz ──
+    let raw = buf;
+    if (origName.endsWith('.gz') || origName.endsWith('.tgz')
+        || (buf[0] === 0x1f && buf[1] === 0x8b)) {
+      try { raw = gunzipSync(buf); } catch { return null; }
+    }
+
+    const files: Record<string, string> = {};
+    const extract = tarStream.extract();
+
+    extract.on('entry', (header: any, stream: any, next: () => void) => {
+      const name = header.name.replace(/^\.?\/?/, '');
+      if (header.type === 'directory' || !name.endsWith('.md')) {
+        stream.resume(); next(); return;
+      }
+      const chunks: Buffer[] = [];
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', () => {
+        files[name] = Buffer.concat(chunks).toString('utf8');
+        next();
+      });
+    });
+
+    return new Promise<Record<string, string> | null>((resolve) => {
+      extract.on('finish', () => resolve(files));
+      extract.on('error', () => resolve(null));
+      extract.end(raw);
+    });
+  }
+
+  // Upload
   router.post('/admin/prompt-tar/upload', uploadTar.single('file'), async (req: Request, res: Response) => {
     const file = req.file;
     if (!file) {
-      res.status(400).json({ code: 1001, message: '请选择 tar.gz 文件' });
+      res.status(400).json({ code: 1001, message: '请选择 .tar / .tar.gz / .tgz / .zip 文件' });
       return;
     }
 
@@ -565,80 +615,55 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    // 解压 + 校验
     const validKeys = new Set(promptConfigStore.listKeys());
-    // 通用占位符（无需 CSV 配置）
-    const builtinKeys = new Set(['request.body', 'request.linkid', 'request.files', 'request.form_data', 'request.approval_history', 'request.callback_url']);
+    const builtinKeys = new Set(['request.body', 'request.linkid', 'request.files',
+      'request.form_data', 'request.approval_history', 'request.callback_url']);
     for (const k of builtinKeys) validKeys.add(k);
 
-    const errors: string[] = [];
-    const fileList: string[] = [];
-    const tmpDir = join(cfg.sys.data_dir, '.tmp_prompts_' + Date.now());
-    mkdirSync(tmpDir, { recursive: true });
-
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const extract = tarStream.extract();
-        extract.on('entry', (header, stream, next) => {
-          const name = header.name.replace(/^\.?\/?/, '');
-          if (header.type === 'directory') { stream.resume(); next(); return; }
-          if (!name.endsWith('.md')) { stream.resume(); next(); return; }
-
-          fileList.push(name);
-          const chunks: Buffer[] = [];
-          stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-          stream.on('end', () => {
-            const content = Buffer.concat(chunks).toString('utf8');
-            // 扫描占位符
-            const placeholders = content.match(/\{\{([^}]+)\}\}/g) || [];
-            for (const ph of placeholders) {
-              const inner = ph.slice(2, -2).trim();
-              if (inner.startsWith('section:') || inner.startsWith('request.')) continue;
-              // 检查是否在 CSV 或内置 key 中
-              if (!validKeys.has(inner)) {
-                errors.push(name + ': 占位符 {{' + inner + '}} 未在 CSV 中配置');
-              }
-            }
-            const { writeFileSync, mkdirSync: ms } = require('node:fs');
-            const dest = join(tmpDir, name);
-            ms(join(dest, '..'), { recursive: true });
-            writeFileSync(dest, content);
-            next();
-          });
-        });
-        extract.on('finish', resolve);
-        extract.on('error', reject);
-        extract.end(file.buffer);
-      });
-
-      if (errors.length > 0) {
-        rmSync(tmpDir, { recursive: true, force: true });
-        res.status(400).json({ code: 1001, message: '占位符校验失败', data: { errors } });
-        return;
-      }
-
-      // 校验通过 → 替换 prompts/ 目录
-      const promptsDir = resolve(process.cwd(), 'prompts');
-      if (existsSync(promptsDir)) {
-        rmSync(promptsDir, { recursive: true, force: true });
-      }
-      mkdirSync(promptsDir, { recursive: true });
-      // 复制所有文件
-      const { cpSync } = require('node:fs');
-      cpSync(tmpDir, promptsDir, { recursive: true });
-      rmSync(tmpDir, { recursive: true, force: true });
-
-      // 重新扫描并同步 agent_interfaces 表
-      const pfs = rescanPromptsDir();
-      syncInterfacesFromPrompts(pfs.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
-
-      log.info({ files: fileList }, 'prompt_tar_uploaded');
-      res.json({ code: 0, data: { files: fileList, total: fileList.length } });
-    } catch (err) {
-      rmSync(tmpDir, { recursive: true, force: true });
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ code: 1001, message: '处理 tar 文件失败: ' + msg });
+    const files = await extractArchive(file.buffer, file.originalname);
+    if (!files || Object.keys(files).length === 0) {
+      res.status(400).json({ code: 1001, message: '无法解压文件，或包内没有 .md 文件。支持的格式：.tar / .tar.gz / .tgz / .zip' });
+      return;
     }
+
+    // 校验占位符
+    const errors: string[] = [];
+    for (const [name, content] of Object.entries(files)) {
+      const placeholders = content.match(/\{\{([^}]+)\}\}/g) || [];
+      for (const ph of placeholders) {
+        const inner = ph.slice(2, -2).trim();
+        if (inner.startsWith('section:') || inner.startsWith('request.')) continue;
+        if (!validKeys.has(inner)) {
+          errors.push(name + ': 占位符 {{' + inner + '}} 未在 CSV 中配置');
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      res.status(400).json({ code: 1001, message: '占位符校验失败', data: { errors } });
+      return;
+    }
+
+    // 校验通过 → 替换 prompts/ 目录
+    const promptsDir = resolve(process.cwd(), 'prompts');
+    if (existsSync(promptsDir)) {
+      rmSync(promptsDir, { recursive: true, force: true });
+    }
+    mkdirSync(promptsDir, { recursive: true });
+    const { writeFileSync: wfSync, mkdirSync: mSync } = require('node:fs');
+    for (const [name, content] of Object.entries(files)) {
+      const dest = join(promptsDir, name);
+      mSync(join(dest, '..'), { recursive: true });
+      wfSync(dest, content);
+    }
+
+    // 重新扫描并同步 agent_interfaces 表
+    const pfs = rescanPromptsDir();
+    syncInterfacesFromPrompts(pfs.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
+
+    const fileList = Object.keys(files);
+    log.info({ files: fileList }, 'prompt_archive_uploaded');
+    res.json({ code: 0, data: { files: fileList, total: fileList.length } });
   });
 
   // 下载当前 prompts/ 为 tar.gz

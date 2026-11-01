@@ -73,7 +73,7 @@
         const res = await fetch('/api/info');
         const json = await res.json();
         const name = (json.data && json.data.sys_name) || 'AI 数字员工';
-        const title = name + ' 管理平台';
+        const title = name;
         document.getElementById('pageTitle').textContent = title + ' - 登录';
         document.getElementById('sysNameHeader').textContent = title;
     } catch (_) {}

@@ -10,7 +10,6 @@
 curl -s -k --noproxy '*' -w'\n' -X POST '{{doc_audit.api_url}}' \
   -H "x-api-key: $DOC_AUDIT_TOKEN" \
   -F "file=@正文.docx" \
-  -F "callback_url=http://localhost:{{server.port}}/api/dev/null" \
   -F "additional_instructions=请严格按 GB/T 9704-2012 党政机关公文格式标准进行校对"
 ```
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# dp_agt deploy script
+# AI 数字员工 deploy script
 # Usage: ./deploy.sh [start|stop|restart|logs|status]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-IMAGE="dp_agt:0.1.0"
-CONTAINER="${CONTAINER:-dp_agt}"
+IMAGE="ai-worker:0.1.0"
+CONTAINER="${CONTAINER:-ai-worker}"
 HOST_PORT="${HOST_PORT:-20001}"
 DATA_DIR="${DATA_DIR:-$(pwd)/data}"
 NETWORK="${NETWORK:-llm_net}"
@@ -23,6 +23,12 @@ if [ ! -f "$DATA_DIR/cfg.yml" ]; then
   echo "[deploy] cfg.yml 不存在，从模板复制..."
   cp "$(pwd)/data/cfg.yml.template" "$DATA_DIR/cfg.yml"
   echo "[deploy] 请编辑 $DATA_DIR/cfg.yml 后再启动"
+fi
+
+echo "check cfg.csv.template"
+if [ ! -f "$DATA_DIR/cfg.csv.template" ]; then
+  cp "$(pwd)/data/cfg.csv.template" "$DATA_DIR/cfg.csv.template"
+  echo "[deploy] cfg.csv.template 已复制到数据目录"
 fi
 
 echo "ensure network exists"
