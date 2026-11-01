@@ -171,19 +171,15 @@ export function adminOnlyMiddleware(req: Request, res: Response, next: () => voi
 
 /**
  * 对外访问路径鉴权中间件。
- * 后台 UI（系统设置）优先，cfg.yml 静态 token 作为 fallback。
+ * 仅从 DB 配置（系统设置 → 对外 API 认证）读取 token。
  * 两种认证方式：
  *   1. X-Api-Key: {token}
  *   2. Authorization: Bearer {token}
  *
- * 优先级：
- *   1. DB 中 api_auth_enabled === '1' → 使用 DB token 校验
- *   2. 否则 fallback 到 cfg.yml 静态 token
- *   3. 都没有 → 不校验，直接放行
+ * 若 DB 中未启用（api_auth_enabled !== '1'），直接放行。
  */
-export function apiTokenMiddleware(staticApiToken: string) {
+export function apiTokenMiddleware() {
   return (req: Request, res: Response, next: () => void) => {
-    // 第一时间打印收到的请求数据（无论对错，鉴权前）
     log.debug({ path: req.path, body: req.body }, 'api_request_received');
 
     const dbEnabled = configStore.get('api_auth_enabled');
@@ -200,27 +196,16 @@ export function apiTokenMiddleware(staticApiToken: string) {
       res.status(401).json(resp);
     };
 
-    // DB 启用优先
+    // DB 启用 → 校验 token
     if (dbEnabled === '1' && dbToken) {
       const token = extractToken(req);
       if (!token || token !== dbToken) {
         respondUnauthorized();
         return;
       }
-      next();
-      return;
     }
 
-    // Fallback: cfg.yml 静态 token
-    if (staticApiToken) {
-      const token = extractToken(req);
-      if (!token || token !== staticApiToken) {
-        respondUnauthorized();
-        return;
-      }
-    }
-
-    // 都没有 → 放行
+    // 未启用或未配置 → 放行
     next();
   };
 }

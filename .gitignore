@@ -2,6 +2,8 @@ node_modules/
 dist/
 *.log
 .env
+*.csv
+!data/cfg.csv.template
 
 # 构建临时目录 (build.sh 生成)
 deploy/
@@ -12,6 +14,7 @@ data/app.db-shm
 data/app.db-wal
 data/cfg.yml
 data/mock.json
+data/secrets.key
 data/logs/
 data/tasks/
 data/.claude/

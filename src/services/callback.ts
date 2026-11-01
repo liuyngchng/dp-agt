@@ -8,6 +8,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
 import { getLogger } from '../logger.js';
+import { promptConfigStore } from '../store.js';
 import type { Config } from '../config.js';
 import type { ApiResponse } from '../types.js';
 
@@ -98,7 +99,9 @@ export async function deliverCallback(
 ): Promise<CallbackResult> {
   const maxRetries = cfg.sys.callback_retries;
   const baseInterval = cfg.sys.callback_retry_interval_sec * 1000;
-  const token = cfg.sys.file_url_token || undefined;
+  const token = promptConfigStore.getPlain('doc.file_url_token')
+    || promptConfigStore.getPlain('sys.file_url_token')
+    || undefined;
   const bodyStr = JSON.stringify(payload);
 
   // 生成 curl，输出到 info 日志（方便排查）

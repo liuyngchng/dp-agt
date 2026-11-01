@@ -125,6 +125,7 @@ COPY --chown=agent:agent --from=builder /build/dist/ /app/dist/
 COPY --chown=agent:agent --from=builder /build/node_modules/ /app/node_modules/
 COPY --chown=agent:agent package.json tsconfig.json /app/
 COPY --chown=agent:agent web/ /app/web/
+COPY --chown=agent:agent prompts/ /app/prompts/
 
 # ---- HTTPS certs ----
 ARG HTTPS_CERT=""

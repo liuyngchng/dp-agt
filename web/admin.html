@@ -6,12 +6,12 @@
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/lib/font-awesome.all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
-    <title id="pageTitle">dp_agt 管理平台</title>
+    <title id="pageTitle">AI 数字员工</title>
 </head>
 <body>
 <div class="container">
     <header>
-        <h1><i class="fas fa-robot"></i> <span id="sysNameHeader">dp_agt 管理平台</span></h1>
+        <h1><i class="fas fa-robot"></i> <span id="sysNameHeader">AI 数字员工</span></h1>
         <p>系统管理 &middot; 运行监控</p>
         <button class="logout-btn" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i> 退出登录</button>
     </header>
@@ -23,45 +23,80 @@
             <!-- ========== 访问路径管理 ========== -->
             <div class="cfg-section" id="section-interfaces">
                 <h2><i class="fas fa-brain"></i> 模板管理</h2>
-                <p>每个访问路径 = 一个对外 path + 一段提示词模板。调用方 POST /api/v1/&lt;path&gt; 时按 path 匹配模板。</p>
-                <button class="cfg-btn cfg-btn-save" onclick="editInterface()" style="margin-bottom:16px;">
-                    <i class="fas fa-plus"></i> 创建模板
-                </button>
-                <div class="table-scroll">
-<table class="result-table">
-                    <thead><tr><th class="col-seq">序号</th><th>功能</th><th>访问路径</th><th>更新时间</th><th>操作</th></tr></thead>
-                    <tbody id="ifacesTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
-                </table>
-</div>
+                <p>提示词统一存放在 <code>prompts/</code> 目录，通过 tar 包上传 / 下载离线编辑。配置项（接口地址、密钥等）通过 CSV 单向上传，加密存储。</p>
 
-                <div id="ifaceModal" class="modal-overlay">
-                    <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));">
-                        <h3 id="ifaceModalTitle"><i class="fas fa-brain"></i> 创建模板</h3>
-                        <form id="ifaceForm" style="margin-top:20px;">
-                            <input type="hidden" id="ifaceId" value="">
-                            <div class="form-g">
-                                <label>智能体功能 <span style="color:#e53935;">*</span></label>
-                                <input type="text" id="fName" required placeholder="如：收文分类">
-                            </div>
-                            <div class="form-g">
-                                <label>访问路径 <span style="color:#e53935;">*</span></label>
-                                <input type="text" id="fPath" required placeholder="如：document/classify">
-                                <div class="field-hint">调用方通过 <code>POST /api/v1/&lt;path&gt;</code> 访问此智能体</div>
-                            </div>
-                            <div class="form-g">
-                                <label>提示词模板 <span style="color:#e53935;">*</span></label>
-                                <textarea id="fPrompt" required placeholder="# 文档处理任务..."></textarea>
-                                <div class="field-hint">
-                                    可用占位符: <code>{{request.body}}</code> <code>{{request.linkid}}</code> <code>{{request.form_data}}</code> <code>{{request.files}}</code> ...
-                                    任意字段均可通过 <code>{{request.xxx.yyy}}</code> 引用
-                                </div>
-                            </div>
-                            <div class="modal-actions">
-                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeModal()">取消</button>
-                                <button type="submit" class="cfg-btn cfg-btn-save">保存</button>
-                            </div>
-                        </form>
+                <!-- 步骤指示 -->
+                <div class="wizard-steps" style="display:flex;gap:24px;margin:20px 0 24px;align-items:center;">
+                    <div class="wizard-step" id="wizardStep1" style="display:flex;align-items:center;gap:8px;">
+                        <span class="wizard-dot" style="width:28px;height:28px;border-radius:50%;background:#1565c0;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:600;">1</span>
+                        <span>上传配置 CSV</span>
                     </div>
+                    <div style="color:#bbb;">→</div>
+                    <div class="wizard-step" id="wizardStep2" style="display:flex;align-items:center;gap:8px;opacity:0.4;">
+                        <span class="wizard-dot" style="width:28px;height:28px;border-radius:50%;background:#9e9e9e;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:600;">2</span>
+                        <span>上传 Prompt tar 包</span>
+                    </div>
+                    <div style="color:#bbb;">→</div>
+                    <div class="wizard-step" id="wizardStep3" style="display:flex;align-items:center;gap:8px;opacity:0.4;">
+                        <span class="wizard-dot" style="width:28px;height:28px;border-radius:50%;background:#9e9e9e;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:600;">3</span>
+                        <span>预览 / 下载</span>
+                    </div>
+                </div>
+
+                <!-- 步骤 1：CSV -->
+                <div class="wizard-panel" id="panelStep1" style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;">
+                    <h3 style="margin:0 0 12px;"><i class="fas fa-file-csv"></i> 步骤 1：上传配置 CSV</h3>
+                    <div style="margin-bottom:12px;">
+                        <button class="cfg-btn" onclick="downloadCsvTemplate()"><i class="fas fa-download"></i> 下载 CSV 模板</button>
+                        <span style="color:#888;font-size:0.82rem;margin-left:12px;">格式：key, value, 说明（三列）</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <input type="file" id="csvFileInput" accept=".csv" style="flex:1;">
+                        <button class="cfg-btn cfg-btn-save" onclick="uploadCsv()"><i class="fas fa-upload"></i> 上传</button>
+                    </div>
+                    <div id="csvResult" style="margin-top:12px;"></div>
+                    <!-- 已配置 key 列表 -->
+                    <div id="configKeysWrap" style="margin-top:16px;display:none;">
+                        <div style="font-weight:600;margin-bottom:8px;color:#555;">已配置的 Key（点击眼睛图标查看明文）</div>
+                        <div id="configKeysTable" style="overflow-x:auto;"></div>
+                    </div>
+                </div>
+
+                <!-- 步骤 2：Tar -->
+                <div class="wizard-panel" id="panelStep2" style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;">
+                    <h3 style="margin:0 0 12px;"><i class="fas fa-file-archive"></i> 步骤 2：上传 Prompt tar 包</h3>
+                    <p style="color:#888;font-size:0.82rem;margin:0 0 12px;">tar 包目录结构即访问路径。例如 <code>doc/classify.md</code> → 访问路径 <code>doc/classify</code>。新建 <code>hr/recruit.md</code> 即自动生成 <code>hr/recruit</code> 入口。<code>claude-md.md</code> 和 <code>sections/</code> 不作为访问路径。</p>
+                    <div style="margin-bottom:12px;">
+                        <button class="cfg-btn" onclick="downloadTar()"><i class="fas fa-download"></i> 下载当前 tar</button>
+                        <span style="color:#888;font-size:0.82rem;margin-left:12px;">首次使用时内置默认模板，上传后下载即为上次上传的内容</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <input type="file" id="tarFileInput" accept=".tar.gz,.tgz" style="flex:1;">
+                        <button class="cfg-btn cfg-btn-save" onclick="uploadTar()"><i class="fas fa-upload"></i> 上传</button>
+                    </div>
+                    <div id="tarResult" style="margin-top:12px;"></div>
+                </div>
+
+                <!-- 步骤 3：预览 / 下载 -->
+                <div class="wizard-panel" id="panelStep3" style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;">
+                    <h3 style="margin:0 0 12px;"><i class="fas fa-eye"></i> 步骤 3：预览 / 下载当前模板</h3>
+                    <div style="margin-bottom:12px;">
+                        <button class="cfg-btn" onclick="downloadTar()"><i class="fas fa-download"></i> 下载当前 tar</button>
+                        <button class="cfg-btn" onclick="loadPreview()" style="margin-left:8px;"><i class="fas fa-sync-alt"></i> 刷新预览</button>
+                    </div>
+                    <div id="previewWrap" style="display:none;">
+                        <div style="font-weight:600;margin-bottom:8px;color:#555;">模板文件预览</div>
+                        <div id="previewFiles" style="display:flex;flex-direction:column;gap:12px;"></div>
+                    </div>
+                </div>
+
+                <!-- 旧的接口列表（保留 path 映射展示） -->
+                <div class="table-scroll" style="margin-top:24px;">
+                    <h3 style="margin:0 0 12px;font-size:1rem;"><i class="fas fa-list"></i> 访问路径</h3>
+                    <table class="result-table">
+                        <thead><tr><th class="col-seq">序号</th><th>功能</th><th>访问路径</th><th>更新时间</th></tr></thead>
+                        <tbody id="ifacesTbody"><tr><td colspan="4" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    </table>
                 </div>
             </div>
 
@@ -313,7 +348,7 @@ async function initNav() {
                 document.querySelectorAll('.cfg-section').forEach(s => s.classList.remove('active'));
                 const section = document.getElementById('section-' + tab.dataset.tab);
                 if (section) section.classList.add('active');
-                if (tab.dataset.tab === 'interfaces') loadInterfaces();
+                if (tab.dataset.tab === 'interfaces') { loadInterfaces(); loadConfigKeys(); loadPreview(); }
                 else if (tab.dataset.tab === 'simulate') loadSimulateTab();
                 else if (tab.dataset.tab === 'tasks') loadTasks();
                 else if (tab.dataset.tab === 'sys') loadSysConfig();
@@ -341,7 +376,6 @@ function toast(msg, type) {
 }
 
 // ==== Modal helpers ====
-function closeModal() { document.getElementById('ifaceModal').classList.remove('show'); }
 function closeTaskModal() { document.getElementById('taskModal').classList.remove('show'); }
 
 // ==== Interfaces ====
@@ -351,11 +385,10 @@ async function loadInterfaces() {
     const list = Array.isArray(json.data) ? json.data : [];
     const tbody = document.getElementById('ifacesTbody');
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:24px;">暂无提示词，点击"创建模板"开始</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">暂无访问路径</td></tr>';
         return;
     }
     tbody.innerHTML = list.map((i, idx) => {
-        const id = JSON.stringify(i.id);
         const name = escHtml(i.name);
         const path = escHtml(i.path);
         const ts = fmtTs(i.updated_at);
@@ -364,47 +397,142 @@ async function loadInterfaces() {
             <td>${name}</td>
             <td>${path}</td>
             <td>${ts}</td>
-            <td>
-                <button class="cfg-btn-sm" onclick='editInterface(${JSON.stringify(i)})'><i class="fas fa-edit"></i> 编辑</button>
-                <button class="cfg-btn-danger-sm" onclick="deleteInterface('${id}','${name}')"><i class="fas fa-trash"></i> 删除</button>
-            </td>
         </tr>`;
     }).join('');
 }
 
-function editInterface(existing) {
-    const isNew = !existing;
-    document.getElementById('ifaceId').value = isNew ? '' : existing.id;
-    document.getElementById('fName').value = isNew ? '' : existing.name;
-    document.getElementById('fPath').value = isNew ? '' : existing.path;
-    document.getElementById('fPrompt').value = isNew ? '' : existing.prompt;
-    document.getElementById('ifaceModalTitle').innerHTML = '<i class="fas fa-brain"></i> ' + (isNew ? '创建模板' : '编辑提示词');
-    document.getElementById('ifaceModal').classList.add('show');
+// ==== 模板管理（CSV / Tar / 预览） ====
+
+// 下载 CSV 模板
+function downloadCsvTemplate() {
+    window.location.href = API + '/prompt-config/template';
 }
 
-document.getElementById('ifaceForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const id = document.getElementById('ifaceId').value;
-    const name = document.getElementById('fName').value.trim();
-    const path = document.getElementById('fPath').value.trim();
-    const prompt = document.getElementById('fPrompt').value;
-    if (!name || !path || !prompt) return toast('请填写所有字段', 'error');
+// 上传 CSV
+async function uploadCsv() {
+    const input = document.getElementById('csvFileInput');
+    const file = input.files[0];
+    if (!file) return toast('请选择 CSV 文件', 'error');
 
-    const url = id ? API + '/interfaces/' + encodeURIComponent(id) : API + '/interfaces';
-    const method = id ? 'PUT' : 'POST';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, prompt }) });
-    const body = await res.json();
-    if (body.code !== 0) return toast('保存失败: ' + (body.message || ''), 'error');
-    closeModal();
-    toast(id ? '访问路径已更新' : '访问路径已创建');
-    loadInterfaces();
-});
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(API + '/prompt-config/upload-csv', { method: 'POST', body: fd });
+    const json = await res.json();
+    if (json.code !== 0) {
+        document.getElementById('csvResult').innerHTML = `<span style="color:#e53935;">✗ ${escHtml(json.message || '上传失败')}</span>`;
+        return;
+    }
+    const keys = json.data.keys || [];
+    document.getElementById('csvResult').innerHTML = `<span style="color:#2e7d32;">✓ 已导入 ${json.data.imported} 个配置项</span>`;
+    // 刷新 key 列表
+    await loadConfigKeys();
+    // 启用步骤 2
+    document.getElementById('wizardStep2').style.opacity = '1';
+    document.getElementById('wizardStep2').querySelector('.wizard-dot').style.background = '#1565c0';
+    toast('CSV 配置已导入');
+}
 
-async function deleteInterface(id, name) {
-    if (!confirm('确认删除「' + name + '」?')) return;
-    const res = await fetch(API + '/interfaces/' + encodeURIComponent(id), { method: 'DELETE' });
-    if (res.ok) { toast('已删除'); loadInterfaces(); }
-    else toast('删除失败', 'error');
+// 加载配置 key 列表（脱敏 + 眼睛图标）
+async function loadConfigKeys() {
+    const res = await fetch(API + '/prompt-config');
+    const json = await res.json();
+    const rows = (json.data && json.data.rows) || [];
+    const wrap = document.getElementById('configKeysWrap');
+    const table = document.getElementById('configKeysTable');
+    if (rows.length === 0) {
+        wrap.style.display = 'none';
+        return;
+    }
+    wrap.style.display = 'block';
+    table.innerHTML = `<table class="result-table" style="font-size:0.85rem;">
+        <thead><tr><th>Key</th><th>值</th><th>说明</th><th>敏感</th></tr></thead>
+        <tbody>${rows.map(r => {
+            const key = escHtml(r.key);
+            const note = escHtml(r.note || '-');
+            const secretBadge = r.is_secret ? '<span style="color:#e53935;">🔒 敏感</span>' : '<span style="color:#888;">公开</span>';
+            const eye = r.is_secret
+                ? `<button class="cfg-btn-sm" onclick="revealValue(this, ${JSON.stringify(r.key)})" title="查看明文"><i class="fas fa-eye"></i></button>`
+                : '';
+            return `<tr>
+                <td><code>${key}</code></td>
+                <td><span id="val-${escHtml(r.key)}">${escHtml(r.value)}</span> ${eye}</td>
+                <td>${note}</td>
+                <td>${secretBadge}</td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table>`;
+}
+
+// 眼睛图标：切换显示明文
+async function revealValue(btn, key) {
+    const res = await fetch(API + '/prompt-config?reveal=1');
+    const json = await res.json();
+    const rows = (json.data && json.data.rows) || [];
+    const row = rows.find(r => r.key === key);
+    if (!row) return toast('未找到该 key', 'error');
+    const span = document.getElementById('val-' + key);
+    if (span) {
+        // 如果当前是脱敏值，切换到明文
+        span.textContent = row.value;
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+        btn.onclick = () => {
+            span.textContent = '****';
+            btn.innerHTML = '<i class="fas fa-eye"></i>';
+            btn.onclick = () => revealValue(btn, key);
+        };
+    }
+}
+
+// 上传 Tar
+async function uploadTar() {
+    const input = document.getElementById('tarFileInput');
+    const file = input.files[0];
+    if (!file) return toast('请选择 tar.gz 文件', 'error');
+
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(API + '/prompt-tar/upload', { method: 'POST', body: fd });
+    const json = await res.json();
+    const resultEl = document.getElementById('tarResult');
+    if (json.code !== 0) {
+        let html = `<span style="color:#e53935;">✗ ${escHtml(json.message || '上传失败')}</span>`;
+        if (json.data && json.data.errors && json.data.errors.length) {
+            html += '<ul style="margin-top:8px;color:#e53935;">' + json.data.errors.map(e => `<li>${escHtml(e)}</li>`).join('') + '</ul>';
+        }
+        resultEl.innerHTML = html;
+        return;
+    }
+    resultEl.innerHTML = `<span style="color:#2e7d32;">✓ 已上传 ${json.data.total} 个文件</span>`;
+    // 启用步骤 3
+    document.getElementById('wizardStep3').style.opacity = '1';
+    document.getElementById('wizardStep3').querySelector('.wizard-dot').style.background = '#1565c0';
+    toast('Prompt tar 包已上传');
+    await loadPreview();
+}
+
+// 下载 tar
+function downloadTar() {
+    window.location.href = API + '/prompt-tar/download';
+}
+
+// 加载预览
+async function loadPreview() {
+    const res = await fetch(API + '/prompt-preview');
+    const json = await res.json();
+    const previews = (json.data && json.data.previews) || [];
+    const wrap = document.getElementById('previewWrap');
+    const container = document.getElementById('previewFiles');
+    if (previews.length === 0) {
+        wrap.style.display = 'none';
+        return;
+    }
+    wrap.style.display = 'block';
+    container.innerHTML = previews.map(p => `
+        <details style="border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;background:#fff;">
+            <summary style="cursor:pointer;font-weight:600;color:#333;">${escHtml(p.file)}</summary>
+            <pre style="margin:12px 0 0;padding:12px;background:#f5f5f5;border-radius:6px;font-size:0.8rem;font-family:'SF Mono','Consolas',monospace;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;">${escHtml(p.raw)}</pre>
+        </details>
+    `).join('');
 }
 
 // ==== Tasks (server-side pagination) ====
@@ -525,14 +653,12 @@ function statusText(s) {
 }
 
 // Close modal on overlay click
-document.getElementById('ifaceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
 document.getElementById('taskModal').addEventListener('click', function(e) { if (e.target === this) closeTaskModal(); });
 document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
 
 // Close modal on ESC
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-        if (document.getElementById('ifaceModal').classList.contains('show')) closeModal();
         if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
         if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
         if (document.getElementById('auditDetailModal').classList.contains('show')) closeAuditDetail();
@@ -748,7 +874,7 @@ async function loadSysConfig() {
         const res = await fetch(API + '/sys-config');
         const json = await res.json();
         if (json.data) {
-            const sysName = json.data.sys.name || 'dp_agt';
+            const sysName = json.data.sys.name || 'AI 数字员工';
             document.getElementById('sysName').value = sysName;
             // 同步更新页面标题和 header
             const title = sysName + ' 管理平台';

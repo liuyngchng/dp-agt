@@ -366,7 +366,7 @@ function renderTimelineHtml(task: TaskLog, events: TimelineEvent[], linkid: stri
     </div>
   </div>
   <div class="tl">${itemsHtml}</div>
-  <div class="foot">Powered by dp_agt</div>
+  <div class="foot">Powered by AI 数字员工</div>
 </div>
 </body>
 </html>`;

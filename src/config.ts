@@ -11,7 +11,7 @@ interface CfgFile {
     debug?: boolean;
     cert_file?: string;
     key_file?: string;
-    self_ip?: string;  // 对外服务 IP，留空自动探测
+    self_ip?: string;
   };
   sys?: {
     max_concurrent_tasks?: number;
@@ -20,10 +20,6 @@ interface CfgFile {
     callback_retry_interval_sec?: number;
     retention_days?: number;
     data_dir?: string;
-    doc_util_url?: string;
-    renew_file_url_api?: string;
-    file_url_token?: string;
-    api_token?: string;
   };
   llm?: {
     base_url?: string;
@@ -37,10 +33,7 @@ interface CfgFile {
     timeout_ms?: number;
     disable_nonessential_traffic?: boolean;
     attribution_header?: boolean;
-  };
-  doc_audit?: {
-    api_url?: string;
-    token?: string;
+    auto_mode_server?: boolean;
   };
 }
 
@@ -59,10 +52,6 @@ export interface Config {
     callback_retry_interval_sec: number;
     retention_days: number;
     data_dir: string;
-    doc_util_url: string;
-    renew_file_url_api: string;
-    file_url_token: string;
-    api_token: string;
   };
   llm: {
     base_url: string;
@@ -76,10 +65,7 @@ export interface Config {
     timeout_ms: number;
     disable_nonessential_traffic: boolean;
     attribution_header: boolean;
-  };
-  doc_audit: {
-    api_url: string;
-    token: string;
+    auto_mode_server: boolean;
   };
 }
 
@@ -119,6 +105,11 @@ function loadCfgFile(): CfgFile {
 
 const cfg = loadCfgFile();
 
+/** 返回 cfg.yml 的原始解析对象（用于 CLAUDE.md 模板的 {{key}} 占位符替换） */
+export function getRawConfig(): Record<string, unknown> {
+  return cfg as unknown as Record<string, unknown>;
+}
+
 export function loadConfig(): Config {
   const s = cfg.server ?? {};
   const y = cfg.sys ?? {};
@@ -150,10 +141,6 @@ export function loadConfig(): Config {
       callback_retry_interval_sec: envInt('CALLBACK_RETRY_INTERVAL_SEC', y.callback_retry_interval_sec ?? 2),
       retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 30),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
-      doc_util_url: env('DOC_UTIL_URL', y.doc_util_url ?? 'https://doc_util_server:8443'),
-      renew_file_url_api: env('RENEW_FILE_URL_API', y.renew_file_url_api ?? ''),
-      file_url_token: env('FILE_URL_TOKEN', y.file_url_token ?? ''),
-      api_token: env('API_TOKEN', y.api_token ?? ''),
     },
     llm: {
       base_url: llmBaseUrl,
@@ -167,10 +154,7 @@ export function loadConfig(): Config {
       timeout_ms: envInt('API_TIMEOUT_MS', l.timeout_ms ?? 600000),
       disable_nonessential_traffic: envBool('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', l.disable_nonessential_traffic ?? true),
       attribution_header: envBool('CLAUDE_CODE_ATTRIBUTION_HEADER', l.attribution_header ?? false),
-    },
-    doc_audit: {
-      api_url: env('DOC_AUDIT_URL', cfg.doc_audit?.api_url ?? ''),
-      token: env('DOC_AUDIT_TOKEN', cfg.doc_audit?.token ?? ''),
+      auto_mode_server: envBool('CLAUDE_CODE_AUTO_MODE_SERVER', l.auto_mode_server ?? false),
     },
   };
 }

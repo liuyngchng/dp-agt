@@ -1,10 +1,13 @@
 # ============================================================================
-# dp_agt 配置模板
+# AI 数字员工 系统配置模板
 # ============================================================================
 # 复制此文件为 cfg.yml 并根据实际环境修改:
 #   cp cfg.yml.template cfg.yml
 #
 # 配置优先级: 环境变量 > cfg.yml > 默认值
+#
+# ⚠ 业务配置（接口地址、密钥等）请通过管理后台「模板管理」页面
+#   上传 CSV 配置，不要写在 cfg.yml 中。
 # ============================================================================
 
 # ---- 服务配置 ----
@@ -15,7 +18,7 @@ server:
   # 调试模式: true=开启(日志更详细), false=关闭(生产环境)
   debug: false
 
-  # 对外提供服务的IP地址
+  # 对外提供服务的IP地址（用于生成 CLAUDE.md 中的回调 URL 等）
   self_ip: 192.168.1.102
 
   # HTTPS 证书路径（留空则使用 HTTP）
@@ -39,22 +42,6 @@ sys:
 
   # 运行时数据保留天数（task_logs + files 自动清理）
   retention_days: 30
-
-  # 文档解析服务地址（自签名 HTTPS），Claude 通过 curl -k 调用提取 PDF/DOCX 文本
-  doc_util_url: "https://:docutil-server:8080"
-
-  # 文件下载回退 — 重新生成 file_url 的接口地址（留空则禁用此功能）
-  # 当 file_url 直连下载失败时，Agent 会自动调用此接口用 file_id 重新生成下载链接
-  renew_file_url_api: "https://123.456/file/download"
-
-  # 文件下载 / renew_file_url / 回调对方接口 共用的认证 Bearer Token
-  # （可被环境变量 FILE_URL_TOKEN 覆盖）
-  file_url_token: ""
-
-  # 对外接口鉴权 Token（可被环境变量 API_TOKEN 覆盖）
-  # 对方调用我方 /api/v1/* 时需携带 Authorization: Bearer <api_token>
-  # 留空则不校验（开发便利）
-  api_token: ""
 
 # ---- LLM 适配器配置（必填，指向 Anthropic 协议兼容网关） ----
 # 本服务通过网关调用 LLM，base_url 留空则启动时报错退出。
@@ -82,11 +69,9 @@ llm:
   disable_nonessential_traffic: true
   # 关闭 Co-Authored-By 归因头
   attribution_header: false
+  # 禁用自动模式服务器（CLAUDE_CODE_AUTO_MODE_SERVER=0）
+  # 解决私有部署环境下 classifier unavailable 的问题，通常保持 false
+  auto_mode_server: false
 
 # ---- 数据目录（可选，默认程序运行目录下的 data/） ----
 # data_dir: "/app/data"
-
-
-doc_audit:
-  api_url: "https://my_rd_cli:19004/api/proofread"               # 文档审核服务接口地址（rdCLI 审稿服务）
-  token: "ck_rd_cli_service_token"                 # 调用审核服务时的认证 token（x-api-key）

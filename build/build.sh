@@ -189,6 +189,12 @@ echo "[build] 编译 TypeScript..."
 npx tsc
 echo "[build] TypeScript 编译完成"
 
+# 复制 prompts 到 dist（供运行时读取）
+if [ -d "$PROJECT_ROOT/prompts" ]; then
+  cp -r "$PROJECT_ROOT/prompts" "$PROJECT_ROOT/dist/prompts"
+  echo "[build] prompts 已复制到 dist/"
+fi
+
 # ---- Docker build ----
 echo ""
 echo "=== Docker build ==="

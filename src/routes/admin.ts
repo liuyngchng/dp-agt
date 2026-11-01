@@ -1,15 +1,21 @@
 import { Router, Request, Response } from 'express';
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, rmSync, createReadStream, createWriteStream } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
-import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync } from '../store.js';
+import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
 import { submitTask } from './process.js';
-import type { Config } from '../config.js';
+
+import multer from 'multer';
+import { createGzip } from 'node:zlib';
+import tarFs from 'tar-fs';
+import tarStream from 'tar-stream';
+import { loadPromptFromDisk, rescanPromptsDir, listAllPromptFiles } from '../services/prompt-engine.js';
+import { syncInterfacesFromPrompts } from '../store.js';import type { Config } from '../config.js';
 
 const log = getLogger();
 
@@ -54,21 +60,36 @@ export function createAdminRouter(cfg: Config): Router {
   router.use('/admin/simulate', adminOnlyMiddleware);
   router.use('/admin/tasks', adminOnlyMiddleware);
   router.use('/admin/sys-config', adminOnlyMiddleware);
+  router.use('/admin/prompt-config', adminOnlyMiddleware);
+  router.use('/admin/prompt-tar', adminOnlyMiddleware);
+  router.use('/admin/prompt-preview', adminOnlyMiddleware);
 
-  // 列表
+  // ---- Interfaces 列表 — 从 prompts/ 自动发现，DB 同步 ----
   router.get('/admin/interfaces', (_req: Request, res: Response) => {
-    const list = interfacesStore.list();
+    const allFiles = listAllPromptFiles();
+    const list = allFiles.map(pf => {
+      const iface = interfacesStore.getByPath(pf.path);
+      return {
+        id: iface?.id || '',
+        name: pf.name,
+        path: pf.path,
+        prompt: pf.content || '',
+        created_at: iface?.created_at || '',
+        updated_at: iface?.updated_at || '',
+      };
+    });
     res.json({ code: 0, data: list });
   });
 
-  // 获取单个
+  // Interfaces 获取单个
   router.get('/admin/interfaces/:id', (req: Request, res: Response) => {
     const iface = interfacesStore.get(req.params.id);
     if (!iface) {
       res.status(404).json({ code: 1001, message: '访问路径不存在' });
       return;
     }
-    res.json({ code: 0, data: iface });
+    const prompt = loadPromptFromDisk(iface.path) || iface.prompt;
+    res.json({ code: 0, data: { ...iface, prompt } });
   });
 
   // 创建
@@ -431,6 +452,239 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({ code: 0, message: '已删除' });
   });
 
+
+  // ═══════════════════════════════════════════════════════════════
+  // Prompt Config — CSV 上传（单向，加密入库，不可下载）
+  // ═══════════════════════════════════════════════════════════════
+
+  const uploadCsv = multer({ storage: multer.memoryStorage(), limits: { fileSize: 64 * 1024 } });
+
+  // 上传 CSV 文件（三列：key, value, 说明）
+  router.post('/admin/prompt-config/upload-csv', uploadCsv.single('file'), (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ code: 1001, message: '请选择 CSV 文件' });
+      return;
+    }
+
+    const text = file.buffer.toString('utf8').trim();
+    if (!text) {
+      res.status(400).json({ code: 1001, message: 'CSV 文件为空' });
+      return;
+    }
+
+    const rows: Array<{ key: string; value: string; is_secret: boolean; note?: string }> = [];
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line || line.startsWith('#')) continue;
+      // 简单 CSV 解析：按逗号切分，支持 value 中含逗号
+      const parts = parseCsvLine(line);
+      if (parts.length < 2) {
+        res.status(400).json({ code: 1001, message: `第 ${i + 1} 行格式错误，需要至少 key,value 两列: ${line}` });
+        return;
+      }
+      const key = parts[0].trim();
+      const value = parts[1].trim();
+      const note = (parts[2] || '').trim();
+      if (!key || !value) {
+        res.status(400).json({ code: 1001, message: `第 ${i + 1} 行 key 或 value 为空: ${line}` });
+        return;
+      }
+      const isSecret = /_(token|secret|password|key)$/i.test(key);
+      rows.push({ key, value, is_secret: isSecret, note });
+    }
+
+    if (rows.length === 0) {
+      res.status(400).json({ code: 1001, message: 'CSV 文件中没有有效数据行' });
+      return;
+    }
+
+    // 替换模式：先清空再批量导入
+    promptConfigStore.clearAll();
+    const count = promptConfigStore.importRows(rows);
+
+    log.info({ count, keys: rows.map(r => r.key) }, 'prompt_config_csv_uploaded');
+    res.json({ code: 0, data: { imported: count, keys: rows.map(r => r.key) } });
+  });
+
+  // 下载 CSV 模板
+  router.get('/admin/prompt-config/template', (_req: Request, res: Response) => {
+    let csv = '';
+    const templatePath = join(cfg.sys.data_dir, 'cfg.csv.template');
+    if (existsSync(templatePath)) {
+      try {
+        csv = readFileSync(templatePath, 'utf8');
+      } catch { csv = ''; }
+    }
+    if (!csv) {
+      // 兜底：文件缺失时返回最小模板
+      csv = 'key,value,说明\n';
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="prompt-config-template.csv"');
+    // Add BOM for Excel UTF-8 compatibility
+    res.write('﻿');
+    res.end(csv);
+  });
+
+  // 获取配置列表（value 默认脱敏）
+  router.get('/admin/prompt-config', (_req: Request, res: Response) => {
+    const reveal = _req.query.reveal === '1';
+    const rows = promptConfigStore.list(reveal);
+    res.json({ code: 0, data: { rows, count: rows.length } });
+  });
+
+  // 清空配置
+  router.delete('/admin/prompt-config', (_req: Request, res: Response) => {
+    promptConfigStore.clearAll();
+    log.info('prompt_config_cleared');
+    res.json({ code: 0, message: '已清空' });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Prompt Tar — 上传 / 下载 / 校验
+  // ═══════════════════════════════════════════════════════════════
+
+  const uploadTar = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+  });
+
+  // Upload tar — with proper async extraction
+  router.post('/admin/prompt-tar/upload', uploadTar.single('file'), async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ code: 1001, message: '请选择 tar.gz 文件' });
+      return;
+    }
+
+    // 先校验 CSV 已上传
+    if (promptConfigStore.count() === 0) {
+      res.status(400).json({ code: 1001, message: '请先上传 CSV 配置文件（步骤 1），再进行步骤 2' });
+      return;
+    }
+
+    // 解压 + 校验
+    const validKeys = new Set(promptConfigStore.listKeys());
+    // 通用占位符（无需 CSV 配置）
+    const builtinKeys = new Set(['request.body', 'request.linkid', 'request.files', 'request.form_data', 'request.approval_history', 'request.callback_url']);
+    for (const k of builtinKeys) validKeys.add(k);
+
+    const errors: string[] = [];
+    const fileList: string[] = [];
+    const tmpDir = join(cfg.sys.data_dir, '.tmp_prompts_' + Date.now());
+    mkdirSync(tmpDir, { recursive: true });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const extract = tarStream.extract();
+        extract.on('entry', (header, stream, next) => {
+          const name = header.name.replace(/^\.?\/?/, '');
+          if (header.type === 'directory') { stream.resume(); next(); return; }
+          if (!name.endsWith('.md')) { stream.resume(); next(); return; }
+
+          fileList.push(name);
+          const chunks: Buffer[] = [];
+          stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+          stream.on('end', () => {
+            const content = Buffer.concat(chunks).toString('utf8');
+            // 扫描占位符
+            const placeholders = content.match(/\{\{([^}]+)\}\}/g) || [];
+            for (const ph of placeholders) {
+              const inner = ph.slice(2, -2).trim();
+              if (inner.startsWith('section:') || inner.startsWith('request.')) continue;
+              // 检查是否在 CSV 或内置 key 中
+              if (!validKeys.has(inner)) {
+                errors.push(name + ': 占位符 {{' + inner + '}} 未在 CSV 中配置');
+              }
+            }
+            const { writeFileSync, mkdirSync: ms } = require('node:fs');
+            const dest = join(tmpDir, name);
+            ms(join(dest, '..'), { recursive: true });
+            writeFileSync(dest, content);
+            next();
+          });
+        });
+        extract.on('finish', resolve);
+        extract.on('error', reject);
+        extract.end(file.buffer);
+      });
+
+      if (errors.length > 0) {
+        rmSync(tmpDir, { recursive: true, force: true });
+        res.status(400).json({ code: 1001, message: '占位符校验失败', data: { errors } });
+        return;
+      }
+
+      // 校验通过 → 替换 prompts/ 目录
+      const promptsDir = resolve(process.cwd(), 'prompts');
+      if (existsSync(promptsDir)) {
+        rmSync(promptsDir, { recursive: true, force: true });
+      }
+      mkdirSync(promptsDir, { recursive: true });
+      // 复制所有文件
+      const { cpSync } = require('node:fs');
+      cpSync(tmpDir, promptsDir, { recursive: true });
+      rmSync(tmpDir, { recursive: true, force: true });
+
+      // 重新扫描并同步 agent_interfaces 表
+      const pfs = rescanPromptsDir();
+      syncInterfacesFromPrompts(pfs.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
+
+      log.info({ files: fileList }, 'prompt_tar_uploaded');
+      res.json({ code: 0, data: { files: fileList, total: fileList.length } });
+    } catch (err) {
+      rmSync(tmpDir, { recursive: true, force: true });
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ code: 1001, message: '处理 tar 文件失败: ' + msg });
+    }
+  });
+
+  // 下载当前 prompts/ 为 tar.gz
+  router.get('/admin/prompt-tar/download', (_req: Request, res: Response) => {
+    const promptsDir = resolve(process.cwd(), 'prompts');
+    if (!existsSync(promptsDir)) {
+      res.status(404).json({ code: 1001, message: 'prompts/ 目录不存在' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', 'attachment; filename="prompts.tar.gz"');
+    // 打包 → gzip → response
+    const pack = tarFs.pack(promptsDir);
+    const gzip = createGzip();
+    pack.pipe(gzip).pipe(res);
+  });
+
+  // 预览模板（渲染后的内容）
+  router.get('/admin/prompt-preview', (_req: Request, res: Response) => {
+    const promptsDir = resolve(process.cwd(), 'prompts');
+    const previews: Array<{ file: string; raw: string }> = [];
+
+    if (existsSync(promptsDir)) {
+      const walk = (dir: string, prefix: string) => {
+        for (const entry of readdirSync(dir)) {
+          const full = join(dir, entry);
+          const rel = prefix + entry;
+          if (statSync(full).isDirectory()) {
+            walk(full, rel + '/');
+          } else if (entry.endsWith('.md')) {
+            try {
+              previews.push({
+                file: rel,
+                raw: readFileSync(full, 'utf8'),
+              });
+            } catch { /* skip */ }
+          }
+        }
+      };
+      walk(promptsDir, '');
+    }
+
+    res.json({ code: 0, data: { previews } });
+  });
+
   return router;
 }
 
@@ -473,4 +727,37 @@ function detectPrimaryIp(): string {
     }
   }
   return candidates[0] || '127.0.0.1';
+}
+
+/** 简单 CSV 行解析，处理引号包裹的列（支持列内逗号） */
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        result.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  result.push(current);
+  return result;
 }

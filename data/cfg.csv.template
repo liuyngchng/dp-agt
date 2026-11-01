@@ -1,0 +1,6 @@
+key,value,说明
+doc.doc_util_url,https://doc-util:8080,PDX/docx文档解析服务地址
+doc.renew_file_url_api,,文件下载回退接口地址（留空禁用）
+doc.file_url_token,,文件下载/回调共用认证Token
+doc_audit.api_url,,rdCLI审稿服务接口地址
+doc_audit.token,,审稿服务认证Token

@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, rmSync, readdirSync } from 'node:fs';
 import { createServer as createHttpsServer } from 'node:https';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { loadConfig, ensureDirs } from './config.js';
 import { initLogger, getLogger } from './logger.js';
-import { initStore, taskLogsStore, configStore, sessionsStore } from './store.js';
+import { initStore, taskLogsStore, configStore, sessionsStore, syncInterfacesFromPrompts } from './store.js';
 import { nowReadable } from './time.js';
 import { initTaskQueue } from './services/task-queue.js';
 import { createProcessRouter } from './routes/process.js';
@@ -13,10 +13,11 @@ import { createHealthRouter } from './routes/health.js';
 import { createTasksRouter } from './routes/tasks.js';
 import { createAdminRouter } from './routes/admin.js';
 import { createAuthRouter, authWebMiddleware, apiTokenMiddleware } from './routes/auth.js';
+import { rescanPromptsDir } from './services/prompt-engine.js';
 
 const log = getLogger();
 
-log.info('==== dp_agt starting ====');
+log.info('==== AI 数字员工 starting ====');
 
 const cfg = loadConfig();
 log.info('config_loaded');
@@ -36,24 +37,21 @@ function mask(s: string): string {
 
 log.info({
   server: cfg.server,
-  sys: {
-    ...cfg.sys,
-    api_token: mask(cfg.sys.api_token),
-    file_url_token: mask(cfg.sys.file_url_token),
-  },
+  sys: cfg.sys,
   llm: {
     ...cfg.llm,
     auth_token: mask(cfg.llm.auth_token),
-  },
-  doc_audit: {
-    ...cfg.doc_audit,
-    token: mask(cfg.doc_audit.token),
   },
 }, 'config_loaded');
 
 // 初始化存储
 initStore(cfg.sys.data_dir);
 log.info('store_ready');
+
+// 扫描 prompts/ 目录，同步 agent_interfaces 到 DB
+const promptFiles = rescanPromptsDir();
+syncInterfacesFromPrompts(promptFiles.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
+log.info({ count: promptFiles.length, paths: promptFiles.map(pf => pf.path) }, 'interfaces_synced_from_prompts');
 
 // 初始化任务队列
 initTaskQueue(cfg);
@@ -91,7 +89,7 @@ app.get('/login', (_req, res) => {
 
 // 公开系统信息（登录页用，无需认证）
 app.get('/api/info', (_req, res) => {
-  const name = configStore.get('sys.name') || 'dp_agt';
+  const name = configStore.get('sys.name') || 'AI 数字员工';
   res.json({ code: 0, data: { sys_name: name } });
 });
 
@@ -99,7 +97,7 @@ app.get('/api/info', (_req, res) => {
 app.use('/static', express.static('web/static'));
 
 // 对外业务访问路径（外部系统调用，Bearer Token 鉴权）
-app.use('/api/v1', apiTokenMiddleware(cfg.sys.api_token));
+app.use('/api/v1', apiTokenMiddleware());
 app.use(createProcessRouter(cfg));
 
 // 任务管理 API（外部系统调用）

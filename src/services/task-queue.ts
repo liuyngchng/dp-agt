@@ -8,7 +8,7 @@
 import { v4 as uuid } from 'uuid';
 import { getLogger } from '../logger.js';
 import { taskLogsStore, interfacesStore, sessionsStore } from '../store.js';
-import { renderPrompt } from './prompt-engine.js';
+import { renderPrompt, loadPromptFromDisk } from './prompt-engine.js';
 import { runAgent } from './sdk-runner.js';
 import { deliverCallback } from './callback.js';
 import { nowReadable, nowTs } from '../time.js';
@@ -43,8 +43,20 @@ async function processItem(item: WorkerItem): Promise<void> {
   taskLogsStore.updateStatus(task_id, 'processing');
   log.info({ task_id, linkid, path: interfacePath }, 'task_processing');
 
+  // 从磁盘读取提示词模板（DB 的 prompt 列已废弃）
+  const template = loadPromptFromDisk(interfacePath);
+  if (!template) {
+    taskLogsStore.updateResult(task_id, {
+      status: 'failed' as TaskStatus,
+      error_message: '提示词文件不存在: ' + interfacePath,
+      finished_at: nowLocal(),
+    });
+    log.error({ task_id, linkid, path: interfacePath }, 'prompt_file_missing');
+    return;
+  }
+
   // 渲染提示词
-  const rendered = renderPrompt(iface.prompt, body as unknown as Record<string, unknown>);
+  const rendered = renderPrompt(template, body as unknown as Record<string, unknown>);
   taskLogsStore.updateResult(task_id, { prompt: rendered });
 
   // 查 sessions 表：同一 linkid 是否有已存在的 session

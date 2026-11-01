@@ -1,4 +1,4 @@
-# dp_agt — 电子公文流转智能体
+# AI 数字员工 — 自主任务执行平台
 
 接收 JSON → 按 path 查找提示词模板 → 渲染提示词 → 异步调用 Claude Code Agent SDK → 回调结果。
 
@@ -30,7 +30,7 @@ npm start          # HTTP 模式
 ## 工作原理
 
 ```
-外部系统                             dp_agt
+外部系统                             AI 数字员工
    |                                     |
    |  POST /api/v1/document/classify     |
    |  {"linkid":"...","callback_url":"...","files":[...], ...}
@@ -96,7 +96,7 @@ npm start          # HTTP 模式
 ## 项目结构
 
 ```
-dp_agt/
+AI 数字员工/
 ├── src/
 │   ├── index.ts              # 服务入口
 │   ├── config.ts             # 配置加载
@@ -111,9 +111,154 @@ dp_agt/
 │       ├── callback.ts       # 回调投递 + 重试
 │       └── task-queue.ts     # 异步任务队列
 ├── web/                      # 管理后台前端（内嵌 SPA）
+├── prompts/                  # 提示词文件（无需重编译，热更新）
+│   ├── doc/                   # 业务提示词（目录结构即访问路径）
+│   │   ├── classify.md         → path = doc/classify
+│   │   ├── route.md            → path = doc/route
+│   │   └── review.md           → path = doc/review
+│   ├── claude-md.md            # CLAUDE.md 主模板（Agent 工作区行为规范）
+│   └── sections/               # 可插拔的"外部服务调用说明"片段
+│       ├── wps.md              # WPS 文件下载回退
+│       └── audit.md            # rdCLI 审稿服务
 ├── data/                     # 运行时数据（SQLite + 任务工作目录）
 └── build/                    # Dockerfile + 部署脚本
 ```
+
+### 提示词与配置管理（模板管理页面）
+
+所有提示词和业务配置统一在**模板管理页面**（管理员 → 模板管理）通过三步引导式流程管理。
+
+#### 设计原则
+
+| 数据 | 存放位置 | 流向 | 说明 |
+|------|----------|------|------|
+| 提示词模板（txt） | `prompts/` 目录 | **双向**：可上传 / 可下载 | 下载 → 离线编辑 → 上传覆盖 |
+| 业务配置（key/value/说明） | `prompt_config` 表（加密） | **单向**：只能上传，不可下载 | CSV 上传后 AES-256-GCM 加密入库 |
+
+- **CSV 单向不可逆**：接口地址、Token 等敏感信息一旦上传就无法再下载明文，防止泄露
+- **Tar 双向可迭代**：下载当前版本 → 离线修改 → 上传替换，闭环编辑
+- **加密密钥分离**：密钥独立存放在 `data/secrets.key`（首次启动自动生成，权限 600），与 `app.db` 分离，单独偷走任一文件无法解密
+
+#### 三步引导式流程
+
+```
+步骤 1                   步骤 2                   步骤 3
+上传配置 CSV  ──────────▶ 上传 Prompt tar 包 ─────▶ 预览 / 下载
+  │                          │                        │
+  │ ① 下载 CSV 模板         │ ① 下载当前 tar         │ 预览所有文件
+  │ ② 填写 key/value/说明    │ ② 解压，编辑 txt       │ 下载当前 tar
+  │ ③ 上传（加密入库）       │ ③ 打包，上传（校验）   │
+  │                          │                        │
+  │ CSV 模板格式：           │ tar 包结构：            │
+  │ key,value,说明           │ classify.md           │
+  │                          │ route.md              │
+  │                          │ review.md             │
+  │                          │ claude-md.md          │
+  │                          │ sections/*.md         │
+```
+
+##### 步骤 1：上传配置 CSV
+
+CSV 为三列：`key`, `value`, `说明`。点击「下载 CSV 模板」获取空模板，填写后上传。
+
+- key 以 `_token` / `_secret` / `_password` / `_key` 结尾的自动标记为 🔒 敏感项
+- 敏感项的 value 默认脱敏显示（`ab****cd`），点击 👁 图标可临时查看明文
+- CSV **只能上传，无法下载**（下载按钮只返回空模板，不包含已配置数据）
+
+配置列表上传后实时展示，供后续步骤中子 tar 的占位符校验使用。
+
+##### 步骤 2：上传 Prompt tar 包
+
+首次使用点击「下载当前 tar」获取内置默认模板。解压后所见结构：
+
+```
+prompts/
+├── doc/                  # 业务提示词目录（目录结构即访问路径）
+│   ├── classify.md        → path = doc/classify（收文分类）
+│   ├── route.md           → path = doc/route（流转目标识别）
+│   └── review.md          → path = doc/review（发文审核）
+├── claude-md.md           # CLAUDE.md 主模板（Agent 工作区行为规范）
+└── sections/              # 条件段落（可插拔）
+    ├── wps.md             # WPS 文件下载回退
+    └── audit.md           # rdCLI 审稿服务
+```
+
+**路径映射规则**：`prompts/` 下的相对路径去掉 `.md` 后缀即对外访问路径。例如：
+
+- `prompts/doc/classify.md` → 访问路径 `doc/classify`
+- `prompts/hr/recruit.md` → 访问路径 `hr/recruit`
+- `prompts/finance/approval.md` → 访问路径 `finance/approval`
+
+想要新增入口，在 tar 包里加对应子目录 + `.md` 文件即可，无需改代码。
+
+**排除规则**：`claude-md.md`、`sections/` 目录、以下划线 `_` 开头的文件/目录，不作为访问路径。
+
+离线编辑后打包为 `.tar.gz`，上传时自动执行占位符校验：
+
+- 扫描所有 `.md` 文件中的 `{{...}}` 占位符
+- 对照步骤 1 已上传的 CSV key，**key 不存在则拒绝上传并列出缺失项**
+- `{{request.*}}` 和 `{{section:...}}` 开头的占位符无需 CSV 配置
+
+##### 步骤 3：预览 / 下载
+
+上传成功后可在步骤 3 中按文件折叠预览模板内容，也可重新下载当前 tar 进入下一轮编辑迭代。
+
+#### 占位符语法
+
+**① 业务提示词（`classify.md` 等）— `{{request.xxx}}`**
+
+运行时由请求 JSON 替换。例如模板里写 `{{request.body}}`，运行时替换为整个请求体。
+
+**② CLAUDE.md — `{{key}}` （来自 CSV）**
+
+直接引用 CSV 中配置的 key，运行时替换为对应的 value。例如模板里写 `{{sys.doc_util_url}}`，运行时从 `prompt_config` 表中取 `sys.doc_util_url` 的值替换。
+
+**③ 条件段落 — `{{section:名称:触发key}}`**
+
+语法：`{{section:片段名:CSV中的key}}`
+
+只有当 CSV 中对应的 key **有值**时，才会把 `sections/片段名.md` 的内容插入此处；否则整段静默删除。
+
+示例：
+```markdown
+{{section:audit:doc_audit.api_url}}
+```
+- `doc_audit.api_url` 在 CSV 中有值 → 读取 `sections/audit.md` 插入
+- 为空或不存在 → 整行移除
+
+#### 新增外部服务接口（无需改代码）
+
+假设要新增"组织机构查询服务"：
+
+**① 在 CSV 中新增一行**
+```
+sys.org_api_url,https://oa-server:8080/api/org,组织机构查询服务地址
+```
+
+**② 新建 `sections/org.md`**
+```markdown
+## 组织机构查询服务
+
+查询组织架构、部门归属关系。接口令牌通过环境变量 `FILE_URL_TOKEN` 提供。
+
+```bash
+curl -s -k --noproxy '*' -w'\n' -X GET '{{sys.org_api_url}}/dept/tree' \
+  -H "Authorization: Bearer $FILE_URL_TOKEN" | jq '.'
+```
+```
+
+**③ 在 `claude-md.md` 中添加引用行**
+```markdown
+{{section:org:sys.org_api_url}}
+```
+
+**④ 重新打包 tar 并上传。下一个新任务自动生效。**
+
+#### 注意事项
+- `claude-md.md` 和 `sections/*.md` 是**每个新任务启动时读取**的，上传 tar 后下一个新任务立即生效，无需重启服务
+- 通过 session 复用的已有任务不会重新读取 CLAUDE.md（首次快照固化）
+- `classify.md` / `route.md` / `review.md` 也是**每个新任务启动时从磁盘实时读取**，上传 tar 后即刻生效
+- 代码仓库自带的 `prompts/` 目录作为种子模板，首次部署即可用
 
 ## 技术栈
 
