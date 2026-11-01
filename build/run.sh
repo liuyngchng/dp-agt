@@ -4,8 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-IMAGE="ai-worker:0.1.0"
-CONTAINER="${CONTAINER:-ai-worker}"
+IMAGE="dp-agt:0.1.0"
+CONTAINER="${CONTAINER:-dp-agt}"
 HOST_PORT="${HOST_PORT:-20001}"
 DATA_DIR="${DATA_DIR:-$(pwd)/data}"
 NETWORK="${NETWORK:-llm_net}"

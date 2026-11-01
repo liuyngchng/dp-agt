@@ -1,5 +1,5 @@
 {
-  "name": "ai-worker",
+  "name": "dp-agt",
   "version": "0.1.0",
   "description": "AI 数字员工 — Claude Code Agent SDK 网关，自主任务执行平台",
   "type": "module",

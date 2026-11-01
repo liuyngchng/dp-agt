@@ -162,7 +162,7 @@
                     <div class="modal-lg stream-modal-body" style="display:flex;flex-direction:column;">
                         <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                             <span id="streamModalTitle"><i class="fas fa-comments"></i> 会话记录</span>
-                            <button type="button" id="streamExportBtn" class="cfg-btn cfg-btn-sm" onclick="exportStreamMD()" style="display:none;margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
+                            <button type="button" id="streamExportBtn" class="cfg-btn cfg-btn-sm" onclick="exportStreamMD()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
                             <button type="button" class="cfg-btn-sm" onclick="closeStreamModal()"><i class="fas fa-times"></i> 关闭</button>
                         </h3>
                         <div id="streamStatus" class="stream-status-bar"></div>
@@ -1234,10 +1234,6 @@ async function viewSession(sessionId, taskId, taskStatus) {
     document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">加载中...</span>';
     document.getElementById('streamStatus').className = 'stream-status-bar';
 
-    // 隐藏导出按钮（加载完成后显示）
-    const exportBtn = document.getElementById('streamExportBtn');
-    if (exportBtn) exportBtn.style.display = 'none';
-
     const container = document.getElementById('streamMessages');
     container.textContent = '加载中...';
     document.getElementById('streamModal').classList.add('show');
@@ -1255,7 +1251,6 @@ async function viewSession(sessionId, taskId, taskStatus) {
             const { output } = formatSessionMessages(messages, 0);
             container.textContent = output || '(空会话)';
             _streamCount = messages.length;
-            if (exportBtn) exportBtn.style.display = '';
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
             document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
         } catch (err) {
@@ -1279,7 +1274,6 @@ async function viewSession(sessionId, taskId, taskStatus) {
             const { output } = formatSessionMessages(messages, 0);
             container.textContent = output || '(空会话)';
             _streamCount = messages.length;
-            if (exportBtn) exportBtn.style.display = '';
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
             document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
             container.scrollTop = container.scrollHeight;
@@ -1297,7 +1291,6 @@ async function viewSession(sessionId, taskId, taskStatus) {
                 const { output } = formatSessionMessages([msg], _streamCount);
                 container.textContent += output;
                 _streamCount++;
-                if (exportBtn) exportBtn.style.display = '';
                 document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + _streamCount + ' 条消息</span>';
             }
             container.scrollTop = container.scrollHeight;

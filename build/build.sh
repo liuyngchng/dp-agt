@@ -13,7 +13,7 @@ BUILD_START=$(date +%s)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-IMAGE_NAME="${IMAGE_NAME:-ai-worker}"
+IMAGE_NAME="${IMAGE_NAME:-dp-agt}"
 
 # ── Usage ────────────────────────────────────────────────────────
 usage() {
