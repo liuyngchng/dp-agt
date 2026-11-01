@@ -175,26 +175,6 @@ if [[ -f "$CERT_FILE" && -f "$KEY_FILE" ]]; then
   echo "[build] HTTPS 证书已就绪"
 fi
 
-# ---- Install dependencies + compile TypeScript ----
-echo "[build] 安装 npm 依赖..."
-cd "$PROJECT_ROOT"
-# 导出代理供 npm 使用（仅本次 shell 进程）
-if [[ -n "$HTTP_PROXY_VAL" ]]; then
-  export http_proxy="$HTTP_PROXY_VAL" https_proxy="$HTTPS_PROXY_VAL" no_proxy="$NO_PROXY_VAL"
-fi
-
-npm install --no-audit --no-fund
-
-echo "[build] 编译 TypeScript..."
-npx tsc
-echo "[build] TypeScript 编译完成"
-
-# 复制 prompts 到 dist（供运行时读取）
-if [ -d "$PROJECT_ROOT/prompts" ]; then
-  cp -r "$PROJECT_ROOT/prompts" "$PROJECT_ROOT/dist/prompts"
-  echo "[build] prompts 已复制到 dist/"
-fi
-
 # ---- Docker build ----
 echo ""
 echo "=== Docker build ==="
