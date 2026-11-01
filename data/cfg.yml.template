@@ -47,10 +47,10 @@ sys:
 # 本服务通过网关调用 LLM，base_url 留空则启动时报错退出。
 llm:
   # 网关地址【必填】
-  base_url: "http://api_adapter_g_app:16005"
+  base_url: "http://api-gate:16001"
 
   # 网关认证 token（对应网关的 llm_api_key；网关未启用认证可留空）
-  auth_token: ""
+  auth_token: "sk-12345"
 
   # 各模型映射（由网关转发到真实模型）
   model: "deepseek-v4-pro[1m]"
