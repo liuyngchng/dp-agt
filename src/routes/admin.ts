@@ -1,7 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import AdmZip from 'adm-zip';
 import { Router, Request, Response } from 'express';
-import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, rmSync, createReadStream, createWriteStream } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
@@ -556,8 +556,22 @@ export function createAdminRouter(cfg: Config): Router {
     limits: { fileSize: 10 * 1024 * 1024 },
   });
 
-  /** 检测格式并解压 → { [filename]: content } */
-  async function extractArchive(buf: Buffer, origName: string): Promise<Record<string, string> | null> {
+  /** 按要求剥离包内固定的顶级目录 prompts/，不是则报错 */
+  function stripTopDir(names: string[]): string[] | { error: string } {
+    if (names.length === 0) return names;
+    const PREFIX = 'prompts/';
+    if (names.every(n => n.startsWith(PREFIX))) {
+      return names.map(n => n.slice(PREFIX.length));
+    }
+    // 有些文件不在 prompts/ 下 → 格式错误
+    // 从任意带 / 的 name 提取顶级目录名报告给用户
+    const actual = names.map(n => n.split('/')[0]).filter(Boolean);
+    const unique = [...new Set(actual)];
+    return { error: '压缩包顶层目录必须为 prompts/，当前为: ' + unique.join(', ') };
+  }
+
+  /** 检测格式并解压 → { [filename]: content } | { error: string } */
+  async function extractArchive(buf: Buffer, origName: string): Promise<Record<string, string> | { error: string } | null> {
     // ── Zip ──
     if (origName.endsWith('.zip') || (buf[0] === 0x50 && buf[1] === 0x4b)) {
       const zip = new AdmZip(buf);
@@ -568,7 +582,16 @@ export function createAdminRouter(cfg: Config): Router {
         if (!name.endsWith('.md')) continue;
         files[name] = entry.getData().toString('utf8');
       }
-      return files;
+      const stripped = stripTopDir(Object.keys(files));
+      if ('error' in stripped) {
+        return { error: stripped.error };
+      }
+      const result: Record<string, string> = {};
+      const keys = Object.keys(files);
+      for (let i = 0; i < stripped.length; i++) {
+        result[stripped[i]] = files[keys[i]];
+      }
+      return result;
     }
 
     // ── Tar / Tar.gz ──
@@ -594,8 +617,20 @@ export function createAdminRouter(cfg: Config): Router {
       });
     });
 
-    return new Promise<Record<string, string> | null>((resolve) => {
-      extract.on('finish', () => resolve(files));
+    return new Promise<Record<string, string> | { error: string } | null>((resolve) => {
+      extract.on('finish', () => {
+        const keys = Object.keys(files);
+        const stripped = stripTopDir(keys);
+        if ('error' in stripped) {
+          resolve({ error: stripped.error });
+          return;
+        }
+        const result: Record<string, string> = {};
+        for (let i = 0; i < stripped.length; i++) {
+          result[stripped[i]] = files[keys[i]];
+        }
+        resolve(result);
+      });
       extract.on('error', () => resolve(null));
       extract.end(raw);
     });
@@ -621,7 +656,15 @@ export function createAdminRouter(cfg: Config): Router {
     for (const k of builtinKeys) validKeys.add(k);
 
     const files = await extractArchive(file.buffer, file.originalname);
-    if (!files || Object.keys(files).length === 0) {
+    if (!files) {
+      res.status(400).json({ code: 1001, message: '无法解压文件。支持的格式：.tar / .tar.gz / .tgz / .zip' });
+      return;
+    }
+    if ('error' in files) {
+      res.status(400).json({ code: 1001, message: files.error });
+      return;
+    }
+    if (Object.keys(files).length === 0) {
       res.status(400).json({ code: 1001, message: '无法解压文件，或包内没有 .md 文件。支持的格式：.tar / .tar.gz / .tgz / .zip' });
       return;
     }
@@ -650,11 +693,10 @@ export function createAdminRouter(cfg: Config): Router {
       rmSync(promptsDir, { recursive: true, force: true });
     }
     mkdirSync(promptsDir, { recursive: true });
-    const { writeFileSync: wfSync, mkdirSync: mSync } = require('node:fs');
     for (const [name, content] of Object.entries(files)) {
       const dest = join(promptsDir, name);
-      mSync(join(dest, '..'), { recursive: true });
-      wfSync(dest, content);
+      mkdirSync(join(dest, '..'), { recursive: true });
+      writeFileSync(dest, content);
     }
 
     // 重新扫描并同步 agent_interfaces 表

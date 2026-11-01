@@ -23,7 +23,7 @@
             <!-- ========== 访问路径管理 ========== -->
             <div class="cfg-section" id="section-interfaces">
                 <h2><i class="fas fa-brain"></i> 模板管理</h2>
-                <p>提示词统一存放在 <code>prompts/</code> 目录，通过 tar 包上传 / 下载离线编辑。配置项（接口地址、密钥等）通过 CSV 单向上传，加密存储。</p>
+                <p>提示词统一存放在 <code>prompts/</code> 目录，通过文件包上传 / 下载离线编辑。配置项（接口地址、密钥等）通过 CSV 单向上传，加密存储。</p>
 
                 <!-- 步骤指示 -->
                 <div class="wizard-steps" style="display:flex;gap:24px;margin:20px 0 24px;align-items:center;">
@@ -34,7 +34,7 @@
                     <div style="color:#bbb;">→</div>
                     <div class="wizard-step" id="wizardStep2" style="display:flex;align-items:center;gap:8px;opacity:0.4;">
                         <span class="wizard-dot" style="width:28px;height:28px;border-radius:50%;background:#9e9e9e;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:600;">2</span>
-                        <span>上传 Prompt tar 包</span>
+                        <span>上传 Prompt 文件包</span>
                     </div>
                     <div style="color:#bbb;">→</div>
                     <div class="wizard-step" id="wizardStep3" style="display:flex;align-items:center;gap:8px;opacity:0.4;">
@@ -64,10 +64,10 @@
 
                 <!-- 步骤 2：Tar -->
                 <div class="wizard-panel" id="panelStep2" style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;">
-                    <h3 style="margin:0 0 12px;"><i class="fas fa-file-archive"></i> 步骤 2：上传 Prompt tar 包</h3>
-                    <p style="color:#888;font-size:0.82rem;margin:0 0 12px;">tar 包目录结构即访问路径。例如 <code>doc/classify.md</code> → 访问路径 <code>doc/classify</code>。新建 <code>hr/recruit.md</code> 即自动生成 <code>hr/recruit</code> 入口。<code>claude-md.md</code> 和 <code>sections/</code> 不作为访问路径。</p>
+                    <h3 style="margin:0 0 12px;"><i class="fas fa-file-archive"></i> 步骤 2：上传 Prompt 文件包</h3>
+                    <p style="color:#888;font-size:0.82rem;margin:0 0 12px;">文件包目录结构即访问路径。例如 <code>doc/classify.md</code> → 访问路径 <code>doc/classify</code>。新建 <code>hr/recruit.md</code> 即自动生成 <code>hr/recruit</code> 入口。<code>claude-md.md</code> 和 <code>sections/</code> 不作为访问路径。支持格式：<code>.tar</code> / <code>.tar.gz</code> / <code>.tgz</code> / <code>.zip</code></p>
                     <div style="margin-bottom:12px;">
-                        <button class="cfg-btn" onclick="downloadTar()"><i class="fas fa-download"></i> 下载当前 tar</button>
+                        <button class="cfg-btn" onclick="downloadTar()"><i class="fas fa-download"></i> 下载当前文件包</button>
                         <span style="color:#888;font-size:0.82rem;margin-left:12px;">首次使用时内置默认模板，上传后下载即为上次上传的内容</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:12px;">
@@ -81,7 +81,7 @@
                 <div class="wizard-panel" id="panelStep3" style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;">
                     <h3 style="margin:0 0 12px;"><i class="fas fa-eye"></i> 步骤 3：预览 / 下载当前模板</h3>
                     <div style="margin-bottom:12px;">
-                        <button class="cfg-btn" onclick="downloadTar()"><i class="fas fa-download"></i> 下载当前 tar</button>
+                        <button class="cfg-btn" onclick="downloadTar()"><i class="fas fa-download"></i> 下载当前文件包</button>
                         <button class="cfg-btn" onclick="loadPreview()" style="margin-left:8px;"><i class="fas fa-sync-alt"></i> 刷新预览</button>
                     </div>
                     <div id="previewWrap" style="display:none;">
@@ -519,7 +519,7 @@ async function uploadTar() {
     // 启用步骤 3
     document.getElementById('wizardStep3').style.opacity = '1';
     document.getElementById('wizardStep3').querySelector('.wizard-dot').style.background = '#1565c0';
-    toast('Prompt tar 包已上传');
+    toast('Prompt 文件包已上传');
     await loadPreview();
 }
 
@@ -1285,14 +1285,21 @@ async function viewSession(sessionId, taskId, taskStatus) {
             container.scrollTop = container.scrollHeight;
         } else if (msg.type === 'error') {
             container.textContent = '读取会话记录失败: ' + (msg.message || '');
+        } else if (msg.type === 'end') {
+            // 任务结束，直接用局部引用关闭连接（防止 onerror 竞态导致 _streamEs 已被置 null）
+            es.close();
+            _streamEs = null;
+            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
         } else {
-            // 增量单条消息（SDK 原生消息）
+            // 增量消息：全部存储供导出，仅 user/assistant 更新显示和计数
             _streamMessages.push(msg);
-            const { output } = formatSessionMessages([msg], _streamCount);
-            container.textContent += output;
-            _streamCount++;
-            if (exportBtn) exportBtn.style.display = '';
-            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + _streamCount + ' 条消息</span>';
+            if (msg.type === 'user' || msg.type === 'assistant') {
+                const { output } = formatSessionMessages([msg], _streamCount);
+                container.textContent += output;
+                _streamCount++;
+                if (exportBtn) exportBtn.style.display = '';
+                document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + _streamCount + ' 条消息</span>';
+            }
             container.scrollTop = container.scrollHeight;
         }
     };
