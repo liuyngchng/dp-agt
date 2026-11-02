@@ -48,3 +48,5 @@ curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/extract/txt \
 6. 如果请求涉及某个文件但上下文里没有其文本内容（历史已压缩或新文件），
    按"文件下载"章节自行 curl 下载，并调用文档解析服务提取文本后再分析。
    若上下文里已有该文件的文本，直接复用，无需重复下载。
+
+{{section:callback:callback.url}}
