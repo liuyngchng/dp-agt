@@ -128,11 +128,13 @@ COPY --chown=agent:agent web/ /app/web/
 COPY --chown=agent:agent prompts/ /app/prompts/
 
 # ---- HTTPS certs ----
+# 证书直接打入镜像（不依赖宿主机挂载），chmod 644 保证任意 uid 可读
 ARG HTTPS_CERT=""
 COPY --chown=agent:agent deploy/certs/ /tmp/certs/
 RUN if [ -n "$HTTPS_CERT" ] && [ -f /tmp/certs/cert.pem ]; then \
       mkdir -p /app/deploy/certs && \
-      cp /tmp/certs/cert.pem /tmp/certs/key.pem /app/deploy/certs/; \
+      cp /tmp/certs/cert.pem /tmp/certs/key.pem /app/deploy/certs/ && \
+      chmod 644 /app/deploy/certs/cert.pem /app/deploy/certs/key.pem; \
     fi && \
     rm -rf /tmp/certs
 

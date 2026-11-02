@@ -20,9 +20,8 @@ HOST_GID=$(id -g)
 
 echo "check cfg.yml"
 if [ ! -f "$DATA_DIR/cfg.yml" ]; then
-  echo "[deploy] cfg.yml 不存在，从模板复制..."
-  cp "$(pwd)/data/cfg.yml.template" "$DATA_DIR/cfg.yml"
-  echo "[deploy] 请编辑 $DATA_DIR/cfg.yml 后再启动"
+  echo "[deploy] cfg.yml 不存在: $DATA_DIR/cfg.yml" >&2
+  exit 1
 fi
 
 echo "check cfg.csv.template"
