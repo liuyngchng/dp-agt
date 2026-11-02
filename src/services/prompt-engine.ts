@@ -123,10 +123,14 @@ function deepGet(obj: Record<string, unknown>, path: string): unknown {
 }
 
 /**
- * 渲染提示词，替换 {{request.*}} 占位符。
+ * 渲染提示词，替换 {{request.*}} 和 {{task_id}} 占位符。
  */
-export function renderPrompt(template: string, requestBody: Record<string, unknown>): string {
-  return template.replace(
+export function renderPrompt(template: string, requestBody: Record<string, unknown>, taskId?: string): string {
+  let result = template;
+  if (taskId) {
+    result = result.replace(/\{\{task_id\}\}/g, taskId);
+  }
+  return result.replace(
     /\{\{(request\.[^}]+)\}\}/g,
     (_match: string, path: string) => {
       const fieldPath = path.replace(/^request\./, '');

@@ -518,11 +518,11 @@ header p {
 .result-table tbody tr:hover { background: #f8f9fe; }
 .result-table tbody tr:last-child td { border-bottom: none; }
 
-/* 时间列 — 固定宽度，格式 YYYY-MM-DD HH:MM:ss */
+/* 时间列 — 固定宽度避免翻页时空值跳变，留足 padding 后容纳 YYYY-MM-DD HH:MM:ss */
 .col-date {
-    width: 140px;
-    min-width: 140px;
-    max-width: 140px;
+    width: 165px;
+    min-width: 165px;
+    max-width: 165px;
     white-space: nowrap;
 }
 
@@ -798,8 +798,6 @@ header p {
     color: #f8f8f2;
     padding: 16px 18px;
     border-radius: 8px;
-    min-height: 320px;
-    max-height: 55vh;
     overflow-y: auto;
     margin: 0;
     font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;

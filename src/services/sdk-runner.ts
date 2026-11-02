@@ -82,7 +82,7 @@ function sanitizeDirName(s: string): string {
 }
 
 /** 根据 LLM 配置构建 Claude Code 子进程环境变量 */
-function buildEnv(cfg: Config): Record<string, string | undefined> {
+export function buildEnv(cfg: Config): Record<string, string | undefined> {
   // SDK 的 env 会整体替换子进程环境（不自动合并 process.env），
   // 因此先继承父进程环境，再用 adapter 配置覆盖。
   const env: Record<string, string | undefined> = { ...process.env };
@@ -127,6 +127,14 @@ function buildEnv(cfg: Config): Record<string, string | undefined> {
     env.DOC_AUDIT_TOKEN = docAuditToken;
   } else {
     delete env.DOC_AUDIT_TOKEN;
+  }
+
+  // ── 回调 Token（从 CSV 读取，CLAUDE.md 中通过 $CALLBACK_TOKEN 引用） ──
+  const callbackToken = promptConfigStore.getPlain('callback.token');
+  if (callbackToken) {
+    env.CALLBACK_TOKEN = callbackToken;
+  } else {
+    delete env.CALLBACK_TOKEN;
   }
 
   // Claude Agent SDK 行为配置

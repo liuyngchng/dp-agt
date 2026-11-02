@@ -162,14 +162,35 @@
                     <div class="modal-lg stream-modal-body" style="display:flex;flex-direction:column;">
                         <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                             <span id="streamModalTitle"><i class="fas fa-comments"></i> 会话记录</span>
+                            <span id="streamStatus" style="font-size:0.8rem;color:#888;margin-left:8px;"></span>
                             <button type="button" id="streamExportBtn" class="cfg-btn cfg-btn-sm" onclick="exportStreamMD()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
                             <button type="button" class="cfg-btn-sm" onclick="closeStreamModal()"><i class="fas fa-times"></i> 关闭</button>
                         </h3>
-                        <div id="streamStatus" class="stream-status-bar"></div>
                         <pre id="streamMessages" class="stream-terminal term-box"></pre>
                     </div>
                 </div>
-<!-- ========== 任务审查 ========== -->
+
+                <!-- 会话聊天弹窗（debug 用，终端风格） -->
+                <div id="chatModal" class="modal-overlay">
+                    <div class="modal-lg" style="width:min(960px, calc(100vw - 40px));height:90vh;display:flex;flex-direction:column;background:#1a1a2e;border-radius:12px;overflow:hidden;">
+                        <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;padding:14px 20px;background:#16213e;color:#e0e6ed;margin:0;font-size:0.95rem;">
+                            <span id="chatModalTitle"><i class="fas fa-terminal"></i> 会话终端</span>
+                            <span id="chatStatus" style="font-size:0.78rem;color:#8899aa;margin-left:8px;"></span>
+                            <button type="button" class="cfg-btn-sm" onclick="closeChatModal()" style="margin-left:auto;background:rgba(255,255,255,0.1);color:#ccc;border-color:rgba(255,255,255,0.15);"><i class="fas fa-times"></i> 关闭</button>
+                        </h3>
+                        <div id="chatTerminal" style="flex:1;overflow-y:auto;padding:16px 20px;background:#1a1a2e;color:#d4d4d4;font-family:'SF Mono','Cascadia Code','Consolas','Monaco',monospace;font-size:0.82rem;line-height:1.65;white-space:pre-wrap;word-break:break-word;min-height:0;">
+                            <span style="color:#6a9955;"># 加载中...</span>
+                        </div>
+                        <div id="chatInputRow" style="display:flex;align-items:center;gap:0;padding:8px 20px 14px;background:#1a1a2e;border-top:1px solid #2d2d44;flex-shrink:0;">
+                            <span style="color:#4ec9b0;font-family:'SF Mono','Cascadia Code','Consolas','Monaco',monospace;font-size:0.85rem;font-weight:600;">❯ </span>
+                            <input type="text" id="chatInput" placeholder="输入消息，回车发送..."
+                                style="flex:1;background:transparent;border:none;outline:none;color:#d4d4d4;font-family:'SF Mono','Cascadia Code','Consolas','Monaco',monospace;font-size:0.85rem;padding:2px 0;caret-color:#4ec9b0;"
+                                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== 任务审查 ========== -->
                 <div class="cfg-section" id="section-audit">
                     <h2><i class="fas fa-search"></i> 任务审查</h2>
                     
@@ -208,6 +229,21 @@
                             </h3>
                             <div id="auditDetailContent" style="margin-top:20px;flex:1;min-height:0;display:flex;flex-direction:column;"></div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ========== 会话管理 ========== -->
+                <div class="cfg-section" id="section-sessions">
+                    <h2><i class="fas fa-comments"></i> 会话管理</h2>
+                    <div style="display:flex;gap:12px;margin-bottom:20px;align-items:center;">
+                        <button type="button" class="cfg-btn cfg-btn-reset" onclick="loadSessions()"><i class="fas fa-sync-alt"></i> 刷新</button>
+                        <span style="color:#888;font-size:0.85rem;">删除会话会同时清理该公文的 SDK 工作目录（含上下文快照）</span>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="result-table">
+                            <thead><tr><th class="col-seq">序号</th><th>会话 ID</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">更新时间</th><th class="col-action">操作</th></tr></thead>
+                            <tbody id="sessionsTbody"><tr><td colspan="7" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -354,6 +390,7 @@ async function initNav() {
                 else if (tab.dataset.tab === 'sys') loadSysConfig();
                 else if (tab.dataset.tab === 'users') loadUsers();
                 else if (tab.dataset.tab === 'audit') loadAudit(0);
+                else if (tab.dataset.tab === 'sessions') loadSessions();
             });
         });
 
@@ -631,10 +668,6 @@ function taskDetailHtml(t) {
     html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(t.prompt || '(未记录)') + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. Agent 输出 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
     html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(t.sdk_output || '(未记录)') + '</div>';
-    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. 回调体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.callback_body)) + '</div>';
-    html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> ' + (++step) + '. 回调体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.callback_response)) + '</div>';
     html += '</div>';
     return html;
 }
@@ -642,6 +675,7 @@ function taskDetailHtml(t) {
 // ==============================
 document.getElementById('auditDetailModal').addEventListener('click', function(e) { if (e.target === this) closeAuditDetail(); });
 document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
+document.getElementById('chatModal').addEventListener('click', function(e) { if (e.target === this) closeChatModal(); });
 
 // Init
 initNav();
@@ -659,7 +693,6 @@ function statusText(s) {
         processing: '处理中',
         failed: '失败',
         completed: '已完成',
-        callback_fail: '回调失败',
         cancelled: '已取消',
     };
     return map[s] || s || '-';
@@ -1067,6 +1100,173 @@ function closeStreamModal() {
     document.getElementById('streamModal').classList.remove('show');
 }
 
+// ==============================
+// 会话管理
+// ==============================
+async function loadSessions() {
+    const tbody = document.getElementById('sessionsTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">加载中...</td></tr>';
+    let list = [];
+    try {
+        const r = await fetch('/admin/sessions');
+        const j = await r.json();
+        list = j.data || [];
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#e53e3e;padding:24px;">加载失败</td></tr>';
+        return;
+    }
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">暂无会话</td></tr>';
+        return;
+    }
+    tbody.innerHTML = list.map((s, i) => {
+        const sid = s.session_id || '';
+        const short = sid.length > 12 ? sid.substring(0, 12) : sid;
+        return `<tr>
+            <td class="col-seq">${i + 1}</td>
+            <td><span title="${escHtml(sid)}" style="font-family:monospace;font-size:0.82rem;">${escHtml(short)}</span></td>
+            <td>${escHtml(s.linkid || '-')}</td>
+            <td>${s.status === 'active' ? '<span class="badge badge-processing">活跃</span>' : '<span class="badge badge-cancelled">关闭</span>'}</td>
+            <td class="col-date">${fmtTs(s.created_at)}</td>
+            <td class="col-date">${fmtTs(s.updated_at)}</td>
+            <td class="col-action" style="width:80px;">
+                <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="openChat('${escHtml(sid)}', '${escHtml(s.linkid || '')}')" title="进入会话续聊" style="margin-right:4px;"><i class="fas fa-comment-dots"></i></button>
+                <button class="cfg-btn-danger-sm" onclick="deleteSession('${escHtml(sid)}', '${escHtml(s.linkid || '')}')" title="删除会话"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function deleteSession(sessionId, linkid) {
+    if (!confirm('删除会话 ' + sessionId.substring(0, 12) + '... ?\n\n将同时清理该公文 (' + (linkid || '-') + ') 的 SDK 工作目录，包含上下文快照。')) return;
+    try {
+        const r = await fetch('/admin/sessions/' + encodeURIComponent(sessionId), { method: 'DELETE' });
+        const j = await r.json();
+        if (j.code === 0) {
+            toast('已删除', 'success');
+            loadSessions();
+        } else {
+            toast(j.message || '删除失败', 'error');
+        }
+    } catch (e) {
+        toast('删除失败: ' + e.message, 'error');
+    }
+}
+
+// ---- 会话续聊（debug 用，终端风格）----
+let _chatEs = null;
+let _chatSessionId = '';
+let _chatCount = 0;      // 已渲染历史消息数
+
+// 终端追加（统一走 innerHTML + escHtml，颜色用 span）
+function chatAppend(html) {
+    const term = document.getElementById('chatTerminal');
+    term.innerHTML += html;
+    term.scrollTop = term.scrollHeight;
+}
+
+function chatSet(html) {
+    const term = document.getElementById('chatTerminal');
+    term.innerHTML = html;
+    term.scrollTop = term.scrollHeight;
+}
+
+async function openChat(sessionId, linkid) {
+    _chatSessionId = sessionId;
+    _chatCount = 0;
+    document.getElementById('chatModalTitle').innerHTML = '<i class="fas fa-terminal"></i> 会话终端';
+    document.getElementById('chatStatus').textContent = linkid || '-';
+    document.getElementById('chatInput').value = '';
+    document.getElementById('chatModal').classList.add('show');
+    document.getElementById('chatInput').focus();
+
+    chatSet('<span style="color:#6a9955;"># 加载历史消息...</span>');
+
+    try {
+        const res = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/messages');
+        const json = await res.json();
+        const data = json.data || {};
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        _chatCount = messages.length;
+        const { output } = formatSessionMessages(messages, 0);
+        chatSet('<span style="color:#6a9955;"># 共 ' + messages.length + ' 条消息</span>\n\n' + escHtml(output || '(空会话)'));
+    } catch (e) {
+        chatSet('<span style="color:#f44747;"># 加载失败: ' + escHtml(e.message) + '</span>');
+    }
+}
+
+function closeChatModal() {
+    if (_chatEs) { _chatEs.close(); _chatEs = null; }
+    _chatSessionId = '';
+    _chatCount = 0;
+    document.getElementById('chatModal').classList.remove('show');
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg || !_chatSessionId) return;
+    input.value = '';
+    input.disabled = true;
+
+    const status = document.getElementById('chatStatus');
+
+    // 终端追加用户消息（复用 fmtTimelineTs 保持与历史消息时间格式一致）
+    const ts = fmtTimelineTs(new Date().toISOString());
+    chatAppend('\n[' + ts + '] <span style="color:#4ec9b0;">[你]</span>\n' + escHtml(msg) + '\n');
+    status.innerHTML = '<span style="color:#4ec9b0;">● thinking...</span>';
+
+    try {
+        const r = await fetch('/admin/sessions/' + encodeURIComponent(_chatSessionId) + '/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg }),
+        });
+        if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            throw new Error(j.message || r.statusText);
+        }
+
+        // 收 SSE 流，复用 formatSessionMessages 保持渲染一致
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const m = JSON.parse(line.slice(6));
+                    if (m.type === 'end') continue;
+                    if (m.type === 'error') {
+                        chatAppend('\n<span style="color:#f44747;">[错误]</span> ' + escHtml(m.message || '') + '\n');
+                        continue;
+                    }
+                    if (m.type === 'user' || m.type === 'assistant') {
+                        const { output } = formatSessionMessages([m], _chatCount);
+                        chatAppend(escHtml(output));
+                        _chatCount++;
+                    }
+                } catch { /* skip malformed */ }
+            }
+        }
+        status.innerHTML = '<span style="color:#6a9955;">✓ done</span>';
+    } catch (e) {
+        chatAppend('\n<span style="color:#f44747;">[错误]</span> ' + escHtml(e.message) + '\n');
+        status.innerHTML = '<span style="color:#f44747;">✗ ' + escHtml(e.message) + '</span>';
+    } finally {
+        input.disabled = false;
+        input.focus();
+    }
+}
+
 // ---- 会话记录实时推送（SSE）----
 let _streamEs = null;         // EventSource 实例
 let _streamSessionId = null;
@@ -1232,7 +1432,7 @@ async function viewSession(sessionId, taskId, taskStatus) {
 
     document.getElementById('streamModalTitle').innerHTML = '<i class="fas fa-comments"></i> 会话记录 <span style="font-weight:400;font-size:0.8rem;color:#888;">' + escHtml(sessionId) + '</span>';
     document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">加载中...</span>';
-    document.getElementById('streamStatus').className = 'stream-status-bar';
+    /* merged into title */
 
     const container = document.getElementById('streamMessages');
     container.textContent = '加载中...';
@@ -1252,7 +1452,7 @@ async function viewSession(sessionId, taskId, taskStatus) {
             container.textContent = output || '(空会话)';
             _streamCount = messages.length;
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
-            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+            /* merged into title */
         } catch (err) {
             container.textContent = '读取会话记录失败: ' + err.message;
         }
@@ -1275,7 +1475,7 @@ async function viewSession(sessionId, taskId, taskStatus) {
             container.textContent = output || '(空会话)';
             _streamCount = messages.length;
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
-            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+            /* merged into title */
             container.scrollTop = container.scrollHeight;
         } else if (msg.type === 'error') {
             container.textContent = '读取会话记录失败: ' + (msg.message || '');
@@ -1283,7 +1483,7 @@ async function viewSession(sessionId, taskId, taskStatus) {
             // 任务结束，直接用局部引用关闭连接（防止 onerror 竞态导致 _streamEs 已被置 null）
             es.close();
             _streamEs = null;
-            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+            /* merged into title */
         } else {
             // 增量消息：全部存储供导出，仅 user/assistant 更新显示和计数
             _streamMessages.push(msg);
@@ -1348,8 +1548,7 @@ function auditTimelineHtml(t) {
     let step = 0;
     for (const ev of events) {
         step++;
-        const icon = ev.type === 'callback' ? 'fa-paper-plane'
-            : ev.type === 'tool' ? 'fa-wrench'
+        const icon = ev.type === 'tool' ? 'fa-wrench'
             : ev.type === 'input' ? 'fa-inbox'
             : ev.type === 'output' ? 'fa-arrow-right'
             : ev.type === 'done' ? 'fa-check-circle'
@@ -1357,8 +1556,7 @@ function auditTimelineHtml(t) {
             : ev.type === 'create' ? 'fa-plus-circle'
             : ev.type === 'prompt' ? 'fa-file-code'
             : 'fa-circle';
-        const cls = ev.type === 'callback' ? 'callback'
-            : ev.type === 'error' ? 'error'
+        const cls = ev.type === 'error' ? 'error'
             : ev.type === 'done' ? 'done'
             : 'info';
         html += '<div class="timeline-item ' + cls + '">';
@@ -1399,23 +1597,64 @@ function buildAuditEvents(t) {
     if (t.sdk_output) {
         events.push({ time: t.finished_at, type: 'output', title: 'Agent 输出结果', detail: t.sdk_output });
     }
-    // 7. 回调对方 URL
-    if (t.callback_url) {
-        events.push({
-            time: t.finished_at,
-            type: 'callback',
-            title: '回调对方 URL',
-            detail: 'POST ' + t.callback_url + '\n\n回调体:\n' + (t.callback_body ? jsonFmt(t.callback_body) : '(无)')
-        });
-    }
+    // 7. 结果回调（从 SDK trace 中提取 Bash curl 记录）
+    const cbEvent = tryExtractCallbackFromTrace(t.sdk_trace, t.finished_at);
+    if (cbEvent) events.push(cbEvent);
     // 8. 完成 / 失败
     events.push({
         time: t.finished_at,
-        type: t.status === 'completed' ? 'done' : (t.status === 'failed' || t.status === 'callback_fail' ? 'error' : 'info'),
+        type: t.status === 'completed' ? 'done' : (t.status === 'failed' ? 'error' : 'info'),
         title: statusText(t.status),
         detail: t.error_message || ''
     });
     return events;
+}
+
+function tryExtractCallbackFromTrace(sdkTrace, fallbackTime) {
+    if (!sdkTrace) return null;
+    let messages;
+    try { messages = JSON.parse(sdkTrace); } catch { return null; }
+    if (!Array.isArray(messages) || messages.length === 0) return null;
+
+    const callbackIds = new Set();
+    for (const msg of messages) {
+        if (msg.type !== 'assistant') continue;
+        for (const block of (msg.message?.content || [])) {
+            if (block.type !== 'tool_use' || block.name !== 'Bash') continue;
+            const cmd = typeof block.input?.command === 'string' ? block.input.command : '';
+            if (cmd.includes('/tmp/callback_payload') || cmd.includes('callback')) {
+                if (block.id) callbackIds.add(block.id);
+            }
+        }
+    }
+    if (callbackIds.size === 0) return null;
+
+    const results = [];
+    for (const msg of messages) {
+        if (msg.type !== 'user') continue;
+        for (const block of (msg.message?.content || [])) {
+            if (block.type !== 'tool_result') continue;
+            if (block.tool_use_id && !callbackIds.has(block.tool_use_id)) continue;
+            const raw = block.content;
+            if (typeof raw === 'string') {
+                results.push({ toolId: block.tool_use_id || '', content: raw });
+            } else if (Array.isArray(raw)) {
+                results.push({ toolId: block.tool_use_id || '', content: raw.map(c => (typeof c.text === 'string' ? c.text : JSON.stringify(c))).join('') });
+            }
+        }
+    }
+    if (results.length === 0) return null;
+
+    const allOk = results.every(r => !r.content.includes('curl: (') && !r.content.includes('command failed') && !r.content.includes('Error'));
+    let detail = results.map(r => r.content.trim()).join('\n\n---\n\n');
+    if (results.length > 1) detail = results.map((r, i) => '[' + (i + 1) + ']\n' + r.content.trim()).join('\n\n');
+
+    return {
+        time: fallbackTime,
+        type: allOk ? 'done' : 'error',
+        title: allOk ? '回调成功' : '回调失败',
+        detail: detail
+    };
 }
 
 function exportAuditMd() {

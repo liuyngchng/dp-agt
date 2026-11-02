@@ -192,10 +192,11 @@ docker buildx build \
     --load \
     "$PROJECT_ROOT"
 
-# Remove dangling images
+# Remove dangling images + buildx cache
 echo ""
 echo "=== 清理 dangling 镜像 ==="
 docker image prune -f --filter "dangling=true" || true
+docker builder prune -f --keep-storage 2GB || true
 
 BUILD_ELAPSED=$(( $(date +%s) - BUILD_START ))
 echo "============================================"

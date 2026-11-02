@@ -4,7 +4,7 @@ import { Router, Request, Response } from 'express';
 import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
-import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
+import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { getLogger } from '../logger.js';
@@ -17,6 +17,7 @@ import { createGzip } from 'node:zlib';
 import tarFs from 'tar-fs';
 import tarStream from 'tar-stream';
 import { loadPromptFromDisk, rescanPromptsDir, listAllPromptFiles } from '../services/prompt-engine.js';
+import { buildEnv } from '../services/sdk-runner.js';
 import { syncInterfacesFromPrompts } from '../store.js';import type { Config } from '../config.js';
 
 const log = getLogger();
@@ -36,6 +37,7 @@ export function createAdminRouter(cfg: Config): Router {
       ] : []),
       { id: 'audit', icon: 'fa-search', label: '任务审查' },
       ...(isAdmin ? [
+        { id: 'sessions', icon: 'fa-comments', label: '会话管理' },
         { id: 'sys', icon: 'fa-sliders-h', label: '系统设置' },
         { id: 'users', icon: 'fa-users', label: '用户管理' },
       ] : []),
@@ -197,7 +199,6 @@ export function createAdminRouter(cfg: Config): Router {
         title: extractTitle(t.request_body),
         path: t.path,
         status: t.status,
-        callback_url: t.callback_url,
         error_message: t.error_message,
         created_at: t.created_at,
         finished_at: t.finished_at,
@@ -216,8 +217,6 @@ export function createAdminRouter(cfg: Config): Router {
       title: extractTitle(task.request_body),
       request_body: safeParse(task.request_body),
       request_response: safeParse(task.request_response),
-      callback_body: safeParse(task.callback_body),
-      callback_response: safeParse(task.callback_response),
     }});
   });
 
@@ -289,6 +288,77 @@ export function createAdminRouter(cfg: Config): Router {
     });
   });
 
+  // ---- 会话管理（管理员） ----
+  router.use('/admin/sessions', adminOnlyMiddleware);
+
+  router.get('/admin/sessions', (_req: Request, res: Response) => {
+    const list = sessionsStore.listAll();
+    res.json({ code: 0, data: list });
+  });
+
+  router.delete('/admin/sessions/:session_id', (req: Request, res: Response) => {
+    const { session_id } = req.params;
+    const session = sessionsStore.get(session_id);
+    if (!session) {
+      res.status(404).json({ code: 1001, message: '会话不存在' });
+      return;
+    }
+    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(session.linkid));
+    if (existsSync(workDir)) {
+      try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
+    }
+    sessionsStore.remove(session_id);
+    log.info({ session_id, linkid: session.linkid, workDir }, 'session_deleted');
+    res.json({ code: 0, message: '已删除' });
+  });
+
+  // ---- 会话续聊（debug 用）：复用原 session 上下文发送消息 ----
+  router.post('/admin/sessions/:session_id/chat', async (req: Request, res: Response) => {
+    const { session_id } = req.params;
+    const { message } = req.body as { message?: string };
+    if (!session_id || !message || !message.trim()) {
+      res.status(400).json({ code: 1001, message: '缺少 session_id 或 message' });
+      return;
+    }
+    const session = sessionsStore.get(session_id);
+    if (!session) {
+      res.status(404).json({ code: 1001, message: '会话不存在' });
+      return;
+    }
+    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(session.linkid));
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    try {
+      const q = query({
+        prompt: message,
+        options: {
+          cwd: workDir,
+          permissionMode: 'bypassPermissions',
+          tools: { type: 'preset', preset: 'claude_code' },
+          model: cfg.llm.model,
+          env: buildEnv(cfg),
+          systemPrompt: { type: 'preset', preset: 'claude_code' },
+          resume: session_id,
+        },
+      });
+
+      for await (const m of q) {
+        sendSSE(res, m);
+      }
+      sendSSE(res, { type: 'end' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendSSE(res, { type: 'error', message: msg });
+    }
+    res.end();
+  });
+
   // ============================================================
   // 以下所有登录用户可访问
   // ============================================================
@@ -336,7 +406,6 @@ export function createAdminRouter(cfg: Config): Router {
         title: extractTitle(task.request_body),
         path: task.path,
         status: task.status,
-        callback_url: task.callback_url,
         error_message: task.error_message,
         created_at: task.created_at,
         finished_at: task.finished_at,
@@ -344,8 +413,7 @@ export function createAdminRouter(cfg: Config): Router {
         request_response: safeParse(task.request_response),
         prompt: task.prompt,
         sdk_output: task.sdk_output,
-        callback_body: safeParse(task.callback_body),
-        callback_response: safeParse(task.callback_response),
+        sdk_trace: task.sdk_trace,
       },
     });
   });
@@ -652,7 +720,7 @@ export function createAdminRouter(cfg: Config): Router {
 
     const validKeys = new Set(promptConfigStore.listKeys());
     const builtinKeys = new Set(['request.body', 'request.linkid', 'request.files',
-      'request.form_data', 'request.approval_history', 'request.callback_url']);
+      'request.form_data', 'request.approval_history']);
     for (const k of builtinKeys) validKeys.add(k);
 
     const files = await extractArchive(file.buffer, file.originalname);

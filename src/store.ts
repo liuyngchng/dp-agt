@@ -313,8 +313,8 @@ export const taskLogsStore = {
   create(log: TaskLog): void {
     db.prepare(
       `INSERT INTO task_logs
-       (task_id, linkid, session_id, path, interface_id, status, request_body, request_response, prompt, sdk_output, callback_body, callback_response, callback_url, error_message, created_at, finished_at, created_ts, finished_ts)
-       VALUES (@task_id, @linkid, @session_id, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @callback_body, @callback_response, @callback_url, @error_message, @created_at, @finished_at, @created_ts, @finished_ts)`
+       (task_id, linkid, session_id, path, interface_id, status, request_body, request_response, prompt, sdk_output, sdk_trace, error_message, created_at, finished_at, created_ts, finished_ts)
+       VALUES (@task_id, @linkid, @session_id, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @sdk_trace, @error_message, @created_at, @finished_at, @created_ts, @finished_ts)`
     ).run(log);
   },
   updateStatus(taskId: string, status: TaskStatus): void {
@@ -437,6 +437,9 @@ export const sessionsStore = {
     return db.prepare(
       'SELECT * FROM sessions WHERE linkid = ? AND status = ?'
     ).get(linkid, 'active') as Session | undefined;
+  },
+  listAll(): Session[] {
+    return db.prepare('SELECT * FROM sessions ORDER BY updated_ts DESC').all() as Session[];
   },
   remove(sessionId: string): boolean {
     return db.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId).changes > 0;

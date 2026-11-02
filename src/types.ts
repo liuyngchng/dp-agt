@@ -20,7 +20,6 @@ export type TaskStatus =
   | 'processing'
   | 'failed'
   | 'completed'
-  | 'callback_fail'
   | 'cancelled';
 
 // ============================================================
@@ -36,10 +35,8 @@ export interface TaskLog {
   request_body: string;
   request_response: string | null;   // 我方对请求的同步响应
   prompt: string;
-  sdk_output: string | null;         // Agent 最终输出（业务产出，回调 data）
-  callback_body: string | null;
-  callback_response: string | null;  // 对方对回调的响应
-  callback_url: string;
+  sdk_output: string | null;         // Agent 最终输出（业务产出）
+  sdk_trace: string | null;          // Agent SDK 全量消息流 JSON（用于时间线回溯）
   error_message: string | null;
   created_at: string;           // YYYY-MM-DD HH:MM:ss.SSS 本地时间
   finished_at: string | null;
@@ -79,7 +76,6 @@ export interface ApiResponse<T = unknown> {
 // ============================================================
 export interface ProcessRequest {
   linkid: string;
-  callback_url: string;
   [key: string]: unknown;
 }
 

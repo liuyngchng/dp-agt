@@ -30,9 +30,6 @@ export function submitTask(interfacePath: string, body: Record<string, unknown>,
   if (!linkid) {
     return { status: 400, body: buildResponse(1001, '缺少 linkid', '', '') };
   }
-  if (!body.callback_url) {
-    return { status: 400, body: buildResponse(1001, '缺少 callback_url', '', '') };
-  }
 
   // 同一 linkid 有未完成的任务时拒绝，防止重复投递
   if (taskLogsStore.hasActiveByLinkid(linkid)) {
