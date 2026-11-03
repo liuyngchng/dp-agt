@@ -10,7 +10,6 @@ import { getLogger } from '../logger.js';
 import { taskLogsStore, interfacesStore, sessionsStore } from '../store.js';
 import { renderPrompt, loadPromptFromDisk } from './prompt-engine.js';
 import { runAgent } from './sdk-runner.js';
-import { deliverCallback } from './callback.js';
 import { nowReadable, nowTs } from '../time.js';
 import type { Config } from '../config.js';
 import type { AgentInterface, ProcessRequest, TaskLog, TaskStatus } from '../types.js';
@@ -56,7 +55,7 @@ async function processItem(item: WorkerItem): Promise<void> {
   }
 
   // 渲染提示词
-  const rendered = renderPrompt(template, body as unknown as Record<string, unknown>);
+  const rendered = renderPrompt(template, body as unknown as Record<string, unknown>, task_id);
   taskLogsStore.updateResult(task_id, { prompt: rendered });
 
   // 查 sessions 表：同一 linkid 是否有已存在的 session
@@ -87,50 +86,25 @@ async function processItem(item: WorkerItem): Promise<void> {
       status: 'failed' as TaskStatus,
       session_id: result.sessionId || null,
       sdk_output: result.rawOutput,
+      sdk_trace: result.trace,
       error_message: errMsg,
       finished_at: nowLocal(),
     });
 
-    const failPayload = buildResponse(5000, errMsg, task_id, body.linkid, null);
-    const cbResult = await deliverCallback(body.callback_url, failPayload, cfg);
-    taskLogsStore.updateResult(task_id, {
-      status: 'failed' as TaskStatus,
-      callback_body: cbResult.body,
-      callback_response: cbResult.responseBody,
-    });
     log.error({ task_id, linkid, error: errMsg }, 'task_failed');
     return;
   }
 
-  // LLM 成功 — 暂不修改 status，等回调完成再统一设
+  // LLM 成功
   taskLogsStore.updateResult(task_id, {
     session_id: result.sessionId || null,
     sdk_output: result.rawOutput,
-  });
-
-  // 尝试解析 Claude 输出的 JSON
-  let parsedData: unknown;
-  try {
-    parsedData = extractJson(result.rawOutput);
-  } catch {
-    // 解析失败，用 raw 字符串
-    parsedData = { raw_output: result.rawOutput };
-  }
-
-  // 回调
-  const successPayload = buildResponse(0, 'success', task_id, body.linkid, parsedData);
-  const cbResult = await deliverCallback(body.callback_url, successPayload, cfg);
-
-  const finalStatus: TaskStatus = cbResult.success ? 'completed' : 'callback_fail';
-  taskLogsStore.updateResult(task_id, {
-    status: finalStatus,
-    callback_body: cbResult.body,
-    callback_response: cbResult.responseBody,
+    sdk_trace: result.trace,
+    status: 'completed' as TaskStatus,
     finished_at: nowLocal(),
-    ...(cbResult.errorMsg ? { error_message: cbResult.errorMsg } : {}),
   });
 
-  log.info({ task_id, linkid, status: finalStatus }, 'task_done');
+  log.info({ task_id, linkid, status: 'completed' }, 'task_done');
 }
 
 async function pump(): Promise<void> {
@@ -227,9 +201,7 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
     request_response: null,
     prompt: '',
     sdk_output: null,
-    callback_body: null,
-    callback_response: null,
-    callback_url: body.callback_url,
+    sdk_trace: null,
     error_message: null,
     created_at: now,
     finished_at: null,
@@ -250,36 +222,4 @@ export function getRunningCount(): number {
 
 export function getPendingCount(): number {
   return pending.length;
-}
-
-// ============================================================
-// helpers
-// ============================================================
-
-/** 从 Claude 输出中提取 JSON 对象 */
-function extractJson(text: string): unknown {
-  const jsonBlock = text.match(/```json\s*([\s\S]*?)```/);
-  if (jsonBlock) return JSON.parse(jsonBlock[1].trim());
-
-  const codeBlock = text.match(/```\s*([\s\S]*?)```/);
-  if (codeBlock) return JSON.parse(codeBlock[1].trim());
-
-  return JSON.parse(text.trim());
-}
-
-function buildResponse(
-  code: number,
-  message: string,
-  taskId: string,
-  linkid: string,
-  data: unknown,
-) {
-  return {
-    code,
-    timestamp: nowReadable(),
-    message,
-    task_id: taskId,
-    linkid,
-    data: data ?? {},
-  };
 }

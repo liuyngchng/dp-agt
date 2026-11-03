@@ -64,7 +64,6 @@ case "${1:-start}" in
       -p "$HOST_PORT:20001" \
       -v "$DATA_DIR:/app/data" \
       -v "$DATA_DIR/.claude:/home/agent/.claude" \
-      --restart unless-stopped \
       --add-host api.anthropic.com:127.0.0.1 \
       --add-host api-staging.anthropic.com:127.0.0.1 \
       --add-host anthropic.com:127.0.0.1 \

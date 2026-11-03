@@ -27,7 +27,6 @@ export function createTasksRouter(): Router {
           session_id: t.session_id,
           interface_path: t.path,
           status: t.status,
-          callback_url: t.callback_url,
           created_at: t.created_at,
         })),
       },
@@ -89,7 +88,6 @@ export function createTasksRouter(): Router {
         request_body: safeParse(task.request_body),
         prompt: task.prompt,
         sdk_output: task.sdk_output,
-        callback_body: safeParse(task.callback_body),
         error_message: task.error_message,
         created_at: task.created_at,
         finished_at: task.finished_at,
@@ -141,7 +139,6 @@ export function createTasksRouter(): Router {
         session_id: task.session_id,
         path: task.path,
         status: task.status,
-        callback_url: task.callback_url,
         error_message: task.error_message,
         created_at: task.created_at,
         finished_at: task.finished_at,
@@ -193,7 +190,6 @@ export function createTasksRouter(): Router {
         session_id: task.session_id,
         path: task.path,
         status: task.status,
-        callback_url: task.callback_url,
         error_message: task.error_message,
         created_at: task.created_at,
         finished_at: task.finished_at,
@@ -267,28 +263,15 @@ function buildTimelineEvents(task: TaskLog): TimelineEvent[] {
     });
   }
 
-  // 6. 回调对方 URL
-  if (task.callback_url) {
-    let detail = 'POST ' + task.callback_url;
-    if (task.callback_body) {
-      detail += '\n\n回调体:\n' + jsonFmt(task.callback_body);
-    }
-    if (task.callback_response) {
-      detail += '\n\n回调响应:\n' + jsonFmt(task.callback_response);
-    }
-    events.push({
-      time: task.finished_at,
-      type: 'callback',
-      title: '回调对方 URL',
-      detail,
-    });
-  }
+  // 6. 结果回调（从 SDK trace 中提取 Bash curl 记录）
+  const cbEvent = tryExtractCallbackFromTrace(task.sdk_trace, task.finished_at);
+  if (cbEvent) events.push(cbEvent);
 
   // 7. 完成 / 失败
   const finalTitle = statusText(task.status);
   const finalType =
     task.status === 'completed' ? 'done' :
-    task.status === 'failed' || task.status === 'callback_fail' ? 'error' :
+    task.status === 'failed' ? 'error' :
     'info';
   events.push({
     time: task.finished_at,
@@ -298,6 +281,76 @@ function buildTimelineEvents(task: TaskLog): TimelineEvent[] {
   });
 
   return events;
+}
+
+// ============================================================
+// 从 SDK trace 中提取结果回调记录
+// ============================================================
+
+interface SdkMessage {
+  type?: string;
+  message?: {
+    content?: Array<{
+      type?: string;
+      name?: string;
+      id?: string;
+      input?: Record<string, unknown>;
+      tool_use_id?: string;
+      content?: unknown;
+    }>;
+  };
+}
+
+function tryExtractCallbackFromTrace(
+  sdkTrace: string | null,
+  fallbackTime: string | null,
+): TimelineEvent | null {
+  if (!sdkTrace) return null;
+  let messages: SdkMessage[];
+  try { messages = JSON.parse(sdkTrace); } catch { return null; }
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+
+  const callbackIds = new Set<string>();
+  for (const msg of messages) {
+    if (msg.type !== 'assistant') continue;
+    for (const block of msg.message?.content ?? []) {
+      if (block.type !== 'tool_use' || block.name !== 'Bash') continue;
+      const cmd = typeof block.input?.command === 'string' ? block.input.command : '';
+      if (cmd.includes('/tmp/callback_payload') || cmd.includes('callback')) {
+        if (block.id) callbackIds.add(block.id);
+      }
+    }
+  }
+  if (callbackIds.size === 0) return null;
+
+  const results: Array<{ toolId: string; content: string }> = [];
+  for (const msg of messages) {
+    if (msg.type !== 'user') continue;
+    for (const block of msg.message?.content ?? []) {
+      if (block.type !== 'tool_result') continue;
+      if (block.tool_use_id && !callbackIds.has(block.tool_use_id)) continue;
+      const raw = block.content;
+      if (typeof raw === 'string') {
+        results.push({ toolId: block.tool_use_id ?? '', content: raw });
+      } else if (Array.isArray(raw)) {
+        results.push({ toolId: block.tool_use_id ?? '', content: raw.map((c: Record<string, unknown>) =>
+          typeof c.text === 'string' ? c.text : JSON.stringify(c)
+        ).join('') });
+      }
+    }
+  }
+  if (results.length === 0) return null;
+
+  const allOk = results.every(r => !r.content.includes('curl: (') && !r.content.includes('command failed') && !r.content.includes('Error'));
+  let detail = results.map(r => r.content.trim()).join('\n\n---\n\n');
+  if (results.length > 1) detail = results.map((r, i) => `[${i + 1}]\n${r.content.trim()}`).join('\n\n');
+
+  return {
+    time: fallbackTime,
+    type: allOk ? 'done' : 'error',
+    title: allOk ? '回调成功' : '回调失败',
+    detail,
+  };
 }
 
 // ============================================================
@@ -317,6 +370,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .item:last-child{border-left-color:transparent}
 .dot{width:16px;height:16px;border-radius:50%;background:#4b6cb7;flex-shrink:0;margin-left:-9px;margin-top:2px;position:relative;z-index:1}
 .item.error .dot{background:#e53e3e}
+.item.done .dot{background:#2e7d32}
 .body{flex:1;min-width:0}
 .ihead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:.92rem}
 .time{font-family:monospace;font-size:.78rem;color:#888;white-space:nowrap}
@@ -398,7 +452,6 @@ function statusText(s: string): string {
     processing: '处理中',
     failed: '失败',
     completed: '已完成',
-    callback_fail: '回调失败',
     cancelled: '已取消',
   };
   return map[s] || s || '-';

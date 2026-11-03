@@ -16,8 +16,6 @@ interface CfgFile {
   sys?: {
     max_concurrent_tasks?: number;
     max_pending_tasks?: number;
-    callback_retries?: number;
-    callback_retry_interval_sec?: number;
     retention_days?: number;
     data_dir?: string;
   };
@@ -48,8 +46,6 @@ export interface Config {
   sys: {
     max_concurrent_tasks: number;
     max_pending_tasks: number;
-    callback_retries: number;
-    callback_retry_interval_sec: number;
     retention_days: number;
     data_dir: string;
   };
@@ -137,8 +133,6 @@ export function loadConfig(): Config {
     sys: {
       max_concurrent_tasks: envInt('MAX_CONCURRENT_TASKS', y.max_concurrent_tasks ?? 5),
       max_pending_tasks: envInt('MAX_PENDING_TASKS', y.max_pending_tasks ?? 10),
-      callback_retries: envInt('CALLBACK_RETRIES', y.callback_retries ?? 3),
-      callback_retry_interval_sec: envInt('CALLBACK_RETRY_INTERVAL_SEC', y.callback_retry_interval_sec ?? 2),
       retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 30),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
     },

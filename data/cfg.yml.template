@@ -18,7 +18,7 @@ server:
   # 调试模式: true=开启(日志更详细), false=关闭(生产环境)
   debug: false
 
-  # 对外提供服务的IP地址（用于生成 CLAUDE.md 中的回调 URL 等）
+  # 容器对外服务地址（用于管理后台获取服务器信息及 CLAUDE.md 模板渲染）
   self_ip: 192.168.1.102
 
   # HTTPS 证书路径（留空则使用 HTTP）
@@ -33,12 +33,6 @@ sys:
 
   # 任务总数上限 (pending + processing)，超过后拒单返回 code=2002
   max_pending_tasks: 10
-
-  # 回调失败最大重试次数
-  callback_retries: 3
-
-  # 回调重试基础间隔（秒），指数退避: base_s → 2*base_s → 4*base_s
-  callback_retry_interval_sec: 2
 
   # 运行时数据保留天数（task_logs + files 自动清理）
   retention_days: 30
