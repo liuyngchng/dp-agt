@@ -320,6 +320,7 @@
 </div>
 
 <script>
+// === VERSION: 2025-07-17-debug-sessions ===
 const API = '/admin';
 
 // ============================================================
@@ -1203,6 +1204,7 @@ function chatSet(html) {
 }
 
 async function openChat(sessionId, linkid) {
+    console.log('[openChat] sessionId:', sessionId, 'linkid:', linkid);
     _chatSessionId = sessionId;
     _chatCount = 0;
     document.getElementById('chatModalTitle').innerHTML = '<i class="fas fa-terminal"></i> 会话终端';
@@ -1214,14 +1216,18 @@ async function openChat(sessionId, linkid) {
     chatSet('<span style="color:#6a9955;"># 加载历史消息...</span>');
 
     try {
-        const res = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/messages');
+        const url = API + '/sessions/' + encodeURIComponent(sessionId) + '/messages';
+        console.log('[openChat] fetch:', url);
+        const res = await fetch(url);
         const json = await res.json();
+        console.log('[openChat] response code:', json.code, 'messages:', Array.isArray(json.data?.messages) ? json.data.messages.length : 'N/A');
         const data = json.data || {};
         const messages = Array.isArray(data.messages) ? data.messages : [];
         _chatCount = messages.length;
         const { output } = formatSessionMessages(messages, 0);
         chatSet('<span style="color:#6a9955;"># 共 ' + messages.length + ' 条消息</span>\n\n' + escHtml(output || '(空会话)'));
     } catch (e) {
+        console.error('[openChat] error:', e);
         chatSet('<span style="color:#f44747;"># 加载失败: ' + escHtml(e.message) + '</span>');
     }
 }
@@ -1473,8 +1479,11 @@ async function viewSession(sessionId, taskId, taskStatus) {
     if (!active) {
         // 任务已结束：一次性拉取完整历史
         try {
-            const res = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/messages');
+            const url = API + '/sessions/' + encodeURIComponent(sessionId) + '/messages';
+            console.log('[viewSession] finished task, fetch:', url);
+            const res = await fetch(url);
             const json = await res.json();
+            console.log('[viewSession] response code:', json.code, 'messages:', Array.isArray(json.data?.messages) ? json.data.messages.length : 'N/A');
             const data = json.data || {};
             const messages = Array.isArray(data.messages) ? data.messages : [];
             _streamMessages = messages;
@@ -1484,6 +1493,7 @@ async function viewSession(sessionId, taskId, taskStatus) {
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
             /* merged into title */
         } catch (err) {
+            console.error('[viewSession] error:', err);
             container.textContent = '读取会话记录失败: ' + err.message;
         }
         return;

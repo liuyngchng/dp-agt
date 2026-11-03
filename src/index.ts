@@ -130,6 +130,9 @@ app.use(createAdminRouter(cfg));
 
 // 管理后台 Web 页面
 app.get('/admin', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile('admin.html', { root: 'web' });
 });
 

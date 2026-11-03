@@ -231,14 +231,17 @@ export function createAdminRouter(cfg: Config): Router {
     }
 
     const session = sessionsStore.get(session_id);
-    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(session?.linkid || ''));
+    const linkid = session?.linkid || '';
+    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(linkid));
+    log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir), sessionFound: !!session }, 'session_messages_request');
 
     try {
       const messages = await getSessionMessages(session_id, { dir: workDir, includeSystemMessages: false });
+      log.info({ session_id, messageCount: messages.length }, 'session_messages_result');
       res.json({ code: 0, data: { session_id, messages } });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      log.error({ session_id, error: msg }, 'session_messages_error');
+      log.error({ session_id, linkid, workDir, error: msg }, 'session_messages_error');
       res.status(500).json({ code: 1001, message: '读取会话记录失败: ' + msg });
     }
   });
@@ -252,7 +255,8 @@ export function createAdminRouter(cfg: Config): Router {
     }
 
     const session = sessionsStore.get(session_id);
-    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(session?.linkid || ''));
+    const linkid = session?.linkid || '';
+    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(linkid));
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -264,9 +268,11 @@ export function createAdminRouter(cfg: Config): Router {
     // 先推全量快照，前端据此渲染已有历史
     try {
       const messages = await getSessionMessages(session_id, { dir: workDir, includeSystemMessages: false });
+      log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir), sessionFound: !!session, messageCount: messages.length }, 'session_stream_snapshot');
       sendSSE(res, { type: 'snapshot', messages });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      log.error({ session_id, linkid, workDir, error: msg }, 'session_stream_snapshot_error');
       sendSSE(res, { type: 'error', message: msg });
     }
 
@@ -322,10 +328,13 @@ export function createAdminRouter(cfg: Config): Router {
     }
     const session = sessionsStore.get(session_id);
     if (!session) {
+      log.warn({ session_id }, 'chat_session_not_found');
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
-    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(session.linkid));
+    const linkid = session.linkid;
+    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(linkid));
+    log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir) }, 'session_chat_start');
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
