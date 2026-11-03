@@ -1064,6 +1064,8 @@ function closeStreamModal() {
     if (_streamEs) { _streamEs.close(); _streamEs = null; }
     _streamSessionId = null;
     _streamCount = 0;
+    _streamMessages = [];
+    _streamKnownUuids = new Set();
     document.getElementById('streamModal').classList.remove('show');
 }
 
@@ -1072,6 +1074,7 @@ let _streamEs = null;         // EventSource 实例
 let _streamSessionId = null;
 let _streamCount = 0;         // 已渲染消息条数
 let _streamMessages = [];     // 原始消息数组，供导出使用
+let _streamKnownUuids = new Set(); // 已渲染消息 uuid，用于增量模式下按 uuid 去重
 
 function formatSessionMessages(messages, startSeq) {
     let output = '';
@@ -1152,10 +1155,12 @@ function formatSessionMessagesMD(messages, sessionId) {
     let md = '# 会话记录 ' + sessionId + '\n\n';
     let seq = 0;
     for (const msg of messages) {
+        // 只导出 user 和 assistant 消息
+        if (msg.type !== 'user' && msg.type !== 'assistant') continue;
         seq++;
         const ts = msg.message?.timestamp || msg.timestamp || '';
         const tsStr = ts ? fmtTimelineTs(ts) : '';
-        const roleLabel = msg.type === 'user' ? '用户' : msg.type === 'assistant' ? '助手' : msg.type;
+        const roleLabel = msg.type === 'user' ? '用户' : '助手';
         md += '## [' + seq + '] ' + tsStr + ' [' + roleLabel + ']\n\n';
         const c = msg.message?.content;
         if (typeof c === 'string') {
@@ -1200,26 +1205,46 @@ function formatSessionMessagesMD(messages, sessionId) {
     return md;
 }
 
-function exportStreamMD() {
-    if (!_streamMessages || _streamMessages.length === 0) {
-        return toast('没有可导出的消息', 'error');
+async function exportStreamMD() {
+    const sessionId = _streamSessionId;
+    if (!sessionId) return toast('没有可导出的会话', 'error');
+
+    const btn = document.getElementById('streamExportBtn');
+    const origText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 导出中...';
+    btn.disabled = true;
+
+    try {
+        // 始终从 REST API 拉全量数据，不依赖内存缓存
+        const res = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/messages');
+        const json = await res.json();
+        const data = json.data || {};
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        if (messages.length === 0) {
+            btn.innerHTML = origText;
+            btn.disabled = false;
+            return toast('没有可导出的消息', 'error');
+        }
+
+        const shortId = sessionId.length > 8 ? sessionId.substring(0, 8) : sessionId;
+        const hostname = window.location.hostname || 'localhost';
+        const filename = 'session_' + shortId + '_' + hostname + '.md';
+        const md = formatSessionMessagesMD(messages, sessionId);
+        const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast('已导出: ' + filename, 'success');
+    } catch (err) {
+        toast('导出失败: ' + err.message, 'error');
     }
-    const sessionId = _streamSessionId || 'session';
-    // 文件名只用前 8 位，避免过长
-    const shortId = sessionId.length > 8 ? sessionId.substring(0, 8) : sessionId;
-    const hostname = window.location.hostname || 'localhost';
-    const filename = 'session_' + shortId + '_' + hostname + '.md';
-    const md = formatSessionMessagesMD(_streamMessages, sessionId);
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('已导出: ' + filename, 'success');
+    btn.innerHTML = origText;
+    btn.disabled = false;
 }
 
 async function viewSession(sessionId, taskId, taskStatus) {
@@ -1240,26 +1265,31 @@ async function viewSession(sessionId, taskId, taskStatus) {
 
     const active = ['pending', 'processing'].includes(taskStatus);
 
-    if (!active) {
-        // 任务已结束：一次性拉取完整历史
+    // 始终先通过 REST 接口拉取全量历史，保证每次打开都能看到完整记录
+    {
+        let loaded = false;
         try {
             const res = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/messages');
             const json = await res.json();
             const data = json.data || {};
             const messages = Array.isArray(data.messages) ? data.messages : [];
             _streamMessages = messages;
+            _streamKnownUuids = new Set(messages.map(m => m.uuid).filter(Boolean));
             const { output } = formatSessionMessages(messages, 0);
             container.textContent = output || '(空会话)';
             _streamCount = messages.length;
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
             document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+            loaded = true;
         } catch (err) {
             container.textContent = '读取会话记录失败: ' + err.message;
         }
-        return;
+        if (!active) return; // 任务已结束，不需要订阅 SSE
+        // 若 REST 加载失败则清空容器，等待 SSE snapshot 回填
+        if (!loaded) container.textContent = '加载中...';
     }
 
-    // 任务处理中：订阅 SSE，实时接收快照 + 增量消息
+    // 任务处理中：订阅 SSE，仅收集增量消息（跳过 snapshot，历史已由 REST 拉取）
     const es = new EventSource(API + '/sessions/' + encodeURIComponent(sessionId) + '/stream');
     _streamEs = es;
 
@@ -1267,34 +1297,45 @@ async function viewSession(sessionId, taskId, taskStatus) {
         let msg;
         try { msg = JSON.parse(e.data); } catch { return; }
 
-        // 快照：全量历史
+        // snapshot: 仅当 REST 加载失败时作为兜底（正常情况下忽略，已有 REST 数据）
         if (msg.type === 'snapshot') {
-            const messages = Array.isArray(msg.messages) ? msg.messages : [];
-            _streamMessages = messages;
-            const { output } = formatSessionMessages(messages, 0);
-            container.textContent = output || '(空会话)';
-            _streamCount = messages.length;
-            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
-            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
-            container.scrollTop = container.scrollHeight;
-        } else if (msg.type === 'error') {
+            if (!_streamMessages.length) {
+                const messages = Array.isArray(msg.messages) ? msg.messages : [];
+                _streamMessages = messages;
+                _streamKnownUuids = new Set(messages.map(m => m.uuid).filter(Boolean));
+                const { output } = formatSessionMessages(messages, 0);
+                container.textContent = output || '(空会话)';
+                _streamCount = messages.length;
+                document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
+                document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+            }
+            return;
+        }
+
+        if (msg.type === 'error') {
             container.textContent = '读取会话记录失败: ' + (msg.message || '');
-        } else if (msg.type === 'end') {
+            return;
+        }
+
+        if (msg.type === 'end') {
             // 任务结束，直接用局部引用关闭连接（防止 onerror 竞态导致 _streamEs 已被置 null）
             es.close();
             _streamEs = null;
             document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
-        } else {
-            // 增量消息：全部存储供导出，仅 user/assistant 更新显示和计数
-            _streamMessages.push(msg);
-            if (msg.type === 'user' || msg.type === 'assistant') {
-                const { output } = formatSessionMessages([msg], _streamCount);
-                container.textContent += output;
-                _streamCount++;
-                document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + _streamCount + ' 条消息</span>';
-            }
-            container.scrollTop = container.scrollHeight;
+            return;
         }
+
+        // 增量消息：按 uuid 去重，全部存储供导出，仅 user/assistant 更新显示和计数
+        if (msg.uuid && _streamKnownUuids.has(msg.uuid)) return;
+        if (msg.uuid) _streamKnownUuids.add(msg.uuid);
+        _streamMessages.push(msg);
+        if (msg.type === 'user' || msg.type === 'assistant') {
+            const { output } = formatSessionMessages([msg], _streamCount);
+            container.textContent += output;
+            _streamCount++;
+            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + _streamCount + ' 条消息</span>';
+        }
+        container.scrollTop = container.scrollHeight;
     };
 
     es.onerror = () => {
