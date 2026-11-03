@@ -39,13 +39,13 @@
                     <div style="color:#bbb;">→</div>
                     <div class="wizard-step" id="wizardStep3" style="display:flex;align-items:center;gap:8px;opacity:0.4;">
                         <span class="wizard-dot" style="width:28px;height:28px;border-radius:50%;background:#9e9e9e;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:600;">3</span>
-                        <span>预览 / 下载</span>
+                        <span>预览</span>
                     </div>
                 </div>
 
                 <!-- 步骤 1：CSV -->
                 <div class="wizard-panel" id="panelStep1" style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;">
-                    <h3 style="margin:0 0 12px;"><i class="fas fa-file-csv"></i> 步骤 1：上传配置 CSV</h3>
+                    <h3 style="margin:0 0 12px;"><i class="fas fa-file-csv" style="color:#1565c0;"></i> 步骤 1：上传配置 CSV</h3>
                     <div style="margin-bottom:12px;">
                         <button class="cfg-btn" onclick="downloadCsvTemplate()"><i class="fas fa-download"></i> 下载 CSV 模板</button>
                         <span style="color:#888;font-size:0.82rem;margin-left:12px;">格式：key, value, 说明（三列）</span>
@@ -57,14 +57,16 @@
                     <div id="csvResult" style="margin-top:12px;"></div>
                     <!-- 已配置 key 列表 -->
                     <div id="configKeysWrap" style="margin-top:16px;display:none;">
-                        <div style="font-weight:600;margin-bottom:8px;color:#555;">已配置的 Key（🔒 项点击眼睛图标查看明文）</div>
-                        <div id="configKeysTable" style="overflow-x:auto;"></div>
+                        <div style="font-weight:600;margin-bottom:8px;color:#555;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;" onclick="toggleConfigKeys()">
+                            <i class="fas fa-chevron-right" id="configKeysToggle" style="font-size:0.7rem;"></i> 已配置的 Key
+                        </div>
+                        <div id="configKeysTable" style="overflow-x:auto;display:none;"></div>
                     </div>
                 </div>
 
                 <!-- 步骤 2：Tar -->
                 <div class="wizard-panel" id="panelStep2" style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;">
-                    <h3 style="margin:0 0 12px;"><i class="fas fa-file-archive"></i> 步骤 2：上传 Prompt 文件包</h3>
+                    <h3 style="margin:0 0 12px;"><i class="fas fa-file-archive" style="color:#1565c0;"></i> 步骤 2：上传 Prompt 文件包</h3>
                     <p style="color:#888;font-size:0.82rem;margin:0 0 12px;">文件包目录结构即访问路径。例如 <code>doc/classify.md</code> → 访问路径 <code>doc/classify</code>。新建 <code>hr/recruit.md</code> 即自动生成 <code>hr/recruit</code> 入口。<code>claude-md.md</code> 和 <code>sections/</code> 不作为访问路径。支持格式：<code>.tar</code> / <code>.tar.gz</code> / <code>.tgz</code> / <code>.zip</code></p>
                     <div style="margin-bottom:12px;">
                         <button class="cfg-btn" onclick="downloadTar()"><i class="fas fa-download"></i> 下载当前文件包</button>
@@ -77,16 +79,17 @@
                     <div id="tarResult" style="margin-top:12px;"></div>
                 </div>
 
-                <!-- 步骤 3：预览 / 下载 -->
+                <!-- 步骤 3：预览 -->
                 <div class="wizard-panel" id="panelStep3" style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;">
-                    <h3 style="margin:0 0 12px;"><i class="fas fa-eye"></i> 步骤 3：预览 / 下载当前模板</h3>
+                    <h3 style="margin:0 0 12px;"><i class="fas fa-eye" style="color:#1565c0;"></i> 步骤 3：预览</h3>
                     <div style="margin-bottom:12px;">
-                        <button class="cfg-btn" onclick="downloadTar()"><i class="fas fa-download"></i> 下载当前文件包</button>
-                        <button class="cfg-btn" onclick="loadPreview()" style="margin-left:8px;"><i class="fas fa-sync-alt"></i> 刷新预览</button>
+                        <button class="cfg-btn" onclick="loadPreview()"><i class="fas fa-sync-alt"></i> 刷新预览</button>
                     </div>
                     <div id="previewWrap" style="display:none;">
-                        <div style="font-weight:600;margin-bottom:8px;color:#555;">模板文件预览</div>
-                        <div id="previewFiles" style="display:flex;flex-direction:column;gap:12px;"></div>
+                        <div style="font-weight:600;margin-bottom:8px;color:#555;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;" onclick="togglePreview()">
+                            <i class="fas fa-chevron-right" id="previewToggle" style="font-size:0.7rem;"></i> 模板文件预览
+                        </div>
+                        <div id="previewFiles" style="display:none;flex-direction:column;gap:12px;"></div>
                     </div>
                 </div>
 
@@ -166,7 +169,7 @@
                             <button type="button" id="streamExportBtn" class="cfg-btn cfg-btn-sm" onclick="exportStreamMD()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
                             <button type="button" class="cfg-btn-sm" onclick="closeStreamModal()"><i class="fas fa-times"></i> 关闭</button>
                         </h3>
-                        <pre id="streamMessages" class="stream-terminal term-box"></pre>
+                        <pre id="streamMessages" class="stream-terminal term-box" style="margin-top:14px;"></pre>
                     </div>
                 </div>
 
@@ -499,12 +502,12 @@ async function loadConfigKeys() {
         const uid = 'val-' + idx;
         if (r.is_secret) {
             html += '<tr><td><code>' + key + '</code></td>'
-                + '<td><span id="' + uid + '">' + escHtml(r.value) + '</span> '
+                + '<td class="val-cell"><span class="val-text" id="' + uid + '" title="' + escHtml(r.value) + '">' + escHtml(r.value) + '</span> '
                 + '<button class="cfg-btn-sm eye-btn" data-idx="' + idx + '" data-key="' + key + '"><i class="fas fa-eye"></i></button></td>'
                 + '<td>' + note + '</td></tr>';
         } else {
             html += '<tr><td><code>' + key + '</code></td>'
-                + '<td>' + escHtml(r.value) + '</td>'
+                + '<td class="val-cell"><span class="val-text" title="' + escHtml(r.value) + '">' + escHtml(r.value) + '</span></td>'
                 + '<td>' + note + '</td></tr>';
         }
     });
@@ -521,11 +524,14 @@ async function loadConfigKeys() {
             if (span.dataset.revealed === '1') {
                 // 切回脱敏
                 span.textContent = rows[idx].value;
+                span.title = rows[idx].value;
                 span.dataset.revealed = '0';
                 this.innerHTML = '<i class="fas fa-eye"></i>';
             } else {
                 // 切到明文
-                span.textContent = revealMap[key] || rows[idx].value;
+                const plain = revealMap[key] || rows[idx].value;
+                span.textContent = plain;
+                span.title = plain;
                 span.dataset.revealed = '1';
                 this.innerHTML = '<i class="fas fa-eye-slash"></i>';
             }
@@ -899,6 +905,30 @@ function toggleSimCurl() {
         toggle.className = 'fas fa-chevron-down';
     } else {
         curl.style.display = 'none';
+        toggle.className = 'fas fa-chevron-right';
+    }
+}
+
+function toggleConfigKeys() {
+    const table = document.getElementById('configKeysTable');
+    const toggle = document.getElementById('configKeysToggle');
+    if (table.style.display === 'none') {
+        table.style.display = '';
+        toggle.className = 'fas fa-chevron-down';
+    } else {
+        table.style.display = 'none';
+        toggle.className = 'fas fa-chevron-right';
+    }
+}
+
+function togglePreview() {
+    const files = document.getElementById('previewFiles');
+    const toggle = document.getElementById('previewToggle');
+    if (files.style.display === 'none') {
+        files.style.display = '';
+        toggle.className = 'fas fa-chevron-down';
+    } else {
+        files.style.display = 'none';
         toggle.className = 'fas fa-chevron-right';
     }
 }

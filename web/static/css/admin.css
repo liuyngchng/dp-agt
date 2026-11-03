@@ -448,6 +448,38 @@ header p {
     font-family: inherit;
 }
 
+/* 上传文件选择框 */
+input[type="file"] {
+    padding: 9px 12px;
+    border: 2px dashed #c6cbd3;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: #555;
+    background: #fbfbfc;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+input[type="file"]:hover {
+    border-color: #4b6cb7;
+    background: #f4f7fc;
+}
+input[type="file"]::file-selector-button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #4b6cb7, #3a5a9e);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 12px;
+    transition: all 0.2s;
+}
+input[type="file"]::file-selector-button:hover {
+    background: linear-gradient(135deg, #3a5a9e, #2c487e);
+    box-shadow: 0 4px 12px rgba(75, 108, 183, 0.3);
+}
+
 .form-g input:focus,
 .form-g textarea:focus,
 .form-g select:focus {
@@ -517,6 +549,20 @@ header p {
 
 .result-table tbody tr:hover { background: #f8f9fe; }
 .result-table tbody tr:last-child td { border-bottom: none; }
+
+/* 已配置 Key 表格的“值”列 — 限制宽度，超长省略，悬停看完整内容 */
+.val-cell {
+    max-width: 240px;
+    white-space: nowrap;
+}
+.val-text {
+    display: inline-block;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
 
 /* 时间列 — 固定宽度避免翻页时空值跳变，留足 padding 后容纳 YYYY-MM-DD HH:MM:ss */
 .col-date {
