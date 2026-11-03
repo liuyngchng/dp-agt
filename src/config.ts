@@ -116,7 +116,7 @@ export function loadConfig(): Config {
     // 强制要求配置 LLM 网关地址
     console.error(
       '[config] 缺少 llm.base_url（或环境变量 ANTHROPIC_BASE_URL）。\n' +
-      '         必须指向 Anthropic 协议兼容网关（如 api_adapter_g）。\n' +
+      '         必须指向 Anthropic 协议兼容网关（如 api-gate）。\n' +
       '         请在 data/cfg.yml 中填写 llm.base_url。'
     );
     process.exit(1);
