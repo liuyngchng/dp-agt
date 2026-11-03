@@ -658,7 +658,8 @@ input[type="file"]::file-selector-button:hover {
     gap: 8px;
 }
 
-/* “执行过程”、”执行结果”、”任务执行时间线” 窗口 — 固定高度 */
+/* “会话终端”、”执行过程”、”执行结果”、”任务执行时间线” 窗口 — 固定高度 */
+#chatModal .modal-lg,
 #streamModal .modal-lg,
 #taskModal .modal-lg,
 #auditDetailModal .modal-lg {
