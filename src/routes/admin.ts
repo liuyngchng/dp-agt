@@ -147,8 +147,12 @@ export function createAdminRouter(cfg: Config): Router {
   // ---- 模拟操作 ----
 
   router.get('/admin/mock', (_req: Request, res: Response) => {
-    const mockFile = join(cfg.sys.data_dir, 'mock.json');
-    if (!existsSync(mockFile)) {
+    const mockPaths = [
+      resolve(process.cwd(), 'assets', 'mock.json'),          // Docker 镜像（第2类资源）
+      join(cfg.sys.data_dir, 'mock.json'),                    // 开发模式兼容
+    ];
+    const mockFile = mockPaths.find(p => existsSync(p));
+    if (!mockFile) {
       res.status(404).json({ code: 1001, message: 'mock.json 不存在' });
       return;
     }
@@ -232,7 +236,7 @@ export function createAdminRouter(cfg: Config): Router {
 
     const session = sessionsStore.get(session_id);
     const linkid = session?.linkid || '';
-    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(linkid));
+    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
     log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir), sessionFound: !!session }, 'session_messages_request');
 
     try {
@@ -256,7 +260,7 @@ export function createAdminRouter(cfg: Config): Router {
 
     const session = sessionsStore.get(session_id);
     const linkid = session?.linkid || '';
-    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(linkid));
+    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -309,7 +313,7 @@ export function createAdminRouter(cfg: Config): Router {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
-    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(session.linkid));
+    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(session.linkid));
     if (existsSync(workDir)) {
       try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
     }
@@ -333,7 +337,7 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
     const linkid = session.linkid;
-    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(linkid));
+    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
     log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir) }, 'session_chat_start');
 
     res.writeHead(200, {
@@ -592,8 +596,12 @@ export function createAdminRouter(cfg: Config): Router {
   // 下载 CSV 模板
   router.get('/admin/prompt-config/template', (_req: Request, res: Response) => {
     let csv = '';
-    const templatePath = join(cfg.sys.data_dir, 'cfg.csv.template');
-    if (existsSync(templatePath)) {
+    const templatePaths = [
+      resolve(process.cwd(), 'assets', 'cfg.csv.template'),  // Docker 镜像（第2类资源）
+      join(cfg.sys.data_dir, 'cfg.csv.template'),            // 开发模式兼容
+    ];
+    const templatePath = templatePaths.find(p => existsSync(p));
+    if (templatePath) {
       try {
         csv = readFileSync(templatePath, 'utf8');
       } catch { csv = ''; }

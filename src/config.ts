@@ -4,6 +4,7 @@ import { load as loadYaml } from 'js-yaml';
 
 // ---- 默认值 ----
 const DATA_DIR = process.env.DATA_DIR || resolve(process.cwd(), 'data');
+const RUNTIME_DIR = process.env.RUNTIME_DIR || resolve(process.cwd(), 'runtime');
 
 interface CfgFile {
   server?: {
@@ -18,6 +19,7 @@ interface CfgFile {
     max_pending_tasks?: number;
     retention_days?: number;
     data_dir?: string;
+    runtime_dir?: string;
   };
   llm?: {
     base_url?: string;
@@ -48,6 +50,7 @@ export interface Config {
     max_pending_tasks: number;
     retention_days: number;
     data_dir: string;
+    runtime_dir: string;
   };
   llm: {
     base_url: string;
@@ -135,6 +138,7 @@ export function loadConfig(): Config {
       max_pending_tasks: envInt('MAX_PENDING_TASKS', y.max_pending_tasks ?? 10),
       retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 30),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
+      runtime_dir: env('RUNTIME_DIR', y.runtime_dir ?? RUNTIME_DIR),
     },
     llm: {
       base_url: llmBaseUrl,
@@ -155,6 +159,11 @@ export function loadConfig(): Config {
 
 /** 确保运行时目录存在 */
 export function ensureDirs(cfg: Config) {
-  mkdirSync(join(cfg.sys.data_dir, 'tasks'), { recursive: true });
   mkdirSync(join(cfg.sys.data_dir, 'logs'), { recursive: true });
+  mkdirSync(join(cfg.sys.runtime_dir, 'tasks'), { recursive: true });
+  mkdirSync(join(cfg.sys.runtime_dir, 'claude-config'), { recursive: true });
+
+  // SDK 会话历史写入 RUNTIME_DIR/claude-config（而非 ~/.claude），
+  // 避免宿主机 UID 与容器 UID 不一致导致写入失败。
+  process.env.CLAUDE_CONFIG_DIR = join(cfg.sys.runtime_dir, 'claude-config');
 }

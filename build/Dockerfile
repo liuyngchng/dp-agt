@@ -80,8 +80,7 @@ RUN tar -xJf /tmp/node-v22.23.2-linux-x64.tar.xz -C /usr/local --strip-component
 
 # ---- Runtime user ----
 RUN userdel -r ubuntu 2>/dev/null || true \
-    && useradd -r -m -d /home/agent -u 1000 -s /bin/bash agent \
-    && mkdir -p /home/agent/.claude && chown agent:agent /home/agent/.claude
+    && useradd -r -m -d /home/agent -u 1000 -s /bin/bash agent
 
 USER agent
 ENV HOME=/home/agent
@@ -126,6 +125,12 @@ COPY --chown=agent:agent --from=builder /build/node_modules/ /app/node_modules/
 COPY --chown=agent:agent package.json tsconfig.json /app/
 COPY --chown=agent:agent web/ /app/web/
 COPY --chown=agent:agent prompts/ /app/prompts/
+
+# ---- 第2类静态资源（镜像内，不依赖宿主机挂载） ----
+COPY --chown=agent:agent data/cfg.csv.template data/mock.json /app/assets/
+
+# ---- 运行时工作目录（第3类：tasks/ + claude-config/，纯容器内 ephemeral） ----
+RUN mkdir -p /app/runtime && chown agent:agent /app/runtime
 
 # ---- HTTPS certs ----
 # 证书直接打入镜像（不依赖宿主机挂载），chmod 644 保证任意 uid 可读

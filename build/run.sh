@@ -12,7 +12,7 @@ NETWORK="${NETWORK:-llm_net}"
 
 echo "ensure data dir exists"
 mkdir -p "$DATA_DIR"
-mkdir -p "$DATA_DIR/tasks" "$DATA_DIR/logs" "$DATA_DIR/.claude"
+mkdir -p "$DATA_DIR/logs"
 echo "detect host uid/gid"
 # Detect host UID/GID (use current user to match data dir ownership)
 HOST_UID=$(id -u)
@@ -22,12 +22,6 @@ echo "check cfg.yml"
 if [ ! -f "$DATA_DIR/cfg.yml" ]; then
   echo "[deploy] cfg.yml 不存在: $DATA_DIR/cfg.yml" >&2
   exit 1
-fi
-
-echo "check cfg.csv.template"
-if [ ! -f "$DATA_DIR/cfg.csv.template" ]; then
-  cp "$(pwd)/data/cfg.csv.template" "$DATA_DIR/cfg.csv.template"
-  echo "[deploy] cfg.csv.template 已复制到数据目录"
 fi
 
 echo "ensure network exists"
@@ -63,7 +57,6 @@ case "${1:-start}" in
       --network "$NETWORK" \
       -p "$HOST_PORT:20001" \
       -v "$DATA_DIR:/app/data" \
-      -v "$DATA_DIR/.claude:/home/agent/.claude" \
       --add-host api.anthropic.com:127.0.0.1 \
       --add-host api-staging.anthropic.com:127.0.0.1 \
       --add-host anthropic.com:127.0.0.1 \

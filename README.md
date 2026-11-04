@@ -120,9 +120,31 @@ AI 数字员工/
 │   └── sections/               # 可插拔的"外部服务调用说明"片段
 │       ├── wps.md              # WPS 文件下载回退
 │       └── audit.md            # rdCLI 审稿服务
-├── data/                     # 运行时数据（SQLite + 任务工作目录）
+├── data/                     # 运行时数据（SQLite + 日志 + 密钥）
 └── build/                    # Dockerfile + 部署脚本
 ```
+
+### 数据目录与挂载（重要）
+
+数据按「是否需要在容器外持久化」分为三类，Docker 部署时**只挂载第 1 类目录**。
+
+| 类别 | 目录 | 内容 | 持久化 | 说明 |
+|------|------|------|--------|------|
+| 第 1 类 | `DATA_DIR`（宿主机挂载到 `/app/data`） | `cfg.yml`、`app.db`、`logs/`、`secrets.key` | ✅ 重启保留 | 配置文件、数据库、日志、加密密钥 |
+| 第 2 类 | `/app/assets`（镜像内，不挂载） | `cfg.csv.template`、`mock.json` | ✅ 随镜像 | 静态模板资源，构建时打入镜像 |
+| 第 3 类 | `RUNTIME_DIR`（容器内，不挂载） | `tasks/`、`claude-config/` | ❌ 重启丢弃 | SDK 工作目录与会话历史，ephemeral |
+
+**环境变量**：
+
+- `DATA_DIR` — 第 1 类持久化数据根目录（默认 `./data`，Docker 中为 `/app/data`）
+- `RUNTIME_DIR` — 第 3 类运行时工作目录（默认 `./runtime`，Docker 中为 `/app/runtime`）
+
+**关键点**：
+
+- SDK 会话历史写入 `RUNTIME_DIR/claude-config`（通过 `CLAUDE_CONFIG_DIR` 环境变量指定），**不再使用 `~/.claude`**。这避免了宿主机 UID 与容器 UID 不一致时，bind mount 的 `~/.claude` 目录无法写入导致历史消息丢失的问题。
+- `tasks/`（每个任务的 SDK 工作目录，含下载的文件、上下文快照）同样放在 `RUNTIME_DIR`，重启后自动丢弃，不影响持久化数据。
+- 因此 Docker 部署**不需要**再挂载 `$DATA_DIR/.claude`，`run.sh` 已移除该挂载项。
+
 
 ### 提示词与配置管理（模板管理页面）
 

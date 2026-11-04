@@ -225,7 +225,7 @@ export async function runAgent(
   resumeSessionId?: string,
   onSessionId?: (sessionId: string) => void,
 ): Promise<SdkResult> {
-  const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeDirName(linkid));
+  const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeDirName(linkid));
   await mkdir(workDir, { recursive: true });
 
   // CLAUDE.md 仅首次写入（resume 时不覆盖，因为 SDK snapshot 已固化 system prompt）

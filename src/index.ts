@@ -169,7 +169,7 @@ async function cleanupExpiredTasks() {
     }
 
     // 清理过期 session 对应的磁盘工作目录
-    const tasksDir = join(cfg.sys.data_dir, 'tasks');
+    const tasksDir = join(cfg.sys.runtime_dir, 'tasks');
     if (existsSync(tasksDir)) {
       const { getDb } = await import('./store.js');
       const activeSessions = getDb().prepare('SELECT linkid FROM sessions').all() as Array<{ linkid: string }>;
