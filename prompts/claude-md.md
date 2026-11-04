@@ -37,7 +37,9 @@ curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/extract/txt \
 - 用 `--noproxy '*'` 绕过代理直连
 - 文件大小上限 64MB
 
-{{section:workflow-transfer:doc.workflow_transfer_url}}
+{{section:workflow-transfer:doc.workflow_next_node_options_info_search_url}}
+
+{{section:workflow-config:doc.workflow_config_url}}
 
 {{section:audit:doc_audit.api_url}}
 
