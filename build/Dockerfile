@@ -130,7 +130,8 @@ COPY --chown=agent:agent prompts/ /app/prompts/
 COPY --chown=agent:agent data/cfg.csv.template data/mock.json /app/assets/
 
 # ---- 运行时工作目录（第3类：tasks/ + claude-config/，纯容器内 ephemeral） ----
-RUN mkdir -p /app/runtime && chown agent:agent /app/runtime
+# chmod 777 是因为 run.sh 通过 --user $HOST_UID 启动，UID 不固定
+RUN mkdir -p /app/runtime && chmod 777 /app/runtime
 
 # ---- HTTPS certs ----
 # 证书直接打入镜像（不依赖宿主机挂载），chmod 644 保证任意 uid 可读
