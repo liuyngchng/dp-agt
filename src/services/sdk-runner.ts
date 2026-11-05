@@ -177,7 +177,7 @@ async function buildClaudeMd(): Promise<string> {
 
   // ── 替换 {{section:name:trigger_key}} 占位符 ──
   // trigger_key 支持含点号的路径，如 doc_audit.api_url
-  template = template.replace(/\{\{section:(\w+):([\w.]+)\}\}/g, (_: string, name: string, triggerKey: string) => {
+  template = template.replace(/\{\{section:([\w-]+):([\w.]+)\}\}/g, (_: string, name: string, triggerKey: string) => {
     const triggerVal = cfgVals.get(triggerKey.trim());
     if (!triggerVal) {
       return ''; // 触发 key 没值 → 整段不渲染
