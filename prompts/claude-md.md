@@ -37,6 +37,28 @@ curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/extract/txt \
 - 用 `--noproxy '*'` 绕过代理直连
 - 文件大小上限 64MB
 
+## 文档格式转换（.doc → .docx）
+
+同一个 doc-util 服务提供 `.doc`（旧版 Word，OLE2 格式）转 `.docx` 的能力，
+用于把正文提交到仅接受 `.docx` 的服务（如 rdCLI 审稿）之前做格式转换。
+
+```bash
+curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/convert/doc \
+  -F "file=@正文.doc" \
+  -o 正文.docx
+```
+
+返回:
+- 成功：HTTP 200，二进制 `.docx` 文件流（已写入 `-o` 指定的文件）
+- 失败：非 200，如 400（文件不是 OLE2 `.doc`）、413（超过 64MB）、500（转换失败）
+
+注意事项:
+- 只接受旧版 `.doc`（OLE2 格式，magic bytes `D0 CF 11 E0`）；PDF / DOCX 等其它格式会返回 400
+- 输出文件为真正的 `.docx`，可直接提交到 rdCLI 审稿等仅接受 `.docx` 的服务
+- 该服务使用自签名 HTTPS 证书，务必带 `-k`，并用 `--noproxy '*'` 绕过代理直连
+- 文件大小上限 64MB，单次转换超时 60 秒
+- 若正文本身已是 `.docx`，无需转换，直接使用
+
 {{section:workflow-transfer:doc.workflow_next_node_options_info_search_url}}
 
 {{section:workflow-config:doc.workflow_config_url}}
