@@ -19,6 +19,7 @@ data/secrets.key
 data/logs/
 data/tasks/
 data/.claude/
+data/memory/
 
 # IDE
 .idea/

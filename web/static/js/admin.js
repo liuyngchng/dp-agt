@@ -67,6 +67,7 @@ async function initNav() {
                 const section = document.getElementById('section-' + tab.dataset.tab);
                 if (section) section.classList.add('active');
                 if (tab.dataset.tab === 'interfaces') { loadInterfaces(); loadConfigKeys(); loadPreview(); }
+                else if (tab.dataset.tab === 'memory') loadMemories();
                 else if (tab.dataset.tab === 'simulate') loadSimulateTab();
                 else if (tab.dataset.tab === 'tasks') loadTasks();
                 else if (tab.dataset.tab === 'sys') loadSysConfig();
@@ -118,6 +119,99 @@ async function loadInterfaces() {
             <td>${ts}</td>
         </tr>`;
     }).join('');
+}
+
+// ==== 记忆管理 ====
+async function loadMemories() {
+    try {
+        const res = await fetch(API + '/memory');
+        const json = await res.json();
+        const items = (json.data && json.data.items) || [];
+        const tbody = document.getElementById('memoryTbody');
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无记忆文件，请上传业务知识文档</td></tr>';
+            return;
+        }
+        tbody.innerHTML = items.map((m, idx) => `<tr>
+            <td class="col-seq">${idx + 1}</td>
+            <td><span style="font-family:monospace;font-size:0.85rem;">${escHtml(m.filename)}</span></td>
+            <td>${escHtml(m.title)}</td>
+            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(m.description || '')}">${escHtml(m.description || '-')}</td>
+            <td>${fmtSize(m.size)}</td>
+            <td class="col-action">
+                <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="previewMemory('${escJs(m.filename)}')" title="预览" style="margin-right:4px;"><i class="fas fa-eye"></i></button>
+                <button class="cfg-btn-danger-sm" onclick="deleteMemoryFile('${escJs(m.filename)}')" title="删除"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        </tr>`).join('');
+    } catch (err) {
+        document.getElementById('memoryTbody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#e53e3e;padding:24px;">加载失败: ' + escHtml(err.message) + '</td></tr>';
+    }
+}
+
+function fmtSize(bytes) {
+    if (!bytes || bytes < 1024) return (bytes || 0) + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+async function uploadMemory() {
+    const input = document.getElementById('memoryFileInput');
+    const file = input.files[0];
+    if (!file) return toast('请选择 .md / .tar.gz / .tgz / .zip 文件', 'error');
+
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(API + '/memory/upload', { method: 'POST', body: fd });
+    const json = await res.json();
+    const resultEl = document.getElementById('memoryResult');
+    if (json.code !== 0) {
+        resultEl.innerHTML = '<span style="color:#e53935;">✗ ' + escHtml(json.message || '上传失败') + '</span>';
+        return;
+    }
+    resultEl.innerHTML = '<span style="color:#2e7d32;">✓ 已上传 ' + json.data.total + ' 个文件: ' + escHtml((json.data.files || []).join(', ')) + '</span>';
+    toast('记忆文件已上传');
+    loadMemories();
+}
+
+async function previewMemory(filename) {
+    try {
+        const res = await fetch(API + '/memory/' + encodeURIComponent(filename) + '/content');
+        const json = await res.json();
+        if (json.code !== 0) {
+            toast(json.message || '获取失败', 'error');
+            return;
+        }
+        document.getElementById('memoryModalTitle').innerHTML = '<i class="fas fa-file-alt"></i> ' + escHtml(filename);
+        document.getElementById('memoryContent').textContent = json.data.content || '';
+        document.getElementById('memoryModal').classList.add('show');
+    } catch (err) {
+        toast('预览失败: ' + err.message, 'error');
+    }
+}
+
+function closeMemoryModal() {
+    document.getElementById('memoryModal').classList.remove('show');
+}
+
+async function deleteMemoryFile(filename) {
+    if (!confirm('确定删除记忆文件 ' + filename + '？\\n删除后下一个新任务将不再能查到此知识。')) return;
+    try {
+        const res = await fetch(API + '/memory/' + encodeURIComponent(filename), { method: 'DELETE' });
+        const json = await res.json();
+        if (json.code !== 0) {
+            toast(json.message || '删除失败', 'error');
+            return;
+        }
+        toast('已删除', 'success');
+        loadMemories();
+    } catch (err) {
+        toast('删除失败: ' + err.message, 'error');
+    }
+}
+
+function escJs(s) {
+    if (!s) return '';
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
 // ==== 模板管理（CSV / Tar / 预览） ====
@@ -361,6 +455,7 @@ function taskDetailHtml(t) {
 document.getElementById('auditDetailModal').addEventListener('click', function(e) { if (e.target === this) closeAuditDetail(); });
 document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
 document.getElementById('chatModal').addEventListener('click', function(e) { if (e.target === this) closeChatModal(); });
+document.getElementById('memoryModal').addEventListener('click', function(e) { if (e.target === this) closeMemoryModal(); });
 
 // Init
 initNav();
@@ -393,6 +488,7 @@ document.addEventListener('keydown', function(e) {
         if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
         if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
         if (document.getElementById('auditDetailModal').classList.contains('show')) closeAuditDetail();
+        if (document.getElementById('memoryModal').classList.contains('show')) closeMemoryModal();
     }
 });
 

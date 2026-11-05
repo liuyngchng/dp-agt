@@ -103,6 +103,38 @@
                 </div>
             </div>
 
+            <!-- ========== 记忆管理 ========== -->
+            <div class="cfg-section" id="section-memory">
+                <h2><i class="fas fa-database"></i> 记忆管理</h2>
+                <p>上传公司业务背景知识（领导分工、部门职责、业务流程等）作为 Claude Agent 的按需记忆。文件存入 <code>data/memory/</code>，下一个新任务生效。支持 <code>.md</code> 单文件或 <code>.tar.gz</code> / <code>.tgz</code> / <code>.zip</code> 批量包。</p>
+
+                <div style="margin:20px 0;">
+                    <div style="display:flex;align-items:center;gap:12px;max-width:640px;">
+                        <input type="file" id="memoryFileInput" accept=".md,.tar,.tar.gz,.tgz,.zip" style="flex:1;">
+                        <button class="cfg-btn cfg-btn-save" onclick="uploadMemory()"><i class="fas fa-upload"></i> 上传</button>
+                    </div>
+                    <div id="memoryResult" style="margin-top:12px;"></div>
+                </div>
+
+                <div class="table-scroll" style="margin-top:24px;">
+                    <table class="result-table">
+                        <thead><tr><th class="col-seq">序号</th><th>文件名</th><th>标题</th><th>说明</th><th>大小</th><th class="col-action">操作</th></tr></thead>
+                        <tbody id="memoryTbody"><tr><td colspan="6" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+
+                <!-- 记忆预览弹窗 -->
+                <div id="memoryModal" class="modal-overlay">
+                    <div class="modal-lg" style="display:flex;flex-direction:column;">
+                        <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                            <span id="memoryModalTitle"><i class="fas fa-file-alt"></i> 记忆文件</span>
+                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeMemoryModal()" style="margin-left:auto;">关闭</button>
+                        </h3>
+                        <pre id="memoryContent" style="flex:1;min-height:0;overflow:auto;margin-top:16px;padding:14px;background:#2d2d2d;color:#f8f8f2;border-radius:8px;font-size:0.82rem;font-family:'SF Mono','Consolas',monospace;white-space:pre-wrap;word-break:break-all;"></pre>
+                    </div>
+                </div>
+            </div>
+
             <!-- ========== 操作模拟 ========== -->
             <div class="cfg-section" id="section-simulate">
                 <h2><i class="fas fa-flask"></i> 操作模拟</h2>

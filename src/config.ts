@@ -160,6 +160,7 @@ export function loadConfig(): Config {
 /** 确保运行时目录存在 */
 export function ensureDirs(cfg: Config) {
   mkdirSync(join(cfg.sys.data_dir, 'logs'), { recursive: true });
+  mkdirSync(join(cfg.sys.data_dir, 'memory'), { recursive: true });
   mkdirSync(join(cfg.sys.runtime_dir, 'tasks'), { recursive: true });
   mkdirSync(join(cfg.sys.runtime_dir, 'claude-config'), { recursive: true });
 

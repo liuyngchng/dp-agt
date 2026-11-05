@@ -18,6 +18,7 @@ import tarFs from 'tar-fs';
 import tarStream from 'tar-stream';
 import { loadPromptFromDisk, rescanPromptsDir, listAllPromptFiles } from '../services/prompt-engine.js';
 import { buildEnv } from '../services/sdk-runner.js';
+import { listMemories, getMemory, saveMemory, deleteMemory, ensureMemoryDir } from '../services/memory-store.js';
 import { syncInterfacesFromPrompts } from '../store.js';import type { Config } from '../config.js';
 
 const log = getLogger();
@@ -32,6 +33,7 @@ export function createAdminRouter(cfg: Config): Router {
     const tabs = [
       ...(isAdmin ? [
         { id: 'interfaces', icon: 'fa-brain', label: '模板管理' },
+        { id: 'memory', icon: 'fa-database', label: '记忆管理' },
         { id: 'simulate', icon: 'fa-flask', label: '操作模拟' },
         { id: 'tasks', icon: 'fa-list-alt', label: '任务监控' },
       ] : []),
@@ -67,6 +69,7 @@ export function createAdminRouter(cfg: Config): Router {
   router.use('/admin/prompt-config', adminOnlyMiddleware);
   router.use('/admin/prompt-tar', adminOnlyMiddleware);
   router.use('/admin/prompt-preview', adminOnlyMiddleware);
+  router.use('/admin/memory', adminOnlyMiddleware);
 
   // ---- Interfaces 列表 — 从 prompts/ 自动发现，DB 同步 ----
   router.get('/admin/interfaces', (_req: Request, res: Response) => {
@@ -641,22 +644,23 @@ export function createAdminRouter(cfg: Config): Router {
     limits: { fileSize: 10 * 1024 * 1024 },
   });
 
-  /** 按要求剥离包内固定的顶级目录 prompts/，不是则报错 */
-  function stripTopDir(names: string[]): string[] | { error: string } {
+  /** 按要求剥离包内固定的顶级目录，topDir 为 null 时不剥离。默认 'prompts/' */
+  function stripTopDir(names: string[], topDir?: string | null): string[] | { error: string } {
     if (names.length === 0) return names;
-    const PREFIX = 'prompts/';
+    if (topDir === null) return names;
+    const PREFIX = topDir || 'prompts/';
     if (names.every(n => n.startsWith(PREFIX))) {
       return names.map(n => n.slice(PREFIX.length));
     }
-    // 有些文件不在 prompts/ 下 → 格式错误
+    // 有些文件不在 PREFIX 下 → 格式错误
     // 从任意带 / 的 name 提取顶级目录名报告给用户
     const actual = names.map(n => n.split('/')[0]).filter(Boolean);
     const unique = [...new Set(actual)];
-    return { error: '压缩包顶层目录必须为 prompts/，当前为: ' + unique.join(', ') };
+    return { error: '压缩包顶层目录必须为 ' + PREFIX + '，当前为: ' + unique.join(', ') };
   }
 
-  /** 检测格式并解压 → { [filename]: content } | { error: string } */
-  async function extractArchive(buf: Buffer, origName: string): Promise<Record<string, string> | { error: string } | null> {
+  /** 检测格式并解压 → { [filename]: content } | { error: string } | null。topDir 传 null 不剥离顶级目录 */
+  async function extractArchive(buf: Buffer, origName: string, topDir?: string | null): Promise<Record<string, string> | { error: string } | null> {
     // ── Zip ──
     if (origName.endsWith('.zip') || (buf[0] === 0x50 && buf[1] === 0x4b)) {
       const zip = new AdmZip(buf);
@@ -667,7 +671,7 @@ export function createAdminRouter(cfg: Config): Router {
         if (!name.endsWith('.md')) continue;
         files[name] = entry.getData().toString('utf8');
       }
-      const stripped = stripTopDir(Object.keys(files));
+      const stripped = stripTopDir(Object.keys(files), topDir);
       if ('error' in stripped) {
         return { error: stripped.error };
       }
@@ -705,7 +709,7 @@ export function createAdminRouter(cfg: Config): Router {
     return new Promise<Record<string, string> | { error: string } | null>((resolve) => {
       extract.on('finish', () => {
         const keys = Object.keys(files);
-        const stripped = stripTopDir(keys);
+        const stripped = stripTopDir(keys, topDir);
         if ('error' in stripped) {
           resolve({ error: stripped.error });
           return;
@@ -837,11 +841,107 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({ code: 0, data: { previews } });
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // 记忆管理 — 上传 .md / .tar.gz / .zip，写入 data/memory/
+  // ═══════════════════════════════════════════════════════════════
+
+  const uploadMemory = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
+
+  // 列出所有记忆文件
+  router.get('/admin/memory', (_req: Request, res: Response) => {
+    const items = listMemories(cfg.sys.data_dir);
+    res.json({ code: 0, data: { items, count: items.length } });
+  });
+
+  // 获取单个记忆文件内容
+  router.get('/admin/memory/:filename/content', (req: Request, res: Response) => {
+    const content = getMemory(cfg.sys.data_dir, req.params.filename);
+    if (content === null) {
+      res.status(404).json({ code: 1001, message: '记忆文件不存在' });
+      return;
+    }
+    res.json({ code: 0, data: { filename: req.params.filename, content } });
+  });
+
+  // 上传记忆文件（单 .md 或 .tar.gz / .tgz / .zip 包）
+  router.post('/admin/memory/upload', uploadMemory.single('file'), async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ code: 1001, message: '请选择 .md / .tar.gz / .tgz / .zip 文件' });
+      return;
+    }
+
+    ensureMemoryDir(cfg.sys.data_dir);
+    let uploaded: string[] = [];
+
+    // 浏览器上传中文文件名时 multipart 头未带 charset，multer 按 latin1 解码，
+    // 需还原为 UTF-8。纯 ASCII 文件名该转换是恒等，无副作用。
+    const origName = decodeUploadFilename(file.originalname || '');
+    if (/\.md$/i.test(origName) && !/\.tar\.gz$|\.tgz$|\.tar$|\.zip$/i.test(origName)) {
+      const content = file.buffer.toString('utf8');
+      const safe = saveMemory(cfg.sys.data_dir, origName, content);
+      uploaded = [safe];
+    } else {
+      // 复用 extractArchive 解压，topDir=null 表示不剥离顶级目录
+      const files = await extractArchive(file.buffer, origName, null);
+      if (!files) {
+        res.status(400).json({ code: 1001, message: '无法解压文件。支持 .md / .tar.gz / .tgz / .zip' });
+        return;
+      }
+      if ('error' in files) {
+        res.status(400).json({ code: 1001, message: files.error });
+        return;
+      }
+      for (const [name, content] of Object.entries(files)) {
+        if (!name.endsWith('.md')) continue;
+        try {
+          const safe = saveMemory(cfg.sys.data_dir, name, content);
+          uploaded.push(safe);
+        } catch { /* skip invalid */ }
+      }
+    }
+
+    if (uploaded.length === 0) {
+      res.status(400).json({ code: 1001, message: '没有有效的 .md 文件' });
+      return;
+    }
+
+    log.info({ uploaded }, 'memory_uploaded');
+    res.json({ code: 0, data: { files: uploaded, total: uploaded.length } });
+  });
+
+  // 删除记忆文件
+  router.delete('/admin/memory/:filename', (req: Request, res: Response) => {
+    const ok = deleteMemory(cfg.sys.data_dir, req.params.filename);
+    if (!ok) {
+      res.status(404).json({ code: 1001, message: '记忆文件不存在' });
+      return;
+    }
+    log.info({ filename: req.params.filename }, 'memory_deleted');
+    res.json({ code: 0, message: '已删除' });
+  });
+
   return router;
 }
 
 function sanitizeLinkid(linkid: string): string {
   return linkid.replace(/[/\\:*?"<>|]/g, '_');
+}
+
+/** 还原 multer 对中文文件名的 latin1→UTF-8 解码问题。
+   *  multer（busboy）解析 multipart 文件名时固定按 latin1 解码，中文等
+   *  非 ASCII 字符会变成乱码。此处将 latin1 字节重新按 UTF-8 解码还原。
+   *  纯 ASCII 文件名该转换是恒等，无副作用。 */
+function decodeUploadFilename(name: string): string {
+  if (!name) return name;
+  try {
+    return Buffer.from(name, 'latin1').toString('utf8');
+  } catch {
+    return name;
+  }
 }
 
 function safeParse(s: string | null): unknown {
