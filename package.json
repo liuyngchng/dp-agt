@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "typecheck": "tsc",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/index.js --minify",
     "start": "node dist/index.js"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "@types/tar-fs": "^2.0.4",
     "@types/tar-stream": "^3.1.5",
     "@types/uuid": "^10.0.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }

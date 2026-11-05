@@ -9,8 +9,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "sourceMap": true
+    "declaration": false,
+    "sourceMap": false,
+    "noEmit": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
