@@ -1,4 +1,0 @@
-## 当文件无法下载时，需要通过这个接口获取新的下载地址
-doc.renew_file_url_api=https://123.456.789
-## 所有请求都需要携带的 bearer token
-doc.download.token=sk-1234567
