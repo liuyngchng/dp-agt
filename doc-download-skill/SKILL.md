@@ -91,7 +91,24 @@ python download.py --json '<JSON>' -o <输出目录>
 ## 注意事项
 
 - 仅下载，不解析文档内容、不提取文本。
+
 - 下载文件名优先级：`file_Name` 字段 > URL 中的 filename > file_id 兜底。
+
 - 默认禁用系统代理直连内网、忽略 HTTPS 证书校验（内网自签证书场景）。
+
 - 若 `token.txt` 为空，则以无认证方式下载。
-- 若python脚本本身有问题，请自行修改调整。
+
+- 若python脚本本身有问题，请自行修改调整。我这里给一个 下载文件的curl示范
+
+
+```
+curl -X POST "https://your_file_download_file" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_bearer_token" \
+  -d '{
+    "fileId": "409745446043652",
+    "getFileUrlType": "download"
+  }'
+```
+
+  
