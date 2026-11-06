@@ -32,7 +32,7 @@
 - **办文时限**（`timeLimitWriting`）：正文中要求反馈的期限（如"请于 X 年 X 月 X 日前反馈"）
 - **密级**（`secretClass`）：如"绝密"、"机密"、"秘密"
 
-字段名以请求 JSON 中 `form_data` 实际出现的字段名为准，参考 `form_data_desc` 判断每个字段的含义。
+字段名以请求 `JSON` 中 `form_data` 实际出现的字段名为准，参考 `form_data_desc` 判断每个字段的含义。
 
 ### 步骤 3：组装填充结果
 
@@ -41,19 +41,19 @@
 ### 步骤 4：执行结果回调
 
 重要参数：
-- 当前任务 task_id: `{{task_id}}`
-- 本次请求 linkid: `{{request.linkid}}`
+- 当前任务 `task_id`: `{{task_id}}`
+- 本次请求 `linkid`: `{{request.linkid}}`
 
-在输出最终 JSON 之前，**必须**先执行结果回调。回调 payload 的 `data` 字段，就是下方「输出要求」中定义的 JSON 结果（步骤 3 构建完成后填入）。
-回调的具体 curl 命令模板见系统提示（CLAUDE.md）中的「结果回调」章节，直接照做即可。
-回调 payload 中的 task_id 和 linkid 必须使用上面给出的准确值。
+在输出最终 `JSON` 之前，**必须**先执行结果回调。回调 payload 的 `data` 字段，就是下方「输出要求」中定义的 `JSON` 结果（步骤 3 构建完成后填入）。
+回调的具体 curl 命令模板见系统提示（`CLAUDE.md`）中的「结果回调」章节，直接照做即可。
+回调 payload 中的 `task_id` 和 `linkid` 必须使用上面给出的准确值。
 
-回调成功（HTTP 2xx）后再输出下面的 JSON。回调失败重试最多 3 次（间隔 2/4/8 秒），
-仍失败则在 JSON 的 `fail_reason` 中补充「结果回调失败：<错误信息>」并将 `need_human` 设为 `true`。
+回调成功（HTTP 2xx）后再输出下面的 `JSON`。回调失败重试最多 3 次（间隔 2/4/8 秒），
+仍失败则在 `JSON` 的 `fail_reason` 中补充「结果回调失败：<错误信息>」并将 `need_human` 设为 `true`。
 
 ## 输出要求
 
-请按以下 JSON Schema 输出最终结果，用 ```json 代码块包裹：
+请按以下 `JSON` Schema 输出最终结果，用 ```json 代码块包裹：
 
 ```json
 {
@@ -85,4 +85,4 @@
 - 只填充能够从正文中确认的字段，不要臆造值
 - 日期统一为 `YYYY-MM-DD` 格式
 - 若正文无法下载或解析失败，将 `need_human` 设为 `true` 并在 `fail_reason` 中说明原因
-- json 代码块之外不要输出任何其他内容
+- `JSON` 代码块之外不要输出任何其他内容

@@ -19,6 +19,7 @@ import tarFs from 'tar-fs';
 import tarStream from 'tar-stream';
 import { loadPromptFromDisk, rescanPromptsDir, listAllPromptFiles } from '../services/prompt-engine.js';
 import { buildEnv, buildClaudeMd } from '../services/sdk-runner.js';
+import { buildOutputOnlyEvents, renderHistoryHtml, renderHistoryMd } from '../services/timeline.js';
 import { listMemories, getMemory, saveMemory, deleteMemory, ensureMemoryDir } from '../services/memory-store.js';
 import { syncInterfacesFromPrompts } from '../store.js';import type { Config } from '../config.js';
 
@@ -204,6 +205,7 @@ export function createAdminRouter(cfg: Config): Router {
         task_id: t.task_id,
         linkid: t.linkid,
         session_id: t.session_id,
+        session_status: t.session_id ? (sessionsStore.get(t.session_id)?.status ?? 'closed') : null,
         title: extractTitle(t.request_body),
         path: t.path,
         status: t.status,
@@ -493,6 +495,46 @@ export function createAdminRouter(cfg: Config): Router {
         sdk_output: task.sdk_output,
         sdk_trace: task.sdk_trace,
       },
+    });
+  });
+
+  // 会话处理时间线（按 linkid 聚合所有 task）
+  router.get('/admin/audit/link/:linkid/timeline', (req: Request, res: Response) => {
+    const { linkid } = req.params;
+    const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'json';
+
+    const tasks = taskLogsStore.listByLinkid(linkid);
+    if (tasks.length === 0) {
+      res.status(404).json({ code: 1001, message: '该 linkid 下无任务记录' });
+      return;
+    }
+
+    const historyTasks = tasks.map(t => ({
+      task_id: t.task_id,
+      session_id: t.session_id,
+      title: extractTitle(t.request_body),
+      path: t.path,
+      status: t.status,
+      error_message: t.error_message,
+      created_at: t.created_at,
+      finished_at: t.finished_at,
+      events: buildOutputOnlyEvents(t),
+    }));
+
+    log.info({ linkid, taskCount: tasks.length, format }, 'admin_link_timeline');
+
+    if (format === 'html') {
+      res.contentType('text/html; charset=utf-8').send(renderHistoryHtml(linkid, historyTasks));
+      return;
+    }
+    if (format === 'md') {
+      res.contentType('text/markdown; charset=utf-8').send(renderHistoryMd(linkid, historyTasks));
+      return;
+    }
+
+    res.json({
+      code: 0,
+      data: { linkid, total: historyTasks.length, tasks: historyTasks },
     });
   });
 

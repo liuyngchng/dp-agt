@@ -398,6 +398,12 @@ function renderTasksPage(list) {
         const taskId = escHtml(t.task_id);
         const title = t.title || '-';
         const titleDisplay = title.length > 20 ? escHtml(title.substring(0, 20)) + '...' : escHtml(title);
+        const hasSession = !!t.session_id;
+        // 会话记录仅在 session 仍 active 时可点；已关闭/无 session 时置灰。
+        const sessionOpen = hasSession && t.session_status === 'active';
+        const viewBtn = sessionOpen
+            ? `<button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewSession('${escHtml(t.session_id)}', '${taskId}', '${escHtml(t.status || '')}')" title="会话记录"><i class="fas fa-comments"></i></button>`
+            : `<button class="cfg-btn-sm cfg-btn-icon" disabled title="${hasSession ? '会话已关闭' : '无会话记录'}"><i class="fas fa-comments"></i></button>`;
         return `<tr class="main-row">
             <td class="col-seq">${no}</td>
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
@@ -406,7 +412,7 @@ function renderTasksPage(list) {
             <td>${statusText(t.status)}</td>
             <td class="col-date">${fmtTs(t.created_at)}</td>
             <td class="col-date">${fmtTs(t.finished_at)}</td>
-            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewSession('${escHtml(t.session_id || '')}', '${taskId}', '${escHtml(t.status || '')}')" title="会话记录"><i class="fas fa-comments"></i></button></td>
+            <td class="col-action">${viewBtn}</td>
         </tr>
         <tr class="row-detail" id="${rid}" style="display:none;">
             <td colspan="8" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
@@ -831,7 +837,11 @@ async function deleteUser(username) {
 // ==== 任务审查 ====
 function closeAuditDetail() {
     _auditDetailData = null;
+    _linkTimelineData = null;
     document.getElementById('auditDetailModal').classList.remove('show');
+    // 恢复默认标题与导出按钮
+    document.querySelector('#auditDetailModal h3 span').innerHTML = '<i class="fas fa-history"></i> 任务执行时间线';
+    document.getElementById('linkTimelineExportMdBtn').style.display = 'none';
 }
 
 const AUDIT_PAGE_SIZE = 10;
@@ -931,19 +941,120 @@ async function loadSessions() {
     tbody.innerHTML = list.map((s, i) => {
         const sid = s.session_id || '';
         const short = sid.length > 12 ? sid.substring(0, 12) : sid;
-        return `<tr>
+        const linkid = s.linkid || '';
+        const rowId = 'sess-row-' + i;
+        const expandId = 'sess-exp-' + i;
+        return `<tr id="${rowId}" style="cursor:pointer;" onclick="toggleSessionExpand('${rowId}', '${expandId}')">
             <td class="col-seq">${i + 1}</td>
-            <td><span title="${escHtml(sid)}" style="font-family:monospace;font-size:0.82rem;">${escHtml(short)}</span></td>
-            <td>${escHtml(s.linkid || '-')}</td>
+            <td><span title="${escHtml(sid)}" style="font-family:monospace;font-size:0.82rem;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;cursor:pointer;">${escHtml(short)}</span></td>
+            <td><span style="color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;cursor:pointer;">${escHtml(linkid)}</span></td>
             <td>${s.status === 'active' ? '<span class="badge badge-processing">活跃</span>' : '<span class="badge badge-cancelled">关闭</span>'}</td>
             <td class="col-date">${fmtTs(s.created_at)}</td>
             <td class="col-date">${fmtTs(s.updated_at)}</td>
             <td class="col-action" style="width:80px;">
-                <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="openChat('${escHtml(sid)}', '${escHtml(s.linkid || '')}')" title="进入会话续聊" style="margin-right:4px;"><i class="fas fa-comment-dots"></i></button>
-                <button class="cfg-btn-danger-sm" onclick="deleteSession('${escHtml(sid)}', '${escHtml(s.linkid || '')}')" title="删除会话"><i class="fas fa-trash-alt"></i></button>
+                <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();openChat('${escHtml(sid)}', '${escHtml(linkid)}')" title="进入会话续聊" style="margin-right:4px;"><i class="fas fa-comment-dots"></i></button>
+                <button class="cfg-btn-danger-sm" onclick="event.stopPropagation();deleteSession('${escHtml(sid)}', '${escHtml(linkid)}')" title="删除会话"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        </tr>
+        <tr id="${expandId}" style="display:none;">
+            <td colspan="7" style="background:#fafbfc;padding:12px 20px;border-top:1px dashed #e0e3e8;">
+                <i class="fas fa-chevron-down" style="color:#999;font-size:0.75rem;"></i>
+                <a href="javascript:void(0)" onclick="viewLinkTimeline('${escHtml(linkid)}')" style="color:#4b6cb7;font-weight:600;"><i class="fas fa-history"></i> 处理时间线</a>
+                <span style="margin-left:16px;color:#888;font-size:0.82rem;">查看该 LinkID 下所有处理记录的时间线（支持导出 HTML / Markdown）</span>
             </td>
         </tr>`;
     }).join('');
+}
+
+function toggleSessionExpand(rowId, expandId) {
+    const row = document.getElementById(expandId);
+    if (!row) return;
+    row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+// 会话处理时间线（按 linkid 聚合）
+let _linkTimelineData = null;
+
+async function viewLinkTimeline(linkid) {
+    if (!linkid) return toast('无 LinkID', 'error');
+    try {
+        const res = await fetch(API + '/audit/link/' + encodeURIComponent(linkid) + '/timeline?format=json', { cache: 'no-store' });
+        const json = await res.json();
+        if (json.code !== 0) return toast(json.message || '加载失败', 'error');
+        _linkTimelineData = json.data;
+        document.getElementById('auditDetailContent').innerHTML = linkTimelineHtml(json.data);
+        document.getElementById('auditDetailModal').classList.add('show');
+        // 切换弹窗标题，并显示 MD 导出按钮
+        document.querySelector('#auditDetailModal h3 span').innerHTML = '<i class="fas fa-history"></i> 会话处理时间线';
+        document.getElementById('linkTimelineExportMdBtn').style.display = '';
+    } catch (err) {
+        toast('加载时间线失败: ' + err.message, 'error');
+    }
+}
+
+function linkTimelineHtml(data) {
+    const linkid = data.linkid || '-';
+    const tasks = data.tasks || [];
+    let html = '<div class="audit-info-bar" style="flex-shrink:0;">' +
+        '<div class="audit-info-row"><span class="audit-info-label">Link ID:</span> <span class="audit-info-title">' + escHtml(linkid) + '</span></div>' +
+        '<div class="audit-info-row"><span class="audit-info-label">处理次数:</span> ' + tasks.length + '</div>' +
+        '</div>';
+    html += '<div class="audit-timeline-scroll" style="flex:1;min-height:0;">';
+    tasks.forEach((t, ti) => {
+        html += '<div class="audit-task-group" style="border:1px solid #e0e3e8;border-radius:10px;margin-bottom:16px;overflow:hidden;">';
+        html += '<div class="audit-task-group-head" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 16px;background:#fafbfc;border-bottom:1px solid #edf2f7;font-size:0.85rem;">' +
+            '<strong>' + (ti + 1) + '.</strong>' +
+            '<span style="font-family:monospace;font-size:0.78rem;color:#888;">' + escHtml(fmtTs(t.created_at)) + ' ~ ' + escHtml(t.finished_at ? fmtTs(t.finished_at) : '处理中') + '</span>' +
+            '<span>' + escHtml(statusText(t.status)) + '</span>' +
+            '<span style="font-family:monospace;font-size:0.78rem;color:#888;">' + escHtml(t.task_id) + '</span>' +
+            '</div>';
+        html += '<div class="audit-timeline">';
+        for (const ev of (t.events || [])) {
+            const icon = ev.type === 'tool' ? 'fa-wrench'
+                : ev.type === 'input' ? 'fa-inbox'
+                : ev.type === 'output' ? 'fa-arrow-right'
+                : ev.type === 'done' ? 'fa-check-circle'
+                : ev.type === 'error' ? 'fa-times-circle'
+                : ev.type === 'create' ? 'fa-plus-circle'
+                : ev.type === 'prompt' ? 'fa-file-code'
+                : 'fa-circle';
+            const cls = ev.type === 'error' ? 'error' : (ev.type === 'done' ? 'done' : 'info');
+            html += '<div class="timeline-item ' + cls + '">';
+            html += '<div class="timeline-dot"><i class="fas ' + icon + '"></i></div>';
+            html += '<div class="timeline-body">';
+            html += '<div class="timeline-header" onclick="toggleTimelineDetail(this)" style="cursor:pointer;">';
+            if (ev.time) html += '<span class="timeline-time">' + fmtTimelineTs(ev.time) + '</span>';
+            html += '<strong>' + escHtml(ev.title) + '</strong>';
+            html += '<i class="fas fa-chevron-right timeline-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
+            if (ev.detail) {
+                html += '<pre class="timeline-detail term-box" style="display:none;">' + escHtml(ev.detail) + '</pre>';
+            }
+            html += '</div></div>';
+        }
+        html += '</div></div>';
+    });
+    html += '</div>';
+    return html;
+}
+
+function exportLinkTimeline(fmt) {
+    const data = _linkTimelineData;
+    if (!data) return toast('无数据', 'error');
+    const linkid = data.linkid || 'export';
+    const f = fmt || 'html';
+    fetch(API + '/audit/link/' + encodeURIComponent(linkid) + '/timeline?format=' + f, { cache: 'no-store' })
+        .then(r => r.text())
+        .then(content => {
+            const mime = f === 'md' ? 'text/markdown;charset=utf-8' : 'text/html;charset=utf-8';
+            const blob = new Blob([content], { type: mime });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = linkid + '_timeline.' + (f === 'md' ? 'md' : 'html');
+            a.click();
+            URL.revokeObjectURL(a.href);
+            toast('已导出');
+        })
+        .catch(err => toast('导出失败: ' + err.message));
 }
 
 async function deleteSession(sessionId, linkid) {
@@ -1417,8 +1528,11 @@ async function viewAuditDetail(taskId) {
         const t = json.data;
         if (!t) return toast('未找到', 'error');
         _auditDetailData = t;
+        _linkTimelineData = null;
         document.getElementById('auditDetailContent').innerHTML = auditTimelineHtml(t);
         document.getElementById('auditDetailModal').classList.add('show');
+        document.querySelector('#auditDetailModal h3 span').innerHTML = '<i class="fas fa-history"></i> 任务执行时间线';
+        document.getElementById('linkTimelineExportMdBtn').style.display = 'none';
     } catch (err) { toast('加载详情失败: ' + err.message, 'error'); }
 }
 
@@ -1549,6 +1663,10 @@ function tryExtractCallbackFromTrace(sdkTrace, fallbackTime) {
 }
 
 function exportAuditMd() {
+    // 会话处理时间线模式：复用 exportLinkTimeline 导出 HTML
+    if (_linkTimelineData) {
+        return exportLinkTimeline('html');
+    }
     const t = _auditDetailData;
     if (!t) return toast('无数据', 'error');
     const linkid = t.linkid || t.task_id?.substring(0, 8) || 'export';

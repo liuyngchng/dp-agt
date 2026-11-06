@@ -63,6 +63,7 @@ async function processItem(item: WorkerItem): Promise<void> {
   const resumeSessionId = existingSession?.session_id;
 
   if (resumeSessionId) {
+    sessionsStore.touch(resumeSessionId);
     log.info({ task_id, linkid, sessionId: resumeSessionId }, 'session_resume');
   }
 

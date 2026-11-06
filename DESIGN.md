@@ -211,6 +211,73 @@
 }
 ```
 
+### 3.5 任务查询与时间线接口
+
+除回调外，系统提供少量同步查询接口，用于任务追踪与会话级处理时间线回溯。
+
+| 接口 | 说明 |
+|------|------|
+| `GET /api/v1/tasks` | 查询进行中（`pending` / `processing`）的任务列表 |
+| `DELETE /api/v1/tasks/:task_id` | 取消仍处于 `pending` 的任务 |
+| `GET /api/v1/task/trace?taskid=xxx` | 单任务追踪（请求体、提示词、最终输出、状态） |
+| `GET /api/v1/task/log/:task_id?format=json\|html` | 单任务审计时间线 |
+| `GET /api/v1/task/link/log/:linkid` | 按 linkid 查最新一条任务时间线 |
+| `GET /api/v1/task/link/:linkid/history?format=json\|html\|md` | **会话处理时间线**：按 linkid 聚合所有处理记录 |
+
+#### 会话处理时间线（history）
+
+一个 `linkid` 对应一份业务文档，可能在多次提交中被处理多次（每次一个 `task_id`）。该接口按时间顺序聚合该 linkid 下所有 task，返回每次处理的关键节点时间线。
+
+- URL：`GET /api/v1/task/link/:linkid/history`
+- `format` 参数：
+  - `json`（默认）：结构化数据
+  - `html`：独立 HTML 页面（终端风格时间线）
+  - `md`：Markdown 文本
+
+`json` 返回结构：
+
+```json
+{
+  "code": 0,
+  "timestamp": "2026-10-27 10:02:30",
+  "message": "success",
+  "task_id": "",
+  "linkid": "doc_20261027_0001",
+  "data": {
+    "linkid": "doc_20261027_0001",
+    "total": 3,
+    "tasks": [
+      {
+        "task_id": "550e8400-...",
+        "session_id": "sess-...",
+        "path": "document/classify",
+        "status": "completed",
+        "error_message": null,
+        "created_at": "2026-10-27 10:00:00.000",
+        "finished_at": "2026-10-27 10:02:30.000",
+        "events": [
+          { "time": "2026-10-27 10:00:00.000", "type": "create", "title": "任务创建", "detail": "访问路径: document/classify" },
+          { "time": "2026-10-27 10:02:30.000", "type": "output", "title": "Agent 输出结果", "detail": "..." },
+          { "time": "2026-10-27 10:02:30.000", "type": "done", "title": "已完成", "detail": "" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+> 说明：`events` 中每条为「关键节点」（任务创建、收到请求、渲染提示词、Agent 输出、结果回调、完成/失败），去掉了 Agent 内部执行过程，便于审计回溯。底层每次处理的完整 SDK 消息流存于 `task_logs.sdk_trace` 字段。
+
+#### 管理后台同源接口
+
+管理后台（`/admin` 前缀，需登录）提供等价能力：
+
+| 接口 | 说明 |
+|------|------|
+| `GET /admin/audit` | 任务审查分页查询（按 task_id / linkid 过滤） |
+| `GET /admin/audit/:task_id` | 单任务详情（含 sdk_trace） |
+| `GET /admin/audit/link/:linkid/timeline?format=json\|html\|md` | 会话处理时间线（与对外 history 等价） |
+
 ---
 
 ## 4. 接口与提示词模板系统

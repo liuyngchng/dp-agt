@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { taskLogsStore } from '../store.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
+import { buildTimelineEvents, buildOutputOnlyEvents, renderHistoryHtml, renderHistoryMd } from '../services/timeline.js';
+import type { TimelineEvent } from '../services/timeline.js';
 import type { TaskLog } from '../types.js';
 
 const log = getLogger();
@@ -198,160 +200,61 @@ export function createTasksRouter(): Router {
     });
   });
 
+  // GET /api/v1/task/link/:linkid/history — 会话处理时间线（按 linkid 聚合所有 task）
+  router.get('/api/v1/task/link/:linkid/history', (req: Request, res: Response) => {
+    const { linkid } = req.params;
+    const fromIp = req.ip || '';
+    const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'json';
+
+    const tasks = taskLogsStore.listByLinkid(linkid);
+    if (tasks.length === 0) {
+      log.warn({ from_ip: fromIp, linkid }, 'api_link_history_not_found');
+      if (format === 'html') {
+        res.status(404).contentType('text/html; charset=utf-8').send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>会话不存在</title>
+<style>${TIMELINE_CSS}</style></head>
+<body><div class="wrap"><div class="page-head"><h1>会话不存在</h1></div></div></body></html>`);
+        return;
+      }
+      res.status(404).json({ code: 1001, message: '该 linkid 下无任务记录', task_id: '', linkid: '' });
+      return;
+    }
+
+    const historyTasks = tasks.map(t => ({
+      task_id: t.task_id,
+      session_id: t.session_id,
+      path: t.path,
+      status: t.status,
+      error_message: t.error_message,
+      created_at: t.created_at,
+      finished_at: t.finished_at,
+      events: buildOutputOnlyEvents(t),
+    }));
+
+    log.info({ from_ip: fromIp, linkid, taskCount: tasks.length, format }, 'api_link_history');
+
+    if (format === 'html') {
+      res.contentType('text/html; charset=utf-8').send(renderHistoryHtml(linkid, historyTasks));
+      return;
+    }
+    if (format === 'md') {
+      res.contentType('text/markdown; charset=utf-8').send(renderHistoryMd(linkid, historyTasks));
+      return;
+    }
+
+    res.json({
+      code: 0,
+      timestamp: now(),
+      message: 'success',
+      task_id: '',
+      linkid,
+      data: { linkid, total: historyTasks.length, tasks: historyTasks },
+    });
+  });
+
   return router;
 }
 
-// ============================================================
-// 时间线事件构建（去掉智能体执行过程，精简为关键节点）
-// ============================================================
-
-interface TimelineEvent {
-  time: string | null;
-  type: string;
-  title: string;
-  detail: string;
-}
-
-function buildTimelineEvents(task: TaskLog): TimelineEvent[] {
-  const events: TimelineEvent[] = [];
-
-  // 1. 任务创建
-  events.push({
-    time: task.created_at,
-    type: 'create',
-    title: '任务创建',
-    detail: '访问路径: ' + (task.path || '-'),
-  });
-
-  // 2. 收到请求数据
-  if (task.request_body) {
-    events.push({
-      time: task.created_at,
-      type: 'input',
-      title: '收到请求数据',
-      detail: jsonFmt(task.request_body),
-    });
-  }
-
-  // 3. 我方响应
-  if (task.request_response) {
-    events.push({
-      time: task.created_at,
-      type: 'output',
-      title: '返回同步响应',
-      detail: jsonFmt(task.request_response),
-    });
-  }
-
-  // 4. 渲染提示词
-  if (task.prompt) {
-    events.push({
-      time: task.created_at,
-      type: 'prompt',
-      title: '渲染提示词',
-      detail: task.prompt,
-    });
-  }
-
-  // 5. Agent 输出结果
-  if (task.sdk_output) {
-    events.push({
-      time: task.finished_at,
-      type: 'output',
-      title: 'Agent 输出结果',
-      detail: task.sdk_output,
-    });
-  }
-
-  // 6. 结果回调（从 SDK trace 中提取 Bash curl 记录）
-  const cbEvent = tryExtractCallbackFromTrace(task.sdk_trace, task.finished_at);
-  if (cbEvent) events.push(cbEvent);
-
-  // 7. 完成 / 失败
-  const finalTitle = statusText(task.status);
-  const finalType =
-    task.status === 'completed' ? 'done' :
-    task.status === 'failed' ? 'error' :
-    'info';
-  events.push({
-    time: task.finished_at,
-    type: finalType,
-    title: finalTitle,
-    detail: task.error_message || '',
-  });
-
-  return events;
-}
-
-// ============================================================
-// 从 SDK trace 中提取结果回调记录
-// ============================================================
-
-interface SdkMessage {
-  type?: string;
-  message?: {
-    content?: Array<{
-      type?: string;
-      name?: string;
-      id?: string;
-      input?: Record<string, unknown>;
-      tool_use_id?: string;
-      content?: unknown;
-    }>;
-  };
-}
-
-function tryExtractCallbackFromTrace(
-  sdkTrace: string | null,
-  fallbackTime: string | null,
-): TimelineEvent | null {
-  if (!sdkTrace) return null;
-  let messages: SdkMessage[];
-  try { messages = JSON.parse(sdkTrace); } catch { return null; }
-  if (!Array.isArray(messages) || messages.length === 0) return null;
-
-  const callbackIds = new Set<string>();
-  for (const msg of messages) {
-    if (msg.type !== 'assistant') continue;
-    for (const block of msg.message?.content ?? []) {
-      if (block.type !== 'tool_use' || block.name !== 'Bash') continue;
-      const cmd = typeof block.input?.command === 'string' ? block.input.command : '';
-      if (cmd.includes('/tmp/callback_payload') || cmd.includes('callback')) {
-        if (block.id) callbackIds.add(block.id);
-      }
-    }
-  }
-  if (callbackIds.size === 0) return null;
-
-  const results: Array<{ toolId: string; content: string }> = [];
-  for (const msg of messages) {
-    if (msg.type !== 'user') continue;
-    for (const block of msg.message?.content ?? []) {
-      if (block.type !== 'tool_result') continue;
-      if (block.tool_use_id && !callbackIds.has(block.tool_use_id)) continue;
-      const raw = block.content;
-      if (typeof raw === 'string') {
-        results.push({ toolId: block.tool_use_id ?? '', content: raw });
-      } else if (Array.isArray(raw)) {
-        results.push({ toolId: block.tool_use_id ?? '', content: raw.map((c: Record<string, unknown>) =>
-          typeof c.text === 'string' ? c.text : JSON.stringify(c)
-        ).join('') });
-      }
-    }
-  }
-  if (results.length === 0) return null;
-
-  const allOk = results.every(r => !r.content.includes('curl: (') && !r.content.includes('command failed') && !r.content.includes('Error'));
-  let detail = results.map(r => r.content.trim()).join('\n\n---\n\n');
-  if (results.length > 1) detail = results.map((r, i) => `[${i + 1}]\n${r.content.trim()}`).join('\n\n');
-
-  return {
-    time: fallbackTime,
-    type: allOk ? 'done' : 'error',
-    title: allOk ? '回调成功' : '回调失败',
-    detail,
-  };
-}
 
 // ============================================================
 // HTML 时间线页面渲染
@@ -435,26 +338,8 @@ function safeParse(s: string | null): unknown {
   try { return JSON.parse(s); } catch { return s; }
 }
 
-function jsonFmt(v: unknown): string {
-  if (typeof v === 'string') {
-    try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; }
-  }
-  return JSON.stringify(v, null, 2);
-}
-
 function now(): string {
   return nowReadable();
-}
-
-function statusText(s: string): string {
-  const map: Record<string, string> = {
-    pending: '排队中',
-    processing: '处理中',
-    failed: '失败',
-    completed: '已完成',
-    cancelled: '已取消',
-  };
-  return map[s] || s || '-';
 }
 
 function escHtml(s: string | null): string {

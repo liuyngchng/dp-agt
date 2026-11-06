@@ -8,12 +8,12 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { getLogger } from '../logger.js';
 import { fmtLocalTs } from '../time.js';
 import { publish } from './sse-bus.js';
 import type { Config } from '../config.js';
-import { promptConfigStore } from '../store.js';
+import { promptConfigStore, sessionsStore } from '../store.js';
 import { listMemories } from './memory-store.js';
 
 const log = getLogger();
@@ -234,7 +234,9 @@ export interface SdkResult {
  * @param linkid - 公文审批 id，同时作为工作目录名（sanitize 后）
  * @param renderedPrompt - 渲染后的提示词
  * @param cfg - 配置
- * @param resumeSessionId - 若传入则 resume 该 session（同一公文复用会话）
+ * @param resumeSessionId - 若传入则尝试 resume 该 session（同一公文复用会话）。
+ *                          如果 session 数据已不存在（如重新部署后容器内数据丢失），
+ *                          自动降级为创建新 session。
  */
 export async function runAgent(
   linkid: string,
@@ -247,8 +249,30 @@ export async function runAgent(
   const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeDirName(linkid));
   await mkdir(workDir, { recursive: true });
 
+  // 验证 resume session 是否仍然存在。
+  // 重新部署后容器内 Claude 会话数据丢失（runtime/ 非持久化），
+  // 但 SQLite sessions 表中仍有旧记录，此时应降级为新建 session。
+  let effectiveResumeId: string | undefined = resumeSessionId;
+  if (effectiveResumeId) {
+    const oldSessionId = effectiveResumeId;
+    try {
+      const info = await getSessionInfo(oldSessionId);
+      if (!info) {
+        log.warn({ taskId, linkid, oldSessionId }, 'resume_session_gone_creating_new');
+        effectiveResumeId = undefined;
+        // session 数据已不存在（重新部署/清理等原因），同步关闭 DB 里的旧记录，
+        // 避免下次同一 linkid 再走一次无意义的探测。
+        sessionsStore.close(oldSessionId);
+      }
+    } catch (err) {
+      log.warn({ taskId, linkid, oldSessionId, error: String(err) }, 'resume_session_check_error_creating_new');
+      effectiveResumeId = undefined;
+      sessionsStore.close(oldSessionId);
+    }
+  }
+
   // CLAUDE.md 仅首次写入（resume 时不覆盖，因为 SDK snapshot 已固化 system prompt）
-  if (!resumeSessionId) {
+  if (!effectiveResumeId) {
     await writeFile(
       join(workDir, 'CLAUDE.md'),
       await buildClaudeMd(cfg.sys.data_dir),
@@ -256,7 +280,7 @@ export async function runAgent(
     );
   }
 
-  log.info({ taskId, linkid, resumeSessionId: resumeSessionId || '(new)', workDir }, 'sdk_run_start');
+  log.info({ taskId, linkid, resumeSessionId: effectiveResumeId || '(new)', originalResumeId: resumeSessionId || '(none)', workDir }, 'sdk_run_start');
 
   const start = Date.now();
   let fullOutput = '';
@@ -273,7 +297,7 @@ export async function runAgent(
         model: cfg.llm.model,
         env: buildEnv(cfg),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
-        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+        ...(effectiveResumeId ? { resume: effectiveResumeId } : {}),
       },
     });
 

@@ -343,6 +343,11 @@ export const taskLogsStore = {
       'SELECT * FROM task_logs WHERE linkid = ? ORDER BY created_at DESC LIMIT 1'
     ).get(linkid) as TaskLog | undefined;
   },
+  listByLinkid(linkid: string, limit = 50): TaskLog[] {
+    return db.prepare(
+      'SELECT * FROM task_logs WHERE linkid = ? ORDER BY finished_ts ASC LIMIT ?'
+    ).all(linkid, limit) as TaskLog[];
+  },
   list(limit = 100): TaskLog[] {
     return db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ?').all(limit) as TaskLog[];
   },
@@ -458,6 +463,14 @@ export const sessionsStore = {
     const ts = nowTs();
     return db.prepare(
       "UPDATE sessions SET status = 'closed', updated_at = ?, updated_ts = ? WHERE session_id = ?"
+    ).run(now, ts, sessionId).changes > 0;
+  },
+  // 有新任务命中该 session 时刷新「更新时间」（保持 status 为 active）
+  touch(sessionId: string): boolean {
+    const now = nowReadable();
+    const ts = nowTs();
+    return db.prepare(
+      "UPDATE sessions SET status = 'active', updated_at = ?, updated_ts = ? WHERE session_id = ?"
     ).run(now, ts, sessionId).changes > 0;
   },
   remove(sessionId: string): boolean {

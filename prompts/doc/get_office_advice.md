@@ -56,12 +56,12 @@
 {
   "need_human": false,
   "fail_reason": "",
-  "advice_text": "请某领导阅示，转某部门承办",
+  "opinion_text": "请某领导阅示，转某部门承办",
   "suggest_leaders": [
-    { "name": "张三" }
+    { "name": "张三", "id":"xxxx" }
   ],
   "suggest_departments": [
-    { "name": "某部门" }
+    { "name": "某部门", "id":"xxx" }
   ],
   "form_fill": {}
 }
