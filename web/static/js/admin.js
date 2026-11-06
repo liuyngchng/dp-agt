@@ -332,6 +332,9 @@ async function uploadTar() {
         return;
     }
     resultEl.innerHTML = `<span style="color:#2e7d32;">✓ 已上传 ${json.data.total} 个文件</span>`;
+    if (json.data.warnings && json.data.warnings.length) {
+        resultEl.innerHTML += '<ul style="margin-top:8px;color:#e65100;">' + json.data.warnings.map(w => `<li>⚠ ${escHtml(w)}</li>`).join('') + '</ul>';
+    }
     // 启用步骤 3
     document.getElementById('wizardStep3').style.opacity = '1';
     document.getElementById('wizardStep3').querySelector('.wizard-dot').style.background = '#1565c0';

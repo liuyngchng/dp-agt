@@ -203,14 +203,16 @@ export async function buildClaudeMd(dataDir?: string): Promise<string> {
   const memoryDir = dataDir || join(process.cwd(), 'data');
   const memItems = listMemories(memoryDir);
   if (memItems.length > 0) {
+    const memAbsDir = join(memoryDir, 'memory');
     let memBlock = '\n## 业务知识记忆库\n\n';
-    memBlock += '以下是可用的公司业务背景知识文件，均位于 `data/memory/` 目录。';
+    memBlock += '以下是可用的公司业务背景知识文件，存储于 `' + memAbsDir + '` 目录。';
     memBlock += '当任务需要了解公司组织架构、领导班子分工、各部门职责范围或业务流程规则时，';
-    memBlock += '使用 Read 工具读取对应文件（路径如 `data/memory/公司领导班子成员工作分工.md`）。\n\n';
-    memBlock += '| 文件 | 说明 |\n';
-    memBlock += '|------|------|\n';
+    memBlock += '使用 Read 工具读取对应文件的绝对路径（如 `' + join(memAbsDir, '公司领导班子成员工作分工.md') + '`）。\n\n';
+    memBlock += '| 文件 | 绝对路径 | 说明 |\n';
+    memBlock += '|------|----------|------|\n';
     for (const item of memItems) {
-      memBlock += `| ${item.filename} | ${item.description || item.title} |\n`;
+      const absPath = join(memAbsDir, item.filename);
+      memBlock += `| ${item.filename} | ${absPath} | ${item.description || item.title} |\n`;
     }
     template += memBlock;
   }

@@ -370,6 +370,15 @@ export const taskLogsStore = {
     ).get(linkid);
     return !!row;
   },
+  cancelByLinkid(linkid: string): number {
+    const now = nowReadable();
+    const ts = nowTs();
+    return db.prepare(
+      `UPDATE task_logs
+       SET status = 'cancelled', finished_at = ?, finished_ts = ?
+       WHERE linkid = ? AND status IN ('pending', 'processing')`
+    ).run(now, ts, linkid).changes;
+  },
   deleteExpired(retentionDays: number): number {
     const cutoffMs = nowTs() - retentionDays * 24 * 3600 * 1000;
     const result = db.prepare(
@@ -420,14 +429,17 @@ export const sessionsStore = {
   upsert(sessionId: string, linkid: string): Session {
     const now = nowReadable();
     const ts = nowTs();
-    const existing = db.prepare('SELECT * FROM sessions WHERE session_id = ?').get(sessionId);
-    if (existing) {
-      db.prepare('UPDATE sessions SET updated_at = ?, updated_ts = ? WHERE session_id = ?').run(now, ts, sessionId);
-    } else {
-      db.prepare(
-        'INSERT INTO sessions (session_id, linkid, status, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).run(sessionId, linkid, 'active', now, now, ts, ts);
-    }
+    // 以 linkid 为唯一键：同一 linkid 复用会话时，无论旧行是 active 还是 closed，
+    // 都覆盖为当前新的 session_id，避免 UNIQUE(linkid) 冲突。
+    db.prepare(
+      `INSERT INTO sessions (session_id, linkid, status, created_at, updated_at, created_ts, updated_ts)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(linkid) DO UPDATE SET
+         session_id = excluded.session_id,
+         status = 'active',
+         updated_at = excluded.updated_at,
+         updated_ts = excluded.updated_ts`
+    ).run(sessionId, linkid, 'active', now, now, ts, ts);
     return this.get(sessionId)!;
   },
   get(sessionId: string): Session | undefined {
@@ -440,6 +452,13 @@ export const sessionsStore = {
   },
   listAll(): Session[] {
     return db.prepare('SELECT * FROM sessions ORDER BY updated_ts DESC').all() as Session[];
+  },
+  close(sessionId: string): boolean {
+    const now = nowReadable();
+    const ts = nowTs();
+    return db.prepare(
+      "UPDATE sessions SET status = 'closed', updated_at = ?, updated_ts = ? WHERE session_id = ?"
+    ).run(now, ts, sessionId).changes > 0;
   },
   remove(sessionId: string): boolean {
     return db.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId).changes > 0;

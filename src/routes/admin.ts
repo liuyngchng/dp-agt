@@ -321,8 +321,11 @@ export function createAdminRouter(cfg: Config): Router {
     if (existsSync(workDir)) {
       try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
     }
-    sessionsStore.remove(session_id);
-    log.info({ session_id, linkid: session.linkid, workDir }, 'session_deleted');
+    // 逻辑删除：该 linkid 下未完成任务标记为 cancelled，session 标记为 closed，
+    // 使后续同一 linkid 重新提交时不再命中旧任务/旧会话。
+    const cancelled = taskLogsStore.cancelByLinkid(session.linkid);
+    sessionsStore.close(session_id);
+    log.info({ session_id, linkid: session.linkid, workDir, cancelledTasks: cancelled }, 'session_deleted');
     res.json({ code: 0, message: '已删除' });
   });
 
@@ -817,25 +820,20 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    // 校验占位符
-    const errors: string[] = [];
+    // 校验占位符（仅提示，不阻断上传）
+    const warnings: string[] = [];
     for (const [name, content] of Object.entries(files)) {
       const placeholders = content.match(/\{\{([^}]+)\}\}/g) || [];
       for (const ph of placeholders) {
         const inner = ph.slice(2, -2).trim();
         if (inner.startsWith('section:') || inner.startsWith('request.')) continue;
         if (!validKeys.has(inner)) {
-          errors.push(name + ': 占位符 {{' + inner + '}} 未在 CSV 中配置');
+          warnings.push(name + ': 占位符 {{' + inner + '}} 未在 CSV 中配置');
         }
       }
     }
 
-    if (errors.length > 0) {
-      res.status(400).json({ code: 1001, message: '占位符校验失败', data: { errors } });
-      return;
-    }
-
-    // 校验通过 → 替换 prompts/ 目录
+    // 替换 prompts/ 目录
     const promptsDir = resolve(process.cwd(), 'prompts');
     if (existsSync(promptsDir)) {
       rmSync(promptsDir, { recursive: true, force: true });
@@ -852,8 +850,8 @@ export function createAdminRouter(cfg: Config): Router {
     syncInterfacesFromPrompts(pfs.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
 
     const fileList = Object.keys(files);
-    log.info({ files: fileList }, 'prompt_archive_uploaded');
-    res.json({ code: 0, data: { files: fileList, total: fileList.length } });
+    log.info({ files: fileList, warnings }, 'prompt_archive_uploaded');
+    res.json({ code: 0, data: { files: fileList, total: fileList.length, warnings } });
   });
 
   // 下载当前 prompts/ 为 tar.gz
