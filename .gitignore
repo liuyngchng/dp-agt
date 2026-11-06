@@ -21,6 +21,9 @@ data/tasks/
 data/.claude/
 data/memory/
 
+# doc_download_skill 配置（含 token，勿提交）
+doc_download_skill/token.txt
+
 # IDE
 .idea/
 .vscode/
