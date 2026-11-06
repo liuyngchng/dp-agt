@@ -1006,6 +1006,80 @@ async function openChat(sessionId, linkid) {
     }
 }
 
+async function newChat() {
+    const msg = prompt('请输入第一条消息：', '你好，请帮我分析公司现有业务知识。');
+    if (!msg || !msg.trim()) return;
+
+    _chatSessionId = '';
+    _chatCount = 0;
+    document.getElementById('chatModalTitle').innerHTML = '<i class="fas fa-terminal"></i> 新建聊天';
+    document.getElementById('chatStatus').innerHTML = '<span style="color:#4ec9b0;">● 创建中...</span>';
+    document.getElementById('chatInput').value = '';
+    document.getElementById('chatModal').classList.add('show');
+    document.getElementById('chatInput').focus();
+
+    chatSet('<span style="color:#6a9955;"># 创建聊天上下文，首次发送：</span>\n' + escHtml(msg) + '\n');
+
+    const status = document.getElementById('chatStatus');
+    status.innerHTML = '<span style="color:#4ec9b0;">● thinking...</span>';
+
+    try {
+        const r = await fetch(API + '/chat/new', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg }),
+        });
+        if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            throw new Error(j.message || r.statusText);
+        }
+
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const m = JSON.parse(line.slice(6));
+                    // capture session_id for subsequent messages
+                    const sid = m.session_id || (m.type === 'end' ? m.session_id : '');
+                    if (sid && !_chatSessionId) {
+                        _chatSessionId = sid;
+                        document.getElementById('chatModalTitle').innerHTML = '<i class="fas fa-terminal"></i> 聊天 ' + escHtml(sid.substring(0,8));
+                    }
+                    if (m.type === 'end') {
+                        if (m.session_id) _chatSessionId = m.session_id;
+                        continue;
+                    }
+                    if (m.type === 'error') {
+                        chatAppend('\n<span style="color:#f44747;">[错误]</span> ' + escHtml(m.message || '') + '\n');
+                        continue;
+                    }
+                    if (m.type === 'user' || m.type === 'assistant') {
+                        const { output } = formatSessionMessages([m], _chatCount);
+                        chatAppend(escHtml(output));
+                        _chatCount++;
+                    }
+                } catch { /* skip malformed */ }
+            }
+        }
+        status.innerHTML = '<span style="color:#6a9955;">✓ done</span>';
+    } catch (e) {
+        chatAppend('\n<span style="color:#f44747;">[错误]</span> ' + escHtml(e.message) + '\n');
+        status.innerHTML = '<span style="color:#f44747;">✗ ' + escHtml(e.message) + '</span>';
+    }
+    document.getElementById('chatInput').disabled = false;
+    document.getElementById('chatInput').focus();
+}
+
 function closeChatModal() {
     if (_chatEs) { _chatEs.close(); _chatEs = null; }
     _chatSessionId = '';

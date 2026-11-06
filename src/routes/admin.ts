@@ -4,6 +4,7 @@ import { Router, Request, Response } from 'express';
 import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
+import { v4 as uuidv4 } from 'uuid';
 import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
@@ -17,7 +18,7 @@ import { createGzip } from 'node:zlib';
 import tarFs from 'tar-fs';
 import tarStream from 'tar-stream';
 import { loadPromptFromDisk, rescanPromptsDir, listAllPromptFiles } from '../services/prompt-engine.js';
-import { buildEnv } from '../services/sdk-runner.js';
+import { buildEnv, buildClaudeMd } from '../services/sdk-runner.js';
 import { listMemories, getMemory, saveMemory, deleteMemory, ensureMemoryDir } from '../services/memory-store.js';
 import { syncInterfacesFromPrompts } from '../store.js';import type { Config } from '../config.js';
 
@@ -323,6 +324,64 @@ export function createAdminRouter(cfg: Config): Router {
     sessionsStore.remove(session_id);
     log.info({ session_id, linkid: session.linkid, workDir }, 'session_deleted');
     res.json({ code: 0, message: '已删除' });
+  });
+
+  // ---- 新建聊天：不绑定公文，发送首条消息并流式返回，session 由 SDK 真实创建 ----
+  router.post('/admin/chat/new', async (req: Request, res: Response) => {
+    const { message } = req.body as { message?: string };
+    if (!message || !message.trim()) {
+      res.status(400).json({ code: 1001, message: '缺少 message' });
+      return;
+    }
+    const linkid = 'chat-' + uuidv4();
+    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
+    try {
+      mkdirSync(workDir, { recursive: true });
+      writeFileSync(join(workDir, 'CLAUDE.md'), await buildClaudeMd(cfg.sys.data_dir), 'utf8');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error({ linkid, workDir, error: msg }, 'chat_new_workdir_failed');
+      res.status(500).json({ code: 1001, message: '创建聊天工作目录失败: ' + msg });
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    let capturedSessionId = '';
+    try {
+      const q = query({
+        prompt: message,
+        options: {
+          cwd: workDir,
+          permissionMode: 'bypassPermissions',
+          tools: { type: 'preset', preset: 'claude_code' },
+          model: cfg.llm.model,
+          env: buildEnv(cfg),
+          systemPrompt: { type: 'preset', preset: 'claude_code' },
+        },
+      });
+
+      for await (const m of q) {
+        const sid = (m as Record<string, unknown>).session_id;
+        if (!capturedSessionId && typeof sid === 'string' && sid) {
+          capturedSessionId = sid;
+          sessionsStore.upsert(sid, linkid);
+          log.info({ sessionId: sid, linkid, workDir }, 'chat_new_session_created');
+        }
+        sendSSE(res, m);
+      }
+      sendSSE(res, { type: 'end', session_id: capturedSessionId, linkid });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error({ linkid, workDir, error: msg }, 'chat_new_error');
+      sendSSE(res, { type: 'error', message: msg });
+    }
+    res.end();
   });
 
   // ---- 会话续聊（debug 用）：复用原 session 上下文发送消息 ----

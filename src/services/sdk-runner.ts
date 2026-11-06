@@ -146,7 +146,7 @@ export function buildEnv(cfg: Config): Record<string, string | undefined> {
   return env;
 }
 
-async function buildClaudeMd(dataDir?: string): Promise<string> {
+export async function buildClaudeMd(dataDir?: string): Promise<string> {
   // 加载主模板
   let template = (await loadPromptFile('claude-md.md')) ?? '';
   if (!template) {
