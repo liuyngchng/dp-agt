@@ -66,8 +66,8 @@ async function initNav() {
                 document.querySelectorAll('.cfg-section').forEach(s => s.classList.remove('active'));
                 const section = document.getElementById('section-' + tab.dataset.tab);
                 if (section) section.classList.add('active');
-                if (tab.dataset.tab === 'interfaces') { loadInterfaces(); loadConfigKeys(); loadPreview(); }
-                else if (tab.dataset.tab === 'memory') loadMemories();
+                if (tab.dataset.tab === 'interfaces') { switchInterfaceTab('paths'); loadConfigKeys(); loadPreview(); }
+                else if (tab.dataset.tab === 'memory') { switchMemoryTab('list'); }
                 else if (tab.dataset.tab === 'simulate') loadSimulateTab();
                 else if (tab.dataset.tab === 'tasks') loadTasks();
                 else if (tab.dataset.tab === 'sys') loadSysConfig();
@@ -121,7 +121,31 @@ async function loadInterfaces() {
     }).join('');
 }
 
+// 模板管理：横向子 tab 切换
+function switchInterfaceTab(name) {
+    document.querySelectorAll('#section-interfaces .sub-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.subtab === name);
+    });
+    document.querySelectorAll('#section-interfaces .sub-panel').forEach(p => {
+        p.classList.toggle('active', p.id === 'sub-' + name);
+    });
+    if (name === 'paths') loadInterfaces();
+    else if (name === 'templates') loadPreview();
+    else if (name === 'placeholder-preview') loadConfigKeys();
+}
+
 // ==== 记忆管理 ====
+// 记忆管理：横向子 tab 切换
+function switchMemoryTab(name) {
+    document.querySelectorAll('#section-memory .sub-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.subtab === name);
+    });
+    document.querySelectorAll('#section-memory .sub-panel').forEach(p => {
+        p.classList.toggle('active', p.id === 'sub-memory-' + name);
+    });
+    if (name === 'list') loadMemories();
+}
+
 async function loadMemories() {
     try {
         const res = await fetch(API + '/memory');
@@ -129,14 +153,13 @@ async function loadMemories() {
         const items = (json.data && json.data.items) || [];
         const tbody = document.getElementById('memoryTbody');
         if (items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无记忆文件，请上传业务知识文档</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:24px;">暂无记忆文件，请上传业务知识文档</td></tr>';
             return;
         }
         tbody.innerHTML = items.map((m, idx) => `<tr>
             <td class="col-seq">${idx + 1}</td>
             <td><span style="font-family:monospace;font-size:0.85rem;">${escHtml(m.filename)}</span></td>
             <td>${escHtml(m.title)}</td>
-            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(m.description || '')}">${escHtml(m.description || '-')}</td>
             <td>${fmtSize(m.size)}</td>
             <td class="col-action">
                 <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="previewMemory('${escJs(m.filename)}')" title="预览" style="margin-right:4px;"><i class="fas fa-eye"></i></button>
@@ -144,7 +167,7 @@ async function loadMemories() {
             </td>
         </tr>`).join('');
     } catch (err) {
-        document.getElementById('memoryTbody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#e53e3e;padding:24px;">加载失败: ' + escHtml(err.message) + '</td></tr>';
+        document.getElementById('memoryTbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#e53e3e;padding:24px;">加载失败: ' + escHtml(err.message) + '</td></tr>';
     }
 }
 
@@ -157,7 +180,14 @@ function fmtSize(bytes) {
 async function uploadMemory() {
     const input = document.getElementById('memoryFileInput');
     const file = input.files[0];
-    if (!file) return toast('请选择 .md / .tar.gz / .tgz / .zip 文件', 'error');
+    if (!file) return toast('请选择 .md / .xmind / .tar.gz / .tgz / .zip 文件', 'error');
+
+    // 单文件快速预检（压缩包需解压后校验，由后端处理）
+    const singleFile = /\.(md|xmind)$/i.test(file.name);
+    if (singleFile && file.size > 100 * 1024) {
+        toast('单个文件超过 100KB 上限，请精简内容', 'error');
+        return;
+    }
 
     const fd = new FormData();
     fd.append('file', file);
@@ -170,7 +200,7 @@ async function uploadMemory() {
     }
     resultEl.innerHTML = '<span style="color:#2e7d32;">✓ 已上传 ' + json.data.total + ' 个文件: ' + escHtml((json.data.files || []).join(', ')) + '</span>';
     toast('记忆文件已上传');
-    loadMemories();
+    switchMemoryTab('list');
 }
 
 async function previewMemory(filename) {
@@ -239,9 +269,6 @@ async function uploadCsv() {
     document.getElementById('csvResult').innerHTML = `<span style="color:#2e7d32;">✓ 已导入 ${json.data.imported} 个配置项</span>`;
     // 刷新 key 列表
     await loadConfigKeys();
-    // 启用步骤 2
-    document.getElementById('wizardStep2').style.opacity = '1';
-    document.getElementById('wizardStep2').querySelector('.wizard-dot').style.background = '#1565c0';
     toast('CSV 配置已导入');
 }
 
@@ -250,13 +277,14 @@ async function loadConfigKeys() {
     const res = await fetch(API + '/prompt-config');
     const json = await res.json();
     const rows = (json.data && json.data.rows) || [];
-    const wrap = document.getElementById('configKeysWrap');
     const table = document.getElementById('configKeysTable');
+    const empty = document.getElementById('configKeysEmpty');
     if (rows.length === 0) {
-        wrap.style.display = 'none';
+        table.innerHTML = '';
+        if (empty) empty.style.display = 'block';
         return;
     }
-    wrap.style.display = 'block';
+    if (empty) empty.style.display = 'none';
 
     // 先获取明文（供敏感项切换用）
     let revealMap = {};
@@ -335,9 +363,6 @@ async function uploadTar() {
     if (json.data.warnings && json.data.warnings.length) {
         resultEl.innerHTML += '<ul style="margin-top:8px;color:#e65100;">' + json.data.warnings.map(w => `<li>⚠ ${escHtml(w)}</li>`).join('') + '</ul>';
     }
-    // 启用步骤 3
-    document.getElementById('wizardStep3').style.opacity = '1';
-    document.getElementById('wizardStep3').querySelector('.wizard-dot').style.background = '#1565c0';
     toast('Prompt 文件包已上传');
     await loadPreview();
 }
@@ -359,12 +384,28 @@ async function loadPreview() {
         return;
     }
     wrap.style.display = 'block';
-    container.innerHTML = previews.map(p => `
-        <details style="border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;background:#fff;">
-            <summary style="cursor:pointer;font-weight:600;color:#333;">${escHtml(p.file)}</summary>
-            <pre style="margin:12px 0 0;padding:12px;background:#f5f5f5;border-radius:6px;font-size:0.8rem;font-family:'SF Mono','Consolas',monospace;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;">${escHtml(p.raw)}</pre>
-        </details>
+    container.innerHTML = previews.map((p, idx) => `
+        <div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:8px;" onclick="openPromptPreview(${idx})" onmouseover="this.style.borderColor='#4b6cb7'" onmouseout="this.style.borderColor='#e0e0e0'">
+            <i class="fas fa-file-code" style="color:#4b6cb7;"></i>
+            <span style="font-family:monospace;font-size:0.85rem;">${escHtml(p.file)}</span>
+        </div>
     `).join('');
+    // 缓存预览数据供弹窗使用
+    window._promptPreviews = previews;
+}
+
+// 打开提示词模板预览弹窗
+function openPromptPreview(idx) {
+    const previews = window._promptPreviews || [];
+    const p = previews[idx];
+    if (!p) return;
+    document.getElementById('promptPreviewTitle').innerHTML = '<i class="fas fa-file-code"></i> ' + escHtml(p.file);
+    document.getElementById('promptPreviewContent').textContent = p.raw || '';
+    document.getElementById('promptPreviewModal').classList.add('show');
+}
+
+function closePromptPreview() {
+    document.getElementById('promptPreviewModal').classList.remove('show');
 }
 
 // ==== Tasks (server-side pagination) ====
@@ -693,30 +734,6 @@ function toggleSimCurl() {
     }
 }
 
-function toggleConfigKeys() {
-    const table = document.getElementById('configKeysTable');
-    const toggle = document.getElementById('configKeysToggle');
-    if (table.style.display === 'none') {
-        table.style.display = '';
-        toggle.className = 'fas fa-chevron-down';
-    } else {
-        table.style.display = 'none';
-        toggle.className = 'fas fa-chevron-right';
-    }
-}
-
-function togglePreview() {
-    const files = document.getElementById('previewFiles');
-    const toggle = document.getElementById('previewToggle');
-    if (files.style.display === 'none') {
-        files.style.display = '';
-        toggle.className = 'fas fa-chevron-down';
-    } else {
-        files.style.display = 'none';
-        toggle.className = 'fas fa-chevron-right';
-    }
-}
-
 async function doLogout() {
     try {
         await fetch('/api/logout', { method: 'POST' });
@@ -924,43 +941,41 @@ function closeStreamModal() {
 async function loadSessions() {
     const tbody = document.getElementById('sessionsTbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">加载中...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">加载中...</td></tr>';
     let list = [];
     try {
         const r = await fetch('/admin/sessions');
         const j = await r.json();
         list = j.data || [];
     } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#e53e3e;padding:24px;">加载失败</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#e53e3e;padding:24px;">加载失败</td></tr>';
         return;
     }
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">暂无会话</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无会话</td></tr>';
         return;
     }
     tbody.innerHTML = list.map((s, i) => {
         const sid = s.session_id || '';
-        const short = sid.length > 12 ? sid.substring(0, 12) : sid;
         const linkid = s.linkid || '';
         const rowId = 'sess-row-' + i;
         const expandId = 'sess-exp-' + i;
         return `<tr id="${rowId}" style="cursor:pointer;" onclick="toggleSessionExpand('${rowId}', '${expandId}')">
             <td class="col-seq">${i + 1}</td>
-            <td><span title="${escHtml(sid)}" style="font-family:monospace;font-size:0.82rem;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;cursor:pointer;">${escHtml(short)}</span></td>
-            <td><span style="color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;cursor:pointer;">${escHtml(linkid)}</span></td>
+            <td><span style="font-family:monospace;font-size:0.82rem;">${escHtml(linkid)}</span></td>
             <td>${s.status === 'active' ? '<span class="badge badge-processing">活跃</span>' : '<span class="badge badge-cancelled">关闭</span>'}</td>
             <td class="col-date">${fmtTs(s.created_at)}</td>
             <td class="col-date">${fmtTs(s.updated_at)}</td>
-            <td class="col-action" style="width:80px;">
+            <td class="col-action" style="width:120px;">
+                <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();viewLinkTimeline('${escHtml(linkid)}')" title="处理时间线" style="margin-right:4px;"><i class="fas fa-history"></i></button>
                 <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();openChat('${escHtml(sid)}', '${escHtml(linkid)}')" title="进入会话续聊" style="margin-right:4px;"><i class="fas fa-comment-dots"></i></button>
                 <button class="cfg-btn-danger-sm" onclick="event.stopPropagation();deleteSession('${escHtml(sid)}', '${escHtml(linkid)}')" title="删除会话"><i class="fas fa-trash-alt"></i></button>
             </td>
         </tr>
         <tr id="${expandId}" style="display:none;">
-            <td colspan="7" style="background:#fafbfc;padding:12px 20px;border-top:1px dashed #e0e3e8;">
+            <td colspan="6" style="background:#fafbfc;padding:12px 20px;border-top:1px dashed #e0e3e8;">
                 <i class="fas fa-chevron-down" style="color:#999;font-size:0.75rem;"></i>
-                <a href="javascript:void(0)" onclick="viewLinkTimeline('${escHtml(linkid)}')" style="color:#4b6cb7;font-weight:600;"><i class="fas fa-history"></i> 处理时间线</a>
-                <span style="margin-left:16px;color:#888;font-size:0.82rem;">查看该 LinkID 下所有处理记录的时间线（支持导出 HTML / Markdown）</span>
+                <span class="audit-info-label">Session ID:</span> <code style="font-size:0.82rem;">${escHtml(sid)}</code>
             </td>
         </tr>`;
     }).join('');
@@ -1001,37 +1016,21 @@ function linkTimelineHtml(data) {
         '</div>';
     html += '<div class="audit-timeline-scroll" style="flex:1;min-height:0;">';
     tasks.forEach((t, ti) => {
+        // 从 events 中提取 Agent 输出详情（buildOutputOnlyEvents 只返回这一条）
+        const outputEv = (t.events || []).find(e => e.type === 'output');
+        const hasOutput = outputEv && outputEv.detail;
         html += '<div class="audit-task-group" style="border:1px solid #e0e3e8;border-radius:10px;margin-bottom:16px;overflow:hidden;">';
-        html += '<div class="audit-task-group-head" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 16px;background:#fafbfc;border-bottom:1px solid #edf2f7;font-size:0.85rem;">' +
-            '<strong>' + (ti + 1) + '.</strong>' +
+        html += '<div class="audit-task-group-head link-timeline-head" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 16px;background:#fafbfc;border-bottom:1px solid #edf2f7;font-size:0.85rem;' + (hasOutput ? 'cursor:pointer;' : '') + '"' + (hasOutput ? ' onclick="toggleTimelineDetail(this)"' : '') + '>' +
+            '<strong><i class="fas fa-arrow-right" style="color:#4b6cb7;"></i> ' + (ti + 1) + '.</strong>' +
             '<span style="font-family:monospace;font-size:0.78rem;color:#888;">' + escHtml(fmtTs(t.created_at)) + ' ~ ' + escHtml(t.finished_at ? fmtTs(t.finished_at) : '处理中') + '</span>' +
             '<span>' + escHtml(statusText(t.status)) + '</span>' +
-            '<span style="font-family:monospace;font-size:0.78rem;color:#888;">' + escHtml(t.task_id) + '</span>' +
+            '<span style="font-family:monospace;font-size:0.78rem;color:#888;">Task ID: ' + escHtml(t.task_id) + '</span>' +
+            (hasOutput ? '<i class="fas fa-chevron-right timeline-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i>' : '') +
             '</div>';
-        html += '<div class="audit-timeline">';
-        for (const ev of (t.events || [])) {
-            const icon = ev.type === 'tool' ? 'fa-wrench'
-                : ev.type === 'input' ? 'fa-inbox'
-                : ev.type === 'output' ? 'fa-arrow-right'
-                : ev.type === 'done' ? 'fa-check-circle'
-                : ev.type === 'error' ? 'fa-times-circle'
-                : ev.type === 'create' ? 'fa-plus-circle'
-                : ev.type === 'prompt' ? 'fa-file-code'
-                : 'fa-circle';
-            const cls = ev.type === 'error' ? 'error' : (ev.type === 'done' ? 'done' : 'info');
-            html += '<div class="timeline-item ' + cls + '">';
-            html += '<div class="timeline-dot"><i class="fas ' + icon + '"></i></div>';
-            html += '<div class="timeline-body">';
-            html += '<div class="timeline-header" onclick="toggleTimelineDetail(this)" style="cursor:pointer;">';
-            if (ev.time) html += '<span class="timeline-time">' + fmtTimelineTs(ev.time) + '</span>';
-            html += '<strong>' + escHtml(ev.title) + '</strong>';
-            html += '<i class="fas fa-chevron-right timeline-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-            if (ev.detail) {
-                html += '<pre class="timeline-detail term-box" style="display:none;">' + escHtml(ev.detail) + '</pre>';
-            }
-            html += '</div></div>';
+        if (hasOutput) {
+            html += '<pre class="timeline-detail term-box" style="display:none;margin:12px 16px;padding:10px 12px;background:#2d2d2d;color:#f8f8f2;border-radius:6px;font-size:0.8rem;font-family:\'SF Mono\',\'Consolas\',monospace;white-space:pre-wrap;word-break:break-all;">' + escHtml(outputEv.detail) + '</pre>';
         }
-        html += '</div></div>';
+        html += '</div>';
     });
     html += '</div>';
     return html;
@@ -1555,7 +1554,7 @@ function auditTimelineHtml(t) {
         step++;
         const icon = ev.type === 'tool' ? 'fa-wrench'
             : ev.type === 'input' ? 'fa-inbox'
-            : ev.type === 'output' ? 'fa-arrow-right'
+            : ev.type === 'output' ? 'fa-file-alt'
             : ev.type === 'done' ? 'fa-check-circle'
             : ev.type === 'error' ? 'fa-times-circle'
             : ev.type === 'create' ? 'fa-plus-circle'

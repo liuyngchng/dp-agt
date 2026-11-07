@@ -215,33 +215,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
 export function renderHistoryHtml(linkid: string, tasks: HistoryTaskView[]): string {
   const taskBlocks = tasks.map((t, idx) => {
-    const eventsHtml = t.events.map((ev, i) => {
-      const timeStr = ev.time ? fmtTs(ev.time) : '';
-      const detailBlock = ev.detail
-        ? `<pre class="detail">${escHtml(ev.detail)}</pre>`
-        : '';
-      return `<div class="item ${ev.type}">
-        <div class="dot"></div>
-        <div class="body">
-          <div class="ihead"><span class="time">${escHtml(timeStr)}</span><strong>${escHtml(ev.title)}</strong></div>
-          ${detailBlock}
-        </div>
-      </div>`;
-    }).join('\n');
+    // 会话处理时间线只保留「Agent 输出结果」，直接内嵌到分组头部下方，点击头部展开
+    const outputEv = (t.events || []).find(e => e.type === 'output') || (t.events || [])[0];
+    const outputDetail = outputEv && outputEv.detail ? outputEv.detail : '';
 
     const startStr = fmtTs(t.created_at);
     const endStr = t.finished_at ? fmtTs(t.finished_at) : '处理中';
     const statusCls = t.status === 'completed' ? 'done' : (t.status === 'failed' ? 'error' : 'info');
 
-    return `<div class="task-group">
-      <div class="task-group-head ${statusCls}">
-        <strong>${idx + 1}.</strong>
+    const head = `<strong>${idx + 1}.</strong>
         <span class="time">${escHtml(startStr)} ~ ${escHtml(endStr)}</span>
         <span>${escHtml(statusText(t.status))}</span>
-        <span style="font-family:monospace;font-size:0.78rem;">${escHtml(t.task_id)}</span>
-      </div>
-      <div class="tl">${eventsHtml}</div>
-    </div>`;
+        <span style="font-family:monospace;font-size:0.78rem;">Task ID: ${escHtml(t.task_id)}</span>`;
+
+    if (!outputDetail) {
+      return `<div class="task-group">
+        <div class="task-group-head ${statusCls}">${head}</div>
+      </div>`;
+    }
+
+    return `<details class="task-group">
+      <summary class="task-group-head ${statusCls}">${head}</summary>
+      <div class="tl"><pre class="detail">${escHtml(outputDetail)}</pre></div>
+    </details>`;
   }).join('\n');
 
   const firstStart = tasks[0] ? fmtTs(tasks[0].created_at) : '-';
@@ -255,10 +251,13 @@ export function renderHistoryHtml(linkid: string, tasks: HistoryTaskView[]): str
 <title>会话处理时间线 — ${escHtml(linkid)}</title>
 <style>${TIMELINE_CSS}
 .task-group{border:1px solid #e0e3e8;border-radius:10px;margin-bottom:24px;overflow:hidden}
-.task-group-head{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 20px;background:#fafbfc;border-bottom:1px solid #edf2f7;font-size:0.85rem}
+.task-group-head{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 20px;background:#fafbfc;border-bottom:1px solid #edf2f7;font-size:0.85rem;cursor:pointer}
 .task-group-head.done{border-left:4px solid #2e7d32}
 .task-group-head.error{border-left:4px solid #e53e3e}
 .task-group-head.info{border-left:4px solid #4b6cb7}
+details.task-group > summary{list-style:none}
+details.task-group > summary::-webkit-details-marker{display:none}
+details.task-group[open] > summary{border-bottom:1px solid #edf2f7}
 .task-group .tl{padding:12px 24px}
 </style>
 </head>

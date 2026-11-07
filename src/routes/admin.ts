@@ -21,6 +21,7 @@ import { loadPromptFromDisk, rescanPromptsDir, listAllPromptFiles } from '../ser
 import { buildEnv, buildClaudeMd } from '../services/sdk-runner.js';
 import { buildOutputOnlyEvents, renderHistoryHtml, renderHistoryMd } from '../services/timeline.js';
 import { listMemories, getMemory, saveMemory, deleteMemory, ensureMemoryDir } from '../services/memory-store.js';
+import { xmindToMarkdown } from '../services/xmind.js';
 import { syncInterfacesFromPrompts } from '../store.js';import type { Config } from '../config.js';
 
 const log = getLogger();
@@ -973,21 +974,42 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
+    // 记忆库规模限制：单文件 ≤ 100KB，文件数 ≤ 20，总量 ≤ 2MB。
+    // 索引表会注入每个任务的提示词，文件过多会拖长上下文；单文件过大读取时会吃掉大量 token。
+    const MAX_SINGLE_BYTES = 100 * 1024;
+    const MAX_FILES = 20;
+    const MAX_TOTAL_BYTES = 2 * 1024 * 1024;
+
     ensureMemoryDir(cfg.sys.data_dir);
+    const existing = listMemories(cfg.sys.data_dir);
+    const existingTotal = existing.reduce((sum, m) => sum + m.size, 0);
+
     let uploaded: string[] = [];
 
     // 浏览器上传中文文件名时 multipart 头未带 charset，multer 按 latin1 解码，
     // 需还原为 UTF-8。纯 ASCII 文件名该转换是恒等，无副作用。
     const origName = decodeUploadFilename(file.originalname || '');
-    if (/\.md$/i.test(origName) && !/\.tar\.gz$|\.tgz$|\.tar$|\.zip$/i.test(origName)) {
-      const content = file.buffer.toString('utf8');
-      const safe = saveMemory(cfg.sys.data_dir, origName, content);
-      uploaded = [safe];
+
+    // 收集待写入的 .md 文件内容
+    const pending: Array<{ name: string; content: string }> = [];
+    if (/\.(md|xmind)$/i.test(origName) && !/\.tar\.gz$|\.tgz$|\.tar$|\.zip$/i.test(origName)) {
+      if (/\.xmind$/i.test(origName)) {
+        // 将 .xmind 脑图转为 Markdown，存为同名 .md
+        try {
+          const md = xmindToMarkdown(file.buffer);
+          pending.push({ name: origName.replace(/\.xmind$/i, '.md'), content: md });
+        } catch (err) {
+          res.status(400).json({ code: 1001, message: err instanceof Error ? err.message : 'xmind 解析失败' });
+          return;
+        }
+      } else {
+        pending.push({ name: origName, content: file.buffer.toString('utf8') });
+      }
     } else {
       // 复用 extractArchive 解压，topDir=null 表示不剥离顶级目录
       const files = await extractArchive(file.buffer, origName, null);
       if (!files) {
-        res.status(400).json({ code: 1001, message: '无法解压文件。支持 .md / .tar.gz / .tgz / .zip' });
+        res.status(400).json({ code: 1001, message: '无法解压文件。支持 .md / .xmind / .tar.gz / .tgz / .zip' });
         return;
       }
       if ('error' in files) {
@@ -996,16 +1018,56 @@ export function createAdminRouter(cfg: Config): Router {
       }
       for (const [name, content] of Object.entries(files)) {
         if (!name.endsWith('.md')) continue;
-        try {
-          const safe = saveMemory(cfg.sys.data_dir, name, content);
-          uploaded.push(safe);
-        } catch { /* skip invalid */ }
+        pending.push({ name, content });
       }
     }
 
-    if (uploaded.length === 0) {
+    if (pending.length === 0) {
       res.status(400).json({ code: 1001, message: '没有有效的 .md 文件' });
       return;
+    }
+
+    // 校验：单文件大小
+    for (const p of pending) {
+      const bytes = Buffer.byteLength(p.content, 'utf8');
+      if (bytes > MAX_SINGLE_BYTES) {
+        res.status(400).json({
+          code: 1001,
+          message: `文件「${p.name}」超过单文件上限 100KB（当前 ${(bytes / 1024).toFixed(1)}KB），请精简内容后重试`,
+        });
+        return;
+      }
+    }
+
+    // 校验：文件数量（按文件名去重后的增量）
+    const existingNames = new Set(existing.map(m => m.filename));
+    const newNames = pending.map(p => p.name).filter(n => !existingNames.has(n));
+    if (existing.length + newNames.length > MAX_FILES) {
+      res.status(400).json({
+        code: 1001,
+        message: `记忆文件数将超过上限 ${MAX_FILES} 个（当前 ${existing.length} 个，本次新增 ${newNames.length} 个），请合并或删除部分文件`,
+      });
+      return;
+    }
+
+    // 校验：总字节数
+    const incomingTotal = pending.reduce((sum, p) => sum + Buffer.byteLength(p.content, 'utf8'), 0);
+    const existingKeptTotal = existing
+      .filter(m => !pending.some(p => p.name === m.filename))
+      .reduce((sum, m) => sum + m.size, 0);
+    if (existingKeptTotal + incomingTotal > MAX_TOTAL_BYTES) {
+      res.status(400).json({
+        code: 1001,
+        message: `记忆库总量将超过上限 2MB（当前 ${(existingKeptTotal / 1024).toFixed(1)}KB，本次新增 ${(incomingTotal / 1024).toFixed(1)}KB），请精简内容`,
+      });
+      return;
+    }
+
+    for (const p of pending) {
+      try {
+        const safe = saveMemory(cfg.sys.data_dir, p.name, p.content);
+        uploaded.push(safe);
+      } catch { /* skip invalid */ }
     }
 
     log.info({ uploaded }, 'memory_uploaded');
