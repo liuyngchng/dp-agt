@@ -82,6 +82,19 @@ function sanitizeDirName(s: string): string {
   return s.replace(/[/\\:*?"<>|]/g, '_');
 }
 
+/** 将 tool_result 的 content（string 或 blocks 数组）转为纯文本 */
+function toolResultText(raw: unknown): string {
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) {
+    return raw.map((c) => {
+      if (c == null) return '';
+      const o = c as Record<string, unknown>;
+      return typeof o.text === 'string' ? o.text : JSON.stringify(o);
+    }).join('');
+  }
+  return raw == null ? '' : JSON.stringify(raw);
+}
+
 /** 根据 LLM 配置构建 Claude Code 子进程环境变量 */
 export function buildEnv(cfg: Config): Record<string, string | undefined> {
   // SDK 的 env 会整体替换子进程环境（不自动合并 process.env），
@@ -286,6 +299,7 @@ export async function runAgent(
   let fullOutput = '';
   let capturedSessionId: string | undefined;
   const traceMessages: unknown[] = [];
+  const callbackToolIds = new Set<string>();
 
   try {
     const q = query({
@@ -324,6 +338,30 @@ export async function runAgent(
           for (const block of blocks as Array<Record<string, unknown>>) {
             if (block.type === 'text' && typeof block.text === 'string') {
               fullOutput += block.text;
+            }
+            // 识别回调 curl 命令（tool_use / Bash），记录回调请求体
+            if (block.type === 'tool_use' && block.name === 'Bash') {
+              const input = block.input as Record<string, unknown> | undefined;
+              const cmd = typeof input?.command === 'string' ? input!.command as string : '';
+              if (cmd.includes('/tmp/callback_payload') || cmd.includes('callback')) {
+                const bid = typeof block.id === 'string' ? block.id as string : '';
+                if (bid) callbackToolIds.add(bid);
+                log.debug({ taskId, linkid, command: cmd }, 'callback_request');
+              }
+            }
+          }
+        }
+      }
+
+      // 识别回调 curl 的执行结果（tool_result），记录对方返回内容
+      if ((message as Record<string, unknown>).type === 'user') {
+        const msg = (message as Record<string, unknown>).message as Record<string, unknown> | undefined;
+        const blocks = msg?.content;
+        if (Array.isArray(blocks)) {
+          for (const block of blocks as Array<Record<string, unknown>>) {
+            const tuid = typeof block.tool_use_id === 'string' ? block.tool_use_id as string : '';
+            if (block.type === 'tool_result' && tuid && callbackToolIds.has(tuid)) {
+              log.debug({ taskId, linkid, callbackResponse: toolResultText(block.content) }, 'callback_response');
             }
           }
         }

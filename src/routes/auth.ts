@@ -194,8 +194,6 @@ function hashApiToken(token: string): string {
  */
 export function apiTokenMiddleware() {
   return (req: Request, res: Response, next: () => void) => {
-    log.debug({ path: req.path, body: req.body }, 'api_request_received');
-
     const dbEnabled = configStore.get('api_auth_enabled');
     const dbTokenHash = configStore.get('api_auth_token');
 
