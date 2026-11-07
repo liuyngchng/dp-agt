@@ -82,11 +82,8 @@ case "${1:-start}" in
       --add-host mcp.sentry.dev:127.0.0.1 \
       --add-host telemetry.googleapis.com:127.0.0.1 \
       "$IMAGE"
-    # 检查容器内是否含证书，决定用 http 还是 https
-    PROTO="http"
-    if docker exec "$CONTAINER" test -f /app/deploy/certs/cert.pem 2>/dev/null; then
-      PROTO="https"
-    fi
+    # 服务始终 HTTPS（证书已打入镜像）
+    PROTO="https"
 
     echo "[deploy] 等待服务启动（最多 30 秒）..."
     echo ""
@@ -106,7 +103,7 @@ case "${1:-start}" in
     # 等待就绪，最终 tail -f 持续输出
     STARTED=0
     for ((i = 0; i < 30; i++)); do
-      if docker logs "$CONTAINER" 2>&1 | grep -qE 'server_started_(http|https)'; then
+      if docker logs "$CONTAINER" 2>&1 | grep -qE 'server_started_https'; then
         STARTED=1
         break
       fi

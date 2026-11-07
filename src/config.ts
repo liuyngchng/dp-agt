@@ -10,8 +10,6 @@ interface CfgFile {
   server?: {
     port?: number;
     debug?: boolean;
-    cert_file?: string;
-    key_file?: string;
     self_ip?: string;
   };
   sys?: {
@@ -41,8 +39,6 @@ export interface Config {
   server: {
     port: number;
     debug: boolean;
-    cert_file: string;
-    key_file: string;
     self_ip: string;
   };
   sys: {
@@ -129,8 +125,6 @@ export function loadConfig(): Config {
     server: {
       port: envInt('SERVER_PORT', s.port ?? 20001),
       debug: envBool('DEBUG', s.debug ?? false),
-      cert_file: env('CERT_FILE', s.cert_file ?? ''),
-      key_file: env('KEY_FILE', s.key_file ?? ''),
       self_ip: env('SELF_IP', s.self_ip ?? ''),
     },
     sys: {

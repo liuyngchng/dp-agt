@@ -21,11 +21,6 @@ server:
   # 容器对外服务地址（用于管理后台获取服务器信息及 CLAUDE.md 模板渲染）
   self_ip: 192.168.1.102
 
-  # HTTPS 证书路径（留空则使用 HTTP）
-  # 镜像内默认路径，通常无需修改
-  cert_file: "/app/deploy/certs/cert.pem"
-  key_file: "/app/deploy/certs/key.pem"
-
 # ---- 系统配置 ----
 sys:
   # Worker 数量 = 同时调用 Agent SDK 的任务数上限

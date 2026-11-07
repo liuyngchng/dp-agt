@@ -54,8 +54,7 @@ export function createAdminRouter(cfg: Config): Router {
 
   // === 服务器信息（所有登录用户可访问） ===
   router.get('/admin/server-info', (_req: Request, res: Response) => {
-    const protocol = cfg.server.cert_file && cfg.server.key_file &&
-      existsSync(cfg.server.cert_file) && existsSync(cfg.server.key_file) ? 'https' : 'http';
+    const protocol = 'https';
     const host = cfg.server.self_ip || detectPrimaryIp();
     res.json({ code: 0, data: { protocol, host, port: cfg.server.port } });
   });

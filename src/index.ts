@@ -153,12 +153,12 @@ app.get('/', (_req, res) => {
   res.redirect('/admin');
 });
 
-// 启动 — 有证书则 HTTPS，否则 HTTP
+// 启动 — 始终 HTTPS（证书由 build.sh 自动生成，容器内为 /app/deploy/certs/，本地开发为项目根 deploy/certs/）
 const port = cfg.server.port;
-const certFile = cfg.server.cert_file;
-const keyFile = cfg.server.key_file;
+const CERT_FILE = resolve(process.cwd(), 'deploy/certs/cert.pem');
+const KEY_FILE = resolve(process.cwd(), 'deploy/certs/key.pem');
 
-log.info({ port, certFile: certFile || '(none)' }, 'binding_port');
+log.info({ port, certFile: CERT_FILE }, 'binding_port');
 
 // ---- 定期清理过期任务数据 ----
 async function cleanupExpiredTasks() {
@@ -205,16 +205,16 @@ setTimeout(cleanupExpiredTasks, 10 * 1000);
 setInterval(cleanupExpiredTasks, CLEANUP_INTERVAL_MS);
 log.info({ retentionDays: cfg.sys.retention_days, intervalMs: CLEANUP_INTERVAL_MS }, 'cleanup_scheduled');
 
-if (certFile && keyFile && existsSync(certFile) && existsSync(keyFile)) {
-  const httpsOpts = {
-    cert: readFileSync(certFile),
-    key: readFileSync(keyFile),
-  };
-  createHttpsServer(httpsOpts, app).listen(port, () => {
-    log.info({ port, url: 'https://localhost:' + port }, 'server_started_https');
-  });
-} else {
-  app.listen(port, () => {
-    log.info({ port, url: 'http://localhost:' + port }, 'server_started_http');
-  });
+if (!existsSync(CERT_FILE) || !existsSync(KEY_FILE)) {
+  log.error({ certFile: CERT_FILE, keyFile: KEY_FILE }, 'https_cert_missing');
+  console.error('[startup] HTTPS 证书缺失，无法启动。请使用 build/build.sh 构建镜像（会自动生成并打入证书）。');
+  process.exit(1);
 }
+
+const httpsOpts = {
+  cert: readFileSync(CERT_FILE),
+  key: readFileSync(KEY_FILE),
+};
+createHttpsServer(httpsOpts, app).listen(port, () => {
+  log.info({ port, url: 'https://localhost:' + port }, 'server_started_https');
+});

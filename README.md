@@ -15,9 +15,13 @@ cp data/cfg.yml.template data/cfg.yml
 npm install
 npm run build
 
-# 3. 启动服务
-npm start          # HTTP 模式
-# 或配置 cert_file / key_file 后自动切换为 HTTPS
+# 3. 生成 HTTPS 证书并启动服务（始终 HTTPS）
+# 证书由 build/build.sh 构建时自动生成到 deploy/certs/；本地开发可手动生成：
+openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+  -keyout deploy/certs/key.pem -out deploy/certs/cert.pem \
+  -subj "/C=CN/O=AI数字员工/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+npm start          # HTTPS 模式（读取 deploy/certs/cert.pem、key.pem）
 ```
 
 ### Docker 部署

@@ -134,15 +134,9 @@ COPY --chown=agent:agent data/cfg.csv.template data/mock.json /app/assets/
 RUN mkdir -p /app/runtime && chmod 777 /app/runtime
 
 # ---- HTTPS certs ----
-# 证书直接打入镜像（不依赖宿主机挂载），chmod 644 保证任意 uid 可读
-ARG HTTPS_CERT=""
-COPY --chown=agent:agent deploy/certs/ /tmp/certs/
-RUN if [ -n "$HTTPS_CERT" ] && [ -f /tmp/certs/cert.pem ]; then \
-      mkdir -p /app/deploy/certs && \
-      cp /tmp/certs/cert.pem /tmp/certs/key.pem /app/deploy/certs/ && \
-      chmod 644 /app/deploy/certs/cert.pem /app/deploy/certs/key.pem; \
-    fi && \
-    rm -rf /tmp/certs
+# 证书由 build.sh 生成，直接打入镜像（不依赖宿主机挂载），chmod 644 保证任意 uid 可读
+COPY --chown=agent:agent deploy/certs/ /app/deploy/certs/
+RUN chmod 644 /app/deploy/certs/cert.pem /app/deploy/certs/key.pem
 
 # ---- Runtime ----
 WORKDIR /app
