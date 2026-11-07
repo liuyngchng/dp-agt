@@ -385,9 +385,9 @@ async function loadPreview() {
     }
     wrap.style.display = 'block';
     container.innerHTML = previews.map((p, idx) => `
-        <div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:8px;" onclick="openPromptPreview(${idx})" onmouseover="this.style.borderColor='#4b6cb7'" onmouseout="this.style.borderColor='#e0e0e0'">
+        <div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:8px;height:40px;box-sizing:border-box;flex-shrink:0;" onclick="openPromptPreview(${idx})" onmouseover="this.style.borderColor='#4b6cb7'" onmouseout="this.style.borderColor='#e0e0e0'">
             <i class="fas fa-file-code" style="color:#4b6cb7;"></i>
-            <span style="font-family:monospace;font-size:0.85rem;">${escHtml(p.file)}</span>
+            <span style="font-family:monospace;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(p.file)}</span>
         </div>
     `).join('');
     // 缓存预览数据供弹窗使用
@@ -539,6 +539,8 @@ document.addEventListener('keydown', function(e) {
         if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
         if (document.getElementById('auditDetailModal').classList.contains('show')) closeAuditDetail();
         if (document.getElementById('memoryModal').classList.contains('show')) closeMemoryModal();
+        if (document.getElementById('promptPreviewModal').classList.contains('show')) closePromptPreview();
+        if (document.getElementById('chatModal').classList.contains('show')) closeChatModal();
     }
 });
 
