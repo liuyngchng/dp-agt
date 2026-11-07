@@ -219,12 +219,11 @@ export function renderHistoryHtml(linkid: string, tasks: HistoryTaskView[]): str
     const outputEv = (t.events || []).find(e => e.type === 'output') || (t.events || [])[0];
     const outputDetail = outputEv && outputEv.detail ? outputEv.detail : '';
 
-    const startStr = fmtTs(t.created_at);
     const endStr = t.finished_at ? fmtTs(t.finished_at) : '处理中';
     const statusCls = t.status === 'completed' ? 'done' : (t.status === 'failed' ? 'error' : 'info');
 
     const head = `<strong>${idx + 1}.</strong>
-        <span class="time">${escHtml(startStr)} ~ ${escHtml(endStr)}</span>
+        <span class="time">${escHtml(endStr)}</span>
         <span>${escHtml(statusText(t.status))}</span>
         <span style="font-family:monospace;font-size:0.78rem;">Task ID: ${escHtml(t.task_id)}</span>`;
 
@@ -287,13 +286,8 @@ export function renderHistoryMd(linkid: string, tasks: HistoryTaskView[]): strin
   lines.push('');
 
   tasks.forEach((t, idx) => {
-    const startStr = fmtTs(t.created_at);
     const endStr = t.finished_at ? fmtTs(t.finished_at) : '处理中';
-    lines.push(`## ${idx + 1}.`);
-    lines.push('');
-    lines.push(`- Task ID: ${t.task_id}`);
-    lines.push(`- 状态: ${statusText(t.status)}`);
-    lines.push(`- 时间: ${startStr} ~ ${endStr}`);
+    lines.push(`## ${idx + 1}. ${endStr} ${statusText(t.status)} Task ID: ${t.task_id}`);
     lines.push('');
     t.events.forEach((ev) => {
       if (ev.detail) {

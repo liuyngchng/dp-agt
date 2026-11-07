@@ -1036,7 +1036,7 @@ function linkTimelineHtml(data) {
         html += '<div class="audit-task-group" style="border:1px solid #e0e3e8;border-radius:10px;margin-bottom:16px;overflow:hidden;">';
         html += '<div class="audit-task-group-head link-timeline-head" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 16px;background:#fafbfc;border-bottom:1px solid #edf2f7;font-size:0.85rem;' + (hasOutput ? 'cursor:pointer;' : '') + '"' + (hasOutput ? ' onclick="toggleTimelineDetail(this)"' : '') + '>' +
             '<strong><i class="fas fa-arrow-right" style="color:#4b6cb7;"></i> ' + (ti + 1) + '.</strong>' +
-            '<span style="font-family:monospace;font-size:0.78rem;color:#888;">' + escHtml(fmtTs(t.created_at)) + ' ~ ' + escHtml(t.finished_at ? fmtTs(t.finished_at) : '处理中') + '</span>' +
+            '<span style="font-family:monospace;font-size:0.78rem;color:#888;">' + escHtml(fmtTs(t.finished_at)) + '</span>' +
             '<span>' + escHtml(statusText(t.status)) + '</span>' +
             '<span style="font-family:monospace;font-size:0.78rem;color:#888;">Task ID: ' + escHtml(t.task_id) + '</span>' +
             (hasOutput ? '<i class="fas fa-chevron-right timeline-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i>' : '') +
