@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
+import { randomBytes, createHmac, timingSafeEqual, createHash } from 'node:crypto';
 import { usersStore, configStore, hashPasswordSync, comparePasswordSync } from '../store.js';
 import { getLogger } from '../logger.js';
 
@@ -178,29 +178,64 @@ export function adminOnlyMiddleware(req: Request, res: Response, next: () => voi
  *
  * 若 DB 中未启用（api_auth_enabled !== '1'），直接放行。
  */
+/** 对外 API 认证 token 的 SHA-256 十六进制哈希（DB 只存哈希，不存明文） */
+function hashApiToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/**
+ * 对外 API 认证中间件。
+ * 支持两种携带方式：
+ *   1. X-Api-Key: {token}
+ *   2. Authorization: Bearer {token}
+ *
+ * 若 DB 中未启用（api_auth_enabled !== '1'），直接放行。
+ * token 在 DB 中仅存 SHA-256 哈希，比较使用 timingSafeEqual 防时序侧信道。
+ */
 export function apiTokenMiddleware() {
   return (req: Request, res: Response, next: () => void) => {
     log.debug({ path: req.path, body: req.body }, 'api_request_received');
 
     const dbEnabled = configStore.get('api_auth_enabled');
-    const dbToken = configStore.get('api_auth_token');
+    const dbTokenHash = configStore.get('api_auth_token');
 
-    const respondUnauthorized = () => {
+    const respondUnauthorized = (reason: string) => {
       const resp = {
         code: 1003,
         message: 'Unauthorized: 无效或缺失的 X-Api-Key / Authorization Bearer Token',
         task_id: '',
         linkid: '',
       };
-      log.warn({ path: req.path, response: resp }, 'api_auth_failed');
+      // 记录校验失败日志：含来源 IP、路径、原因，但不记录 token 明文/哈希
+      log.warn({
+        path: req.path,
+        ip: req.ip || req.socket?.remoteAddress || '-',
+        reason,
+        has_token: !!extractToken(req),
+      }, 'api_auth_failed');
       res.status(401).json(resp);
     };
 
     // DB 启用 → 校验 token
-    if (dbEnabled === '1' && dbToken) {
+    if (dbEnabled === '1' && dbTokenHash) {
       const token = extractToken(req);
-      if (!token || token !== dbToken) {
-        respondUnauthorized();
+      if (!token) {
+        respondUnauthorized('missing_token');
+        return;
+      }
+      const providedHash = hashApiToken(token);
+      // timingSafeEqual 要求两 buffer 等长；哈希长度固定为 64，安全
+      let ok = false;
+      try {
+        ok = timingSafeEqual(
+          Buffer.from(providedHash, 'hex'),
+          Buffer.from(dbTokenHash, 'hex'),
+        );
+      } catch {
+        ok = false;
+      }
+      if (!ok) {
+        respondUnauthorized('token_mismatch');
         return;
       }
     }

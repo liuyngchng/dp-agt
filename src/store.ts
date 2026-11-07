@@ -345,7 +345,7 @@ export const taskLogsStore = {
   },
   listByLinkid(linkid: string, limit = 50): TaskLog[] {
     return db.prepare(
-      'SELECT * FROM task_logs WHERE linkid = ? ORDER BY finished_ts ASC LIMIT ?'
+      'SELECT * FROM task_logs WHERE linkid = ? ORDER BY finished_ts DESC LIMIT ?'
     ).all(linkid, limit) as TaskLog[];
   },
   list(limit = 100): TaskLog[] {
@@ -542,5 +542,8 @@ export const configStore = {
   },
   set(key: string, value: string, note?: string): void {
     db.prepare('INSERT INTO config (key, value, note) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, note = excluded.note').run(key, value, note ?? '');
+  },
+  del(key: string): void {
+    db.prepare('DELETE FROM config WHERE key = ?').run(key);
   },
 };

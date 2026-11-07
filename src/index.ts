@@ -3,6 +3,7 @@ import { createServer as createHttpsServer } from 'node:https';
 import { join, resolve } from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
+import { createHash } from 'node:crypto';
 import { loadConfig, ensureDirs } from './config.js';
 import { initLogger, getLogger } from './logger.js';
 import { initStore, taskLogsStore, configStore, sessionsStore, syncInterfacesFromPrompts } from './store.js';
@@ -47,6 +48,17 @@ log.info({
 // 初始化存储
 initStore(cfg.sys.data_dir);
 log.info('store_ready');
+
+// 迁移：将旧版明文 api_auth_token 哈希化（一次性）
+(function migrateApiTokenToHash() {
+  const raw = configStore.get('api_auth_token');
+  if (!raw) return;
+  // 已经是十六进制 64 位（SHA-256 哈希）则跳过
+  if (/^[a-f0-9]{64}$/.test(raw)) return;
+  const hash = createHash('sha256').update(raw, 'utf8').digest('hex');
+  configStore.set('api_auth_token', hash, '对外 API 认证 Token（SHA-256 哈希）');
+  log.info({}, 'api_token_migrated_to_hash');
+})();
 
 // 扫描 prompts/ 目录，同步 agent_interfaces 到 DB
 const promptFiles = rescanPromptsDir();

@@ -5,6 +5,7 @@ import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, rmSync, wri
 import { join, resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'node:crypto';
 import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
@@ -544,14 +545,16 @@ export function createAdminRouter(cfg: Config): Router {
   router.get('/admin/sys-config', (req: Request, res: Response) => {
     const name = configStore.get('sys.name') || '';
     const apiAuthEnabled = configStore.get('api_auth_enabled');
-    const apiAuthToken = configStore.get('api_auth_token');
+    // token 已哈希存储，不再回传哈希值，仅告知是否已配置
+    const apiAuthTokenSet = !!configStore.get('api_auth_token');
     res.json({
       code: 0,
       data: {
         sys: { name },
         api: {
           auth_enabled: apiAuthEnabled === '1',
-          auth_token: apiAuthToken || '',
+          auth_token: '', // 不回传 token/哈希
+          has_token: apiAuthTokenSet,
         },
       },
     });
@@ -571,8 +574,10 @@ export function createAdminRouter(cfg: Config): Router {
         api.auth_enabled ? '1' : '0',
         '对外 API 是否启用 X-Api-Key 认证'
       );
-      if (typeof api.auth_token === 'string') {
-        configStore.set('api_auth_token', api.auth_token, '对外 API 认证 Token');
+      if (typeof api.auth_token === 'string' && api.auth_token.trim()) {
+        // 仅存 SHA-256 哈希，不落明文
+        const hash = createHash('sha256').update(api.auth_token.trim(), 'utf8').digest('hex');
+        configStore.set('api_auth_token', hash, '对外 API 认证 Token（SHA-256 哈希）');
       }
     }
     log.info({ sys_name: sys?.name, api_auth_enabled: api?.auth_enabled }, 'admin_update_sys_config');

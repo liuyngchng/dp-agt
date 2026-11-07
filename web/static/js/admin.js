@@ -758,17 +758,23 @@ async function loadSysConfig() {
             document.getElementById('pageTitle').textContent = title;
             document.getElementById('sysNameHeader').textContent = title;
             const apiEnabled = json.data.api && json.data.api.auth_enabled;
+            const hasToken = json.data.api && json.data.api.has_token;
             document.getElementById('apiAuthEnabled').checked = apiEnabled || false;
-            document.getElementById('apiAuthToken').value = (json.data.api && json.data.api.auth_token) || '';
-            document.getElementById('apiTokenRow').style.display = apiEnabled ? 'flex' : '';
+            // token 仅存哈希，不回传明文；已配置时显示占位提示，避免误清空
+            const tokenInput = document.getElementById('apiAuthToken');
+            tokenInput.value = '';
+            tokenInput.placeholder = hasToken ? '已配置（留空保持不变）' : '设置认证 token';
+            document.getElementById('apiTokenRow').style.display = apiEnabled ? 'flex' : 'none';
         }
     } catch (_) {}
 }
 
 function generateAPIToken() {
-    const chars = '0123456789abcdef';
+    // 用密码学安全随机源生成 64 位十六进制 token（256 bit 熵）
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
     let token = '';
-    for (let i = 0; i < 32; i++) token += chars[Math.floor(Math.random() * 16)];
+    for (const b of bytes) token += b.toString(16).padStart(2, '0');
     document.getElementById('apiAuthToken').value = token;
 }
 
@@ -960,16 +966,24 @@ async function loadSessions() {
         const linkid = s.linkid || '';
         const rowId = 'sess-row-' + i;
         const expandId = 'sess-exp-' + i;
+        const isActive = s.status === 'active';
+        // 已关闭会话：续聊 / 删除按钮置灰禁用；时间线按钮仍可查看历史记录
+        const chatBtn = isActive
+            ? `<button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();openChat('${escHtml(sid)}', '${escHtml(linkid)}')" title="进入会话续聊" style="margin-right:4px;"><i class="fas fa-comment-dots"></i></button>`
+            : `<button class="cfg-btn-sm cfg-btn-icon" disabled title="会话已关闭，无法续聊" style="margin-right:4px;"><i class="fas fa-comment-dots"></i></button>`;
+        const delBtn = isActive
+            ? `<button class="cfg-btn-danger-sm" onclick="event.stopPropagation();deleteSession('${escHtml(sid)}', '${escHtml(linkid)}')" title="删除会话"><i class="fas fa-trash-alt"></i></button>`
+            : `<button class="cfg-btn-danger-sm" disabled title="会话已关闭" style="opacity:0.45;cursor:not-allowed;"><i class="fas fa-trash-alt"></i></button>`;
         return `<tr id="${rowId}" style="cursor:pointer;" onclick="toggleSessionExpand('${rowId}', '${expandId}')">
             <td class="col-seq">${i + 1}</td>
             <td><span style="font-family:monospace;font-size:0.82rem;">${escHtml(linkid)}</span></td>
-            <td>${s.status === 'active' ? '<span class="badge badge-processing">活跃</span>' : '<span class="badge badge-cancelled">关闭</span>'}</td>
+            <td>${isActive ? '<span class="badge badge-processing">活跃</span>' : '<span class="badge badge-cancelled">关闭</span>'}</td>
             <td class="col-date">${fmtTs(s.created_at)}</td>
             <td class="col-date">${fmtTs(s.updated_at)}</td>
             <td class="col-action" style="width:120px;">
                 <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();viewLinkTimeline('${escHtml(linkid)}')" title="处理时间线" style="margin-right:4px;"><i class="fas fa-history"></i></button>
-                <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();openChat('${escHtml(sid)}', '${escHtml(linkid)}')" title="进入会话续聊" style="margin-right:4px;"><i class="fas fa-comment-dots"></i></button>
-                <button class="cfg-btn-danger-sm" onclick="event.stopPropagation();deleteSession('${escHtml(sid)}', '${escHtml(linkid)}')" title="删除会话"><i class="fas fa-trash-alt"></i></button>
+                ${chatBtn}
+                ${delBtn}
             </td>
         </tr>
         <tr id="${expandId}" style="display:none;">
