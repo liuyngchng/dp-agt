@@ -263,6 +263,9 @@ header p {
 .pwd-eye:hover {
     color: #4b6cb7;
 }
+.login-field .pwd-input-wrap input {
+    padding-right: 40px;
+}
 .pwd-hint {
     font-size: 0.75rem;
     color: #999;
