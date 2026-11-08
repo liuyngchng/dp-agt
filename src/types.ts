@@ -36,7 +36,6 @@ export interface TaskLog {
   request_response: string | null;   // 我方对请求的同步响应
   prompt: string;
   sdk_output: string | null;         // Agent 最终输出（业务产出）
-  sdk_trace: string | null;          // Agent SDK 全量消息流 JSON（用于时间线回溯）
   error_message: string | null;
   created_at: string;           // YYYY-MM-DD HH:MM:ss.SSS 本地时间
   finished_at: string | null;
@@ -48,6 +47,15 @@ export interface TaskLog {
 // Session（公文 ↔ Claude Agent SDK 会话映射）
 // ============================================================
 export type SessionStatus = 'active' | 'closed';
+
+// ============================================================
+// SDK Trace（独立存储，避免拖慢 task_logs 列表查询）
+// ============================================================
+export interface SdkTrace {
+  id: number;           // 自增主键
+  task_id: string;      // 关联 task_logs.task_id
+  sdk_trace: string;    // Agent SDK 全量消息流 JSON
+}
 
 export interface Session {
   session_id: string;

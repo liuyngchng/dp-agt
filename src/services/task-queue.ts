@@ -7,7 +7,7 @@
  */
 import { v4 as uuid } from 'uuid';
 import { getLogger } from '../logger.js';
-import { taskLogsStore, interfacesStore, sessionsStore } from '../store.js';
+import { taskLogsStore, interfacesStore, sessionsStore, sdkTracesStore } from '../store.js';
 import { renderPrompt, loadPromptFromDisk } from './prompt-engine.js';
 import { runAgent } from './sdk-runner.js';
 import { nowReadable, nowTs } from '../time.js';
@@ -93,10 +93,10 @@ async function processItem(item: WorkerItem): Promise<void> {
       status: 'cancelled' as TaskStatus,
       session_id: result.sessionId || null,
       sdk_output: result.rawOutput,
-      sdk_trace: result.trace,
       error_message: '任务已被管理员停止',
       finished_at: nowLocal(),
     });
+    if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
     log.info({ task_id, linkid, status: 'cancelled' }, 'task_cancelled');
     return;
   }
@@ -108,11 +108,11 @@ async function processItem(item: WorkerItem): Promise<void> {
       status: 'failed' as TaskStatus,
       session_id: result.sessionId || null,
       sdk_output: result.rawOutput,
-      sdk_trace: result.trace,
       error_message: errMsg,
       finished_at: nowLocal(),
     });
 
+    if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
     log.error({ task_id, linkid, error: errMsg }, 'task_failed');
     return;
   }
@@ -121,11 +121,11 @@ async function processItem(item: WorkerItem): Promise<void> {
   taskLogsStore.updateResult(task_id, {
     session_id: result.sessionId || null,
     sdk_output: result.rawOutput,
-    sdk_trace: result.trace,
     status: 'completed' as TaskStatus,
     finished_at: nowLocal(),
   });
 
+  if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
   log.info({ task_id, linkid, status: 'completed' }, 'task_done');
 }
 
@@ -223,7 +223,6 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
     request_response: null,
     prompt: '',
     sdk_output: null,
-    sdk_trace: null,
     error_message: null,
     created_at: now,
     finished_at: null,

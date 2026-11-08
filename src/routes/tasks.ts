@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { taskLogsStore } from '../store.js';
+import { taskLogsStore, sdkTracesStore } from '../store.js';
 import { cancelTask } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
@@ -143,7 +143,8 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    const events = buildTimelineEvents(task);
+    const sdkTrace = sdkTracesStore.getTraceByTaskId(task_id);
+    const events = buildTimelineEvents(task, sdkTrace);
     const linkid = task.linkid || '';
 
     log.info({ from_ip: fromIp, task_id, linkid, status: task.status, format, events: events.length }, 'api_task_log');
@@ -195,7 +196,8 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    const events = buildTimelineEvents(task);
+    const sdkTrace = sdkTracesStore.getTraceByTaskId(task.task_id);
+    const events = buildTimelineEvents(task, sdkTrace);
 
     log.info({ from_ip: fromIp, task_id: task.task_id, linkid, status: task.status, format, events: events.length }, 'api_task_link_log');
 

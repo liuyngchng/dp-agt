@@ -307,38 +307,77 @@
                     </div>
                 </div>
 
-                <!-- ========== 系统设置 ========== -->
+                <!-- ========== 系统管理 ========== -->
                 <div class="cfg-section" id="section-sys">
-                    <h2><i class="fas fa-sliders-h"></i> 系统设置</h2>
-                    <div class="form-g" style="max-width:610px;">
-                        <label>系统名称</label>
-                        <input type="text" id="sysName" style="width:100%;">
+                    <h2><i class="fas fa-sliders-h"></i> 系统管理</h2>
+
+                    <!-- 横向子 tab -->
+                    <div class="sub-tabs" style="display:flex;gap:8px;margin:20px 0 24px;border-bottom:2px solid #eef1f6;">
+                        <button type="button" class="sub-tab active" data-subtab="settings" onclick="switchSysTab('settings')"><i class="fas fa-cog"></i> 系统设置</button>
+                        <button type="button" class="sub-tab" data-subtab="data" onclick="switchSysTab('data')"><i class="fas fa-database"></i> 数据管理</button>
                     </div>
 
-                    <h3 style="margin-top:24px;border-top:1px solid #e0e3e8;padding-top:20px;">对外 API 认证</h3>
-                    <p style="color:#888;margin-bottom:12px;font-size:0.85rem;">
-                        启用后调用 <code>POST /api/v1/{path}</code> 必须携带 <code>X-Api-Key: &lt;token&gt;</code> 头。
-                    </p>
-                    <div style="margin-bottom:12px;">
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                            <input type="checkbox" id="apiAuthEnabled" onchange="document.getElementById('apiTokenRow').style.display=this.checked?'block':'none'"> 启用 API 认证
-                        </label>
-                    </div>
-                    <div id="apiTokenRow" style="max-width:610px;">
-                        <div class="form-g" style="margin-bottom:0;position:relative;">
-                            <label style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                                <span>Token</span>
-                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="generateAPIToken()" style="padding:6px 14px;font-size:0.8rem;white-space:nowrap;">
-                                    <i class="fas fa-sync-alt"></i> 随机生成
-                                </button>
+                    <!-- Tab 1：系统设置 -->
+                    <div class="sub-panel active" id="sub-sys-settings">
+                        <div class="form-g" style="max-width:610px;">
+                            <label>系统名称</label>
+                            <input type="text" id="sysName" style="width:100%;">
+                        </div>
+
+                        <h3 style="margin-top:24px;border-top:1px solid #e0e3e8;padding-top:20px;">对外 API 认证</h3>
+                        <p style="color:#888;margin-bottom:12px;font-size:0.85rem;">
+                            启用后调用 <code>POST /api/v1/{path}</code> 必须携带 <code>X-Api-Key: &lt;token&gt;</code> 头。
+                        </p>
+                        <div style="margin-bottom:12px;">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" id="apiAuthEnabled" onchange="document.getElementById('apiTokenRow').style.display=this.checked?'block':'none'"> 启用 API 认证
                             </label>
-                            <input type="password" id="apiAuthToken" placeholder="设置认证 token" style="width:100%;font-family:monospace;padding-right:36px;">
-                            <i class="fas fa-eye" onclick="toggleTokenVisibility()" style="position:absolute;right:10px;bottom:12px;cursor:pointer;color:#999;font-size:0.9rem;" title="显示/隐藏"></i>
+                        </div>
+                        <div id="apiTokenRow" style="max-width:610px;">
+                            <div class="form-g" style="margin-bottom:0;position:relative;">
+                                <label style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                    <span>Token</span>
+                                    <button type="button" class="cfg-btn cfg-btn-reset" onclick="generateAPIToken()" style="padding:6px 14px;font-size:0.8rem;white-space:nowrap;">
+                                        <i class="fas fa-sync-alt"></i> 随机生成
+                                    </button>
+                                </label>
+                                <input type="password" id="apiAuthToken" placeholder="设置认证 token" style="width:100%;font-family:monospace;padding-right:36px;">
+                                <i class="fas fa-eye" onclick="toggleTokenVisibility()" style="position:absolute;right:10px;bottom:12px;cursor:pointer;color:#999;font-size:0.9rem;" title="显示/隐藏"></i>
+                            </div>
+                        </div>
+                        <button class="cfg-btn cfg-btn-save" onclick="saveSysConfig()" style="margin-top:16px;">
+                            <i class="fas fa-check"></i> 保存
+                        </button>
+                    </div>
+
+                    <!-- Tab 2：数据管理 -->
+                    <div class="sub-panel" id="sub-sys-data">
+                        <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">
+                            按 <code>task_id</code> 或 <code>linkid</code> 查询任务日志，查看 <code>sdk_trace</code> 后可导出为单文件 JSON。<strong>清空操作不可逆</strong>，清空前建议先导出备份。
+                        </p>
+
+                        <div id="dataTableSelector" style="margin-bottom:24px;"></div>
+                        <div id="dataTableActions" style="display:none;"></div>
+
+                        <div style="margin-top:24px;">
+                            <p style="font-size:0.85rem;color:#999;">
+                                <i class="fas fa-info-circle"></i> <code>sessions</code> 表不提供导出。清空 <code>sessions</code> 表会一并清理对应 SDK 工作目录（上下文快照）。
+                            </p>
                         </div>
                     </div>
-                    <button class="cfg-btn cfg-btn-save" onclick="saveSysConfig()" style="margin-top:16px;">
-                        <i class="fas fa-check"></i> 保存
-                    </button>
+                </div>
+
+                <!-- 数据管理：sdk_trace 查看 / 导出弹窗 -->
+                <div id="traceModal" class="modal-overlay">
+                    <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+                        <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                            <span id="traceModalTitle"><i class="fas fa-terminal"></i> sdk_trace</span>
+                            <button type="button" class="cfg-btn cfg-btn-sm" id="traceExportBtn" onclick="exportTrace()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出 JSON</button>
+                            <button type="button" class="cfg-btn-sm" onclick="closeTraceModal()"><i class="fas fa-times"></i> 关闭</button>
+                        </h3>
+                        <div id="traceMeta" style="flex-shrink:0;margin-top:12px;font-size:0.82rem;color:#666;background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:10px 14px;"></div>
+                        <pre id="traceContent" class="stream-terminal term-box" style="margin-top:12px;flex:1;min-height:0;"></pre>
+                    </div>
                 </div>
 
                 <!-- ========== 用户管理 ========== -->

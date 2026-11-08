@@ -70,7 +70,7 @@ async function initNav() {
                 else if (tab.dataset.tab === 'memory') { switchMemoryTab('list'); }
                 else if (tab.dataset.tab === 'simulate') loadSimulateTab();
                 else if (tab.dataset.tab === 'tasks') loadTasks();
-                else if (tab.dataset.tab === 'sys') loadSysConfig();
+                else if (tab.dataset.tab === 'sys') { switchSysTab('settings'); loadDataTables(); }
                 else if (tab.dataset.tab === 'users') loadUsers();
                 else if (tab.dataset.tab === 'audit') loadAudit(0);
                 else if (tab.dataset.tab === 'sessions') loadSessions();
@@ -964,6 +964,200 @@ async function saveSysConfig() {
         if (json.code === 0) toast('保存成功', 'success');
         else toast(json.message || '保存失败', 'error');
     } catch (err) { toast('保存失败: ' + err.message, 'error'); }
+}
+
+// ==== 数据管理 ====
+
+function switchSysTab(name) {
+    document.querySelectorAll('#section-sys .sub-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.subtab === name);
+    });
+    document.querySelectorAll('#section-sys .sub-panel').forEach(p => {
+        p.classList.toggle('active', p.id === 'sub-sys-' + name);
+    });
+    if (name === 'settings') {
+        loadSysConfig();
+    } else if (name === 'data') {
+        loadDataTables();
+    }
+}
+
+let _dataTableMeta = [];
+let _traceTask = null;      // 当前查看 sdk_trace 的任务
+let _traceRaw = '';         // 原始 sdk_trace 字符串（导出用）
+
+async function loadDataTables() {
+    try {
+        const res = await fetch(API + '/data-tables');
+        const json = await res.json();
+        _dataTableMeta = (json.data && json.data.tables) || [];
+
+        let html = '';
+        for (const t of _dataTableMeta) {
+            html += '<div class="data-table-row" style="display:flex;align-items:center;gap:16px;padding:14px 18px;border:1px solid #e0e3e8;border-radius:8px;margin-bottom:12px;cursor:pointer;transition:all 0.15s;"'
+                + ' onclick="selectDataTable(\'' + escJs(t.id) + '\')"'
+                + ' id="dtRow_' + escJs(t.id) + '">'
+                + '<div style="flex:1;"><div style="font-weight:600;color:#333;">' + escHtml(t.label) + '</div>'
+                + '<div style="font-size:0.82rem;color:#888;margin-top:4px;">' + escHtml(t.note) + '</div></div>'
+                + '<div style="font-size:0.85rem;color:#888;white-space:nowrap;"><span style="font-weight:700;color:#4b6cb7;font-size:1.2rem;">' + t.count.toLocaleString() + '</span> 条记录</div>'
+                + '</div>';
+        }
+
+        if (_dataTableMeta.length === 0) {
+            html = '<div style="color:#999;padding:24px;text-align:center;">暂无数据表</div>';
+        }
+        document.getElementById('dataTableSelector').innerHTML = html;
+        document.getElementById('dataTableActions').style.display = 'none';
+    } catch (err) {
+        document.getElementById('dataTableSelector').innerHTML = '<div style="color:#e53e3e;">加载失败: ' + escHtml(err.message) + '</div>';
+    }
+}
+
+function selectDataTable(tableId) {
+    // 高亮选中行
+    document.querySelectorAll('[id^="dtRow_"]').forEach(el => el.style.borderColor = '#e0e3e8');
+    const el = document.getElementById('dtRow_' + tableId);
+    if (el) el.style.borderColor = '#4b6cb7';
+
+    const t = _dataTableMeta.find(t => t.id === tableId);
+    if (!t) return;
+
+    const actions = document.getElementById('dataTableActions');
+    actions.style.display = 'block';
+
+    if (tableId === 'sessions') {
+        // sessions 表：无导出，仅清空
+        actions.innerHTML =
+            '<div style="background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:16px 18px;">'
+            + '<div style="font-weight:600;color:#333;margin-bottom:12px;"><i class="fas fa-cog"></i> ' + escHtml(t.label) + ' — 操作</div>'
+            + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">'
+            + '<button class="cfg-btn cfg-btn-danger-sm" style="padding:11px 28px;font-size:0.95rem;font-weight:600;border-radius:8px;" onclick="clearDataTable(\'' + escJs(tableId) + '\', \'' + escJs(t.label) + '\', ' + t.count + ')"><i class="fas fa-trash-alt"></i> 清空数据</button>'
+            + '<span style="font-size:0.82rem;color:#888;">sessions 表无需导出</span>'
+            + '</div></div>';
+    } else {
+        // task_logs 表：先按 task_id / linkid 查询
+        actions.innerHTML =
+            '<div style="background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:16px 18px;">'
+            + '<div style="font-weight:600;color:#333;margin-bottom:12px;"><i class="fas fa-search"></i> ' + escHtml(t.label) + ' — 查询</div>'
+            + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">'
+            + '<div class="form-g" style="margin:0;flex:1;min-width:220px;"><label>Task ID</label><input type="text" id="dataQueryTaskId" placeholder="输入 Task ID" style="width:100%;"></div>'
+            + '<div class="form-g" style="margin:0;flex:1;min-width:220px;"><label>Link ID</label><input type="text" id="dataQueryLinkId" placeholder="输入 Link ID" style="width:100%;"></div>'
+            + '<button class="cfg-btn cfg-btn-save" onclick="queryTaskLogs()"><i class="fas fa-search"></i> 查询</button>'
+            + '</div>'
+            + '<div id="taskLogQueryResult" style="margin-top:16px;"></div>'
+            + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px;border-top:1px solid #e0e3e8;padding-top:16px;">'
+            + '<button class="cfg-btn cfg-btn-danger-sm" style="padding:11px 28px;font-size:0.95rem;font-weight:600;border-radius:8px;" onclick="clearDataTable(\'' + escJs(tableId) + '\', \'' + escJs(t.label) + '\', ' + t.count + ')"><i class="fas fa-trash-alt"></i> 清空全表</button>'
+            + '</div></div>';
+    }
+}
+
+async function queryTaskLogs() {
+    const taskId = document.getElementById('dataQueryTaskId').value.trim();
+    const linkid = document.getElementById('dataQueryLinkId').value.trim();
+    if (!taskId && !linkid) {
+        toast('请至少输入 Task ID 或 Link ID', 'error');
+        return;
+    }
+    const params = new URLSearchParams();
+    if (taskId) params.set('task_id', taskId);
+    if (linkid) params.set('linkid', linkid);
+
+    try {
+        const res = await fetch(API + '/data-tables/task_logs/query?' + params.toString());
+        const json = await res.json();
+        const items = (json.data && json.data.items) || [];
+        const total = (json.data && json.data.total) || 0;
+        const box = document.getElementById('taskLogQueryResult');
+
+        if (items.length === 0) {
+            box.innerHTML = '<div style="color:#999;padding:12px 0;">未查询到任务记录</div>';
+            return;
+        }
+
+        let html = '<div style="font-size:0.82rem;color:#888;margin-bottom:8px;">共 ' + total + ' 条（最多显示 50 条）</div>';
+        html += '<div class="table-scroll"><table class="result-table"><thead><tr>'
+            + '<th class="col-seq">序号</th><th>标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-action">操作</th>'
+            + '</tr></thead><tbody>';
+        items.forEach((t, idx) => {
+            html += '<tr>'
+                + '<td class="col-seq">' + (idx + 1) + '</td>'
+                + '<td class="col-title" title="' + escHtml(t.title || '-') + '">' + escHtml(t.title || '-') + '</td>'
+                + '<td>' + escHtml(t.path || '-') + '</td>'
+                + '<td>' + escHtml(statusText(t.status)) + '</td>'
+                + '<td>' + escHtml(fmtTs(t.created_at)) + '</td>'
+                + '<td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewTrace(\'' + escJs(t.task_id) + '\')" title="查看 sdk_trace"><i class="fas fa-terminal"></i></button></td>'
+                + '</tr>';
+        });
+        html += '</tbody></table></div>';
+        box.innerHTML = html;
+    } catch (err) {
+        document.getElementById('taskLogQueryResult').innerHTML = '<div style="color:#e53e3e;padding:12px 0;">查询失败: ' + escHtml(err.message) + '</div>';
+    }
+}
+
+async function viewTrace(taskId) {
+    try {
+        const res = await fetch(API + '/audit/' + encodeURIComponent(taskId));
+        const json = await res.json();
+        const t = json.data;
+        if (!t) { toast('任务不存在', 'error'); return; }
+
+        _traceTask = t;
+        _traceRaw = t.sdk_trace || '';
+
+        document.getElementById('traceModalTitle').innerHTML = '<i class="fas fa-terminal"></i> sdk_trace';
+        document.getElementById('traceMeta').innerHTML =
+            '<strong>Task ID:</strong> <code>' + escHtml(t.task_id) + '</code>'
+            + ' &nbsp;|&nbsp; <strong>Link ID:</strong> <code>' + escHtml(t.linkid || '-') + '</code>'
+            + ' &nbsp;|&nbsp; <strong>大小:</strong> ' + fmtSize(_traceRaw ? new Blob([_traceRaw]).size : 0);
+
+        const pre = document.getElementById('traceContent');
+        if (!_traceRaw) {
+            pre.textContent = '(该任务无 sdk_trace 数据)';
+        } else {
+            // sdk_trace 本身是 JSON 字符串（消息流数组），解析后美化展示
+            try {
+                pre.textContent = JSON.stringify(JSON.parse(_traceRaw), null, 2);
+            } catch {
+                pre.textContent = _traceRaw;
+            }
+        }
+        document.getElementById('traceExportBtn').style.display = _traceRaw ? 'inline-flex' : 'none';
+        document.getElementById('traceModal').classList.add('show');
+    } catch (err) {
+        toast('查看失败: ' + err.message, 'error');
+    }
+}
+
+function exportTrace() {
+    if (!_traceTask || !_traceRaw) { toast('无数据', 'error'); return; }
+    const blob = new Blob([_traceRaw], { type: 'application/json;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = _traceTask.task_id + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('已导出 ' + _traceTask.task_id + '.json', 'success');
+}
+
+function closeTraceModal() {
+    document.getElementById('traceModal').classList.remove('show');
+}
+
+async function clearDataTable(tableId, label, count) {
+    if (!confirm('确定要清空 ' + label + ' 的全部 ' + count.toLocaleString() + ' 条记录？\n\n此操作不可逆！建议先导出备份。')) return;
+    try {
+        const res = await fetch(API + '/data-tables/' + encodeURIComponent(tableId), { method: 'DELETE' });
+        const json = await res.json();
+        if (json.code === 0) {
+            toast(json.message || '已清空', 'success');
+            loadDataTables();
+        } else {
+            toast(json.message || '清空失败', 'error');
+        }
+    } catch (err) {
+        toast('清空失败: ' + err.message, 'error');
+    }
 }
 
 // ==== 用户管理 ====

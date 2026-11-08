@@ -831,7 +831,8 @@ input[type="checkbox"] {
 #taskModal .modal-lg,
 #auditDetailModal .modal-lg,
 #promptPreviewModal .modal-lg,
-#memoryModal .modal-lg {
+#memoryModal .modal-lg,
+#traceModal .modal-lg {
     width: min(1280px, calc(100vw - 40px));
     height: 90vh;
     overflow: hidden;

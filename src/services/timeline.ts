@@ -36,7 +36,7 @@ export function statusText(s: string): string {
   return map[s] || s || '-';
 }
 
-export function buildTimelineEvents(task: TaskLog): TimelineEvent[] {
+export function buildTimelineEvents(task: TaskLog, sdkTrace?: string | null): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   // 1. 任务创建
@@ -88,7 +88,7 @@ export function buildTimelineEvents(task: TaskLog): TimelineEvent[] {
   }
 
   // 6. 结果回调（从 SDK trace 中提取 Bash curl 记录）
-  const cbEvent = tryExtractCallbackFromTrace(task.sdk_trace, task.finished_at);
+  const cbEvent = tryExtractCallbackFromTrace(sdkTrace ?? null, task.finished_at);
   if (cbEvent) events.push(cbEvent);
 
   // 7. 完成 / 失败

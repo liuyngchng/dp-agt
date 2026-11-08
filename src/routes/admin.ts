@@ -7,7 +7,7 @@ import { networkInterfaces } from 'node:os';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'node:crypto';
 import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
-import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore } from '../store.js';
+import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore, getDb, sdkTracesStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { cancelTask } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
@@ -25,6 +25,7 @@ import { buildOutputOnlyEvents, renderHistoryHtml, renderHistoryMd } from '../se
 import { listMemories, getMemory, saveMemory, deleteMemory, ensureMemoryDir } from '../services/memory-store.js';
 import { xmindToMarkdown } from '../services/xmind.js';
 import { syncInterfacesFromPrompts } from '../store.js';import type { Config } from '../config.js';
+import type { TaskLog } from '../types.js';
 
 const log = getLogger();
 
@@ -45,7 +46,7 @@ export function createAdminRouter(cfg: Config): Router {
       { id: 'audit', icon: 'fa-search', label: '任务审查' },
       ...(isAdmin ? [
         { id: 'sessions', icon: 'fa-comments', label: '会话管理' },
-        { id: 'sys', icon: 'fa-sliders-h', label: '系统设置' },
+        { id: 'sys', icon: 'fa-sliders-h', label: '系统管理' },
         { id: 'users', icon: 'fa-users', label: '用户管理' },
       ] : []),
     ];
@@ -74,6 +75,7 @@ export function createAdminRouter(cfg: Config): Router {
   router.use('/admin/prompt-tar', adminOnlyMiddleware);
   router.use('/admin/prompt-preview', adminOnlyMiddleware);
   router.use('/admin/memory', adminOnlyMiddleware);
+  router.use('/admin/data-tables', adminOnlyMiddleware);
 
   // ---- Interfaces 列表 — 从 prompts/ 自动发现，DB 同步 ----
   router.get('/admin/interfaces', (_req: Request, res: Response) => {
@@ -489,12 +491,33 @@ export function createAdminRouter(cfg: Config): Router {
 
   // ---- 任务审查 ----
 
+  // 任务审查列表：默认最近 N 条；支持按 task_id 精确查询（limit 1）或 linkid 精确查询（limit 50）
   router.get('/admin/audit', (req: Request, res: Response) => {
     const taskId = typeof req.query.task_id === 'string' ? req.query.task_id.trim() : '';
     const linkid = typeof req.query.linkid === 'string' ? req.query.linkid.trim() : '';
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const pageSize = Math.min(parseInt(String(req.query.page_size), 10) || 10, 100);
-    const { items, total } = taskLogsStore.searchPaged(taskId, linkid, (page - 1) * pageSize, pageSize);
+
+    let items: TaskLog[] = [];
+    let total = 0;
+    if (taskId) {
+      // task_id 全局唯一，精确查询，只取一条
+      const task = taskLogsStore.getLightByTaskId(taskId);
+      if (task) {
+        items = [task];
+        total = 1;
+      }
+    } else if (linkid) {
+      // 同一 linkid 可有多轮任务，精确匹配，最多 50 条
+      items = taskLogsStore.listLightByLinkid(linkid);
+      total = items.length;
+    } else {
+      // 最近 N 条（轻量列）
+      const paged = taskLogsStore.listPaged((page - 1) * pageSize, pageSize);
+      items = paged.items;
+      total = paged.total;
+    }
+
     res.json({
       code: 0,
       data: {
@@ -537,7 +560,7 @@ export function createAdminRouter(cfg: Config): Router {
         request_response: safeParse(task.request_response),
         prompt: task.prompt,
         sdk_output: task.sdk_output,
-        sdk_trace: task.sdk_trace,
+        sdk_trace: sdkTracesStore.getTraceByTaskId(task.task_id),
       },
     });
   });
@@ -1168,6 +1191,134 @@ export function createAdminRouter(cfg: Config): Router {
     }
     log.info({ filename: req.params.filename }, 'memory_deleted');
     res.json({ code: 0, message: '已删除' });
+  });
+
+  // ---- 数据管理（仅管理员） ----
+
+  // 可管理的表清单
+  const DATA_TABLES = [
+    { id: 'sessions', label: '会话表（sessions）', note: '会话与 linkid 的映射，删除后同一 linkid 再提交会新建会话', exportable: false },
+    { id: 'task_logs', label: '任务日志表（task_logs）', note: '任务执行记录、时间线、SDK 会话流等审计数据', exportable: true },
+  ];
+
+  // 表信息 + 行数
+  router.get('/admin/data-tables', (_req: Request, res: Response) => {
+    const tables = DATA_TABLES.map((t) => ({
+      id: t.id,
+      label: t.label,
+      note: t.note,
+      exportable: t.exportable,
+      count: t.id === 'sessions' ? sessionsStore.countAll() : taskLogsStore.countAll(),
+    }));
+    res.json({ code: 0, data: { tables } });
+  });
+
+  // 按 task_id 或 linkid 查询任务（用于数据管理：先查再导出 sdk_trace）
+  // 精确匹配，只返回轻量列（不含 sdk_trace 大字段）；task_id limit 1，linkid limit 50
+  router.get('/admin/data-tables/task_logs/query', (req: Request, res: Response) => {
+    const taskId = typeof req.query.task_id === 'string' ? req.query.task_id.trim() : '';
+    const linkid = typeof req.query.linkid === 'string' ? req.query.linkid.trim() : '';
+    if (!taskId && !linkid) {
+      res.status(400).json({ code: 1001, message: '必须指定 task_id 或 linkid' });
+      return;
+    }
+
+    let tasks: TaskLog[] = [];
+    if (taskId) {
+      const task = taskLogsStore.getLightByTaskId(taskId);
+      if (task) tasks = [task];
+    } else {
+      tasks = taskLogsStore.listLightByLinkid(linkid);
+    }
+
+    if (tasks.length === 0) {
+      res.status(404).json({ code: 1001, message: '未找到匹配的任务' });
+      return;
+    }
+
+    res.json({
+      code: 0,
+      data: {
+        total: tasks.length,
+        items: tasks.map((task) => ({
+          task_id: task.task_id,
+          linkid: task.linkid,
+          session_id: task.session_id,
+          title: extractTitle(task.request_body),
+          path: task.path,
+          status: task.status,
+          created_at: task.created_at,
+          finished_at: task.finished_at,
+        })),
+      },
+    });
+  });
+
+  // 导出单条任务的 sdk_trace 为 <taskid>.json
+  router.get('/admin/data-tables/task_logs/:task_id/sdk-trace', (req: Request, res: Response) => {
+    const { task_id } = req.params;
+    const task = taskLogsStore.get(task_id);
+    if (!task) {
+      res.status(404).json({ code: 1001, message: '任务不存在' });
+      return;
+    }
+    const sdkTrace = sdkTracesStore.getTraceByTaskId(task_id);
+    if (!sdkTrace) {
+      res.status(404).json({ code: 1001, message: '该任务无 sdk_trace 数据' });
+      return;
+    }
+
+    const filename = `${task_id}.json`;
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': Buffer.byteLength(sdkTrace),
+    });
+    res.end(sdkTrace);
+    log.info({ task_id, linkid: task.linkid, traceLen: sdkTrace.length }, 'data_task_sdk_trace_exported');
+  });
+
+  // 清空整表数据
+  router.delete('/admin/data-tables/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const table = DATA_TABLES.find((t) => t.id === id);
+    if (!table) {
+      res.status(404).json({ code: 1001, message: '不支持的表' });
+      return;
+    }
+
+    const before = id === 'sessions' ? sessionsStore.countAll() : taskLogsStore.countAll();
+    if (before === 0) {
+      res.json({ code: 0, message: '表已是空的', deleted: 0 });
+      return;
+    }
+
+    // sessions 表与 task_logs 表之间存在「会话记录」关联；清空 sessions 时，
+    // 其对应的 SDK 工作目录（上下文快照）一并清理，避免残留脏数据。
+    let deleted = 0;
+    if (id === 'sessions') {
+      const sessions = sessionsStore.listAll();
+      for (const s of sessions) {
+        const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(s.linkid));
+        if (existsSync(workDir)) {
+          try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
+        }
+      }
+      deleted = sessionsStore.clearAll();
+    } else {
+      deleted = taskLogsStore.clearAll();
+      sdkTracesStore.clearAll(); // 一并清理关联的 sdk_trace 数据
+    }
+
+    // 清空后重建 SQLite 自增序列，避免 sqlite_sequence 无限增长
+    try {
+      const db = getDb();
+      db.prepare(`DELETE FROM sqlite_sequence WHERE name = ?`).run(id);
+      if (id === 'task_logs') db.prepare(`DELETE FROM sqlite_sequence WHERE name = 'sdk_traces'`).run();
+    } catch { /* 无该序列则忽略 */ }
+
+    log.info({ table: id, deleted }, 'data_table_cleared');
+    res.json({ code: 0, message: `已清空 ${deleted} 条记录`, deleted });
   });
 
   return router;

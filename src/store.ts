@@ -9,7 +9,7 @@ import {
   decryptValue,
   initCrypto,
 } from './crypto.js';
-import type { AgentInterface, TaskLog, TaskStatus, User, Session } from './types.js';
+import type { AgentInterface, TaskLog, TaskStatus, User, Session, SdkTrace } from './types.js';
 import type { EncryptedValue } from './crypto.js';
 
 let db: Database.Database;
@@ -90,12 +90,34 @@ export function initStore(dataDir: string): Database.Database {
       value TEXT NOT NULL,
       note  TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS sdk_traces (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id   TEXT NOT NULL,
+      sdk_trace TEXT NOT NULL,
+      UNIQUE(task_id)
+    );
   `);
 
   // ── migrations ──
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN session_id TEXT`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_trace TEXT`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_stream TEXT`); } catch { /* */ }
+  // 迁移：将 task_logs 中已有的 sdk_trace 数据搬到独立表
+  try {
+    const sdkTraceRows = db.prepare(
+      `SELECT task_id, sdk_trace FROM task_logs WHERE sdk_trace IS NOT NULL AND sdk_trace != ''`
+    ).all() as Array<{ task_id: string; sdk_trace: string }>;
+    if (sdkTraceRows.length > 0) {
+      const insert = db.prepare(
+        `INSERT OR IGNORE INTO sdk_traces (task_id, sdk_trace) VALUES (?, ?)`
+      );
+      for (const row of sdkTraceRows) {
+        try { insert.run(row.task_id, row.sdk_trace); } catch { /* 已存在则跳过 */ }
+      }
+      // 迁移完成（数据量 = sdkTraceRows.length）
+    }
+  } catch { /* sdk_trace 列可能不存在 */ }
+  try { db.exec(`ALTER TABLE task_logs DROP COLUMN sdk_trace`); } catch { /* 旧列已删除 */ }
+  try { db.exec(`ALTER TABLE task_logs DROP COLUMN sdk_stream`); } catch { /* 旧列已删除 */ }
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN request_response TEXT`); } catch { /* */ }
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN callback_response TEXT`); } catch { /* */ }
   try { db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role INTEGER DEFAULT 0, note TEXT DEFAULT '', must_change_pwd INTEGER DEFAULT 0, created_at TEXT)`); } catch { /* */ }
@@ -329,12 +351,17 @@ export const interfacesStore = {
 // Task logs / sessions / users / config — unchanged below
 // ═══════════════════════════════════════════════════════════════════
 
+// 列表查询专用列：不包含 sdk_output / prompt / request_body 等大字段（sdk_trace 已独立存储）
+const TASK_LOG_LIGHT_COLS = `task_id, linkid, session_id, path, interface_id, status, request_body, request_response, error_message, created_at, finished_at, created_ts, finished_ts`;
+// 单条详情用列：全量（timeline 需通过 sdkTracesStore 单独取 sdk_trace）
+const TASK_LOG_FULL_COLS = `*`;
+
 export const taskLogsStore = {
   create(log: TaskLog): void {
     db.prepare(
       `INSERT INTO task_logs
-       (task_id, linkid, session_id, path, interface_id, status, request_body, request_response, prompt, sdk_output, sdk_trace, error_message, created_at, finished_at, created_ts, finished_ts)
-       VALUES (@task_id, @linkid, @session_id, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @sdk_trace, @error_message, @created_at, @finished_at, @created_ts, @finished_ts)`
+       (task_id, linkid, session_id, path, interface_id, status, request_body, request_response, prompt, sdk_output, error_message, created_at, finished_at, created_ts, finished_ts)
+       VALUES (@task_id, @linkid, @session_id, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @error_message, @created_at, @finished_at, @created_ts, @finished_ts)`
     ).run(log);
   },
   updateStatus(taskId: string, status: TaskStatus): void {
@@ -355,29 +382,37 @@ export const taskLogsStore = {
     vals.push(taskId);
     db.prepare(`UPDATE task_logs SET ${sets.join(', ')} WHERE task_id = ?`).run(...vals);
   },
+  // ── 单条详情（全量列） ──
   get(taskId: string): TaskLog | undefined {
-    return db.prepare('SELECT * FROM task_logs WHERE task_id = ?').get(taskId) as TaskLog | undefined;
+    return db.prepare(`SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE task_id = ?`).get(taskId) as TaskLog | undefined;
   },
   getLatestByLinkid(linkid: string): TaskLog | undefined {
     return db.prepare(
-      'SELECT * FROM task_logs WHERE linkid = ? ORDER BY created_at DESC LIMIT 1'
+      `SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_at DESC LIMIT 1`
     ).get(linkid) as TaskLog | undefined;
   },
-  listByLinkid(linkid: string, limit = 50): TaskLog[] {
+  // ── 轻量精确查询（数据管理用） ──
+  /** 按 task_id 精确查询（limit 1，不含大字段） */
+  getLightByTaskId(taskId: string): TaskLog | undefined {
     return db.prepare(
-      'SELECT * FROM task_logs WHERE linkid = ? ORDER BY finished_ts DESC LIMIT ?'
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE task_id = ? LIMIT 1`
+    ).get(taskId) as TaskLog | undefined;
+  },
+  /** 按 linkid 精确查询列表（limit 50，不含大字段；同一 linkid 可有多轮任务） */
+  listLightByLinkid(linkid: string, limit = 50): TaskLog[] {
+    return db.prepare(
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_at DESC LIMIT ?`
     ).all(linkid, limit) as TaskLog[];
   },
-  list(limit = 100): TaskLog[] {
-    return db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ?').all(limit) as TaskLog[];
-  },
+  // ── 列表分页（轻量列） ──
   listPaged(offset: number, limit: number): { items: TaskLog[]; total: number } {
     const total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
     const items = db.prepare(
-      'SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ? OFFSET ?'
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_at DESC LIMIT ? OFFSET ?`
     ).all(limit, offset) as TaskLog[];
     return { items, total };
   },
+  // ── 活跃任务（轻量列） ──
   countActive(): number {
     const row = db.prepare(
       `SELECT COUNT(*) AS c FROM task_logs WHERE status IN ('pending', 'processing')`
@@ -386,7 +421,7 @@ export const taskLogsStore = {
   },
   listActive(): TaskLog[] {
     return db.prepare(
-      `SELECT * FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`
     ).all() as TaskLog[];
   },
   hasActiveByLinkid(linkid: string): boolean {
@@ -404,6 +439,12 @@ export const taskLogsStore = {
        WHERE linkid = ? AND status IN ('pending', 'processing')`
     ).run(now, ts, linkid).changes;
   },
+  // ── 按 linkid 列表（全量列，timeline 需要 sdk_output/prompt） ──
+  listByLinkid(linkid: string, limit = 50): TaskLog[] {
+    return db.prepare(
+      `SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE linkid = ? ORDER BY finished_ts DESC LIMIT ?`
+    ).all(linkid, limit) as TaskLog[];
+  },
   deleteExpired(retentionDays: number): number {
     const cutoffMs = nowTs() - retentionDays * 24 * 3600 * 1000;
     const result = db.prepare(
@@ -413,40 +454,40 @@ export const taskLogsStore = {
     ).run(cutoffMs);
     return result.changes;
   },
-  listTaskIds(): string[] {
-    return (db.prepare('SELECT task_id FROM task_logs').all() as Array<{ task_id: string }>)
-      .map((r) => r.task_id);
+  // ── 数据管理（全量，仅导出/清空用） ──
+  countAll(): number {
+    return (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
   },
-  search(taskId: string, linkid: string, limit = 100): TaskLog[] {
-    if (taskId && linkid) {
-      return db.prepare('SELECT * FROM task_logs WHERE task_id LIKE ? AND linkid LIKE ? ORDER BY created_at DESC LIMIT ?').all(`%${taskId}%`, `%${linkid}%`, limit) as TaskLog[];
-    }
-    if (taskId) {
-      return db.prepare('SELECT * FROM task_logs WHERE task_id LIKE ? ORDER BY created_at DESC LIMIT ?').all(`%${taskId}%`, limit) as TaskLog[];
-    }
-    if (linkid) {
-      return db.prepare('SELECT * FROM task_logs WHERE linkid LIKE ? ORDER BY created_at DESC LIMIT ?').all(`%${linkid}%`, limit) as TaskLog[];
-    }
-    return db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ?').all(limit) as TaskLog[];
+  listAll(): TaskLog[] {
+    return db.prepare(`SELECT ${TASK_LOG_FULL_COLS} FROM task_logs ORDER BY created_at ASC`).all() as TaskLog[];
   },
-  searchPaged(taskId: string, linkid: string, offset: number, limit: number): { items: TaskLog[]; total: number } {
-    const like = (s: string) => `%${s}%`;
-    const items: TaskLog[] = [];
-    let total = 0;
-    if (taskId && linkid) {
-      total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs WHERE task_id LIKE ? AND linkid LIKE ?').get(like(taskId), like(linkid)) as { c: number }).c;
-      items.push(...db.prepare('SELECT * FROM task_logs WHERE task_id LIKE ? AND linkid LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(like(taskId), like(linkid), limit, offset) as TaskLog[]);
-    } else if (taskId) {
-      total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs WHERE task_id LIKE ?').get(like(taskId)) as { c: number }).c;
-      items.push(...db.prepare('SELECT * FROM task_logs WHERE task_id LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(like(taskId), limit, offset) as TaskLog[]);
-    } else if (linkid) {
-      total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs WHERE linkid LIKE ?').get(like(linkid)) as { c: number }).c;
-      items.push(...db.prepare('SELECT * FROM task_logs WHERE linkid LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(like(linkid), limit, offset) as TaskLog[]);
-    } else {
-      total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
-      items.push(...db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset) as TaskLog[]);
-    }
-    return { items, total };
+  clearAll(): number {
+    return db.prepare('DELETE FROM task_logs').run().changes;
+  },
+};
+
+export const sdkTracesStore = {
+  upsert(taskId: string, sdkTrace: string): void {
+    db.prepare(
+      `INSERT INTO sdk_traces (task_id, sdk_trace) VALUES (?, ?)
+       ON CONFLICT(task_id) DO UPDATE SET sdk_trace = excluded.sdk_trace`
+    ).run(taskId, sdkTrace);
+  },
+  get(taskId: string): SdkTrace | undefined {
+    return db.prepare('SELECT * FROM sdk_traces WHERE task_id = ?').get(taskId) as SdkTrace | undefined;
+  },
+  getTraceByTaskId(taskId: string): string | null {
+    const row = db.prepare('SELECT sdk_trace FROM sdk_traces WHERE task_id = ?').get(taskId) as { sdk_trace: string } | undefined;
+    return row?.sdk_trace ?? null;
+  },
+  removeByTaskId(taskId: string): boolean {
+    return db.prepare('DELETE FROM sdk_traces WHERE task_id = ?').run(taskId).changes > 0;
+  },
+  countAll(): number {
+    return (db.prepare('SELECT COUNT(*) AS c FROM sdk_traces').get() as { c: number }).c;
+  },
+  clearAll(): number {
+    return db.prepare('DELETE FROM sdk_traces').run().changes;
   },
 };
 
@@ -503,6 +544,12 @@ export const sessionsStore = {
     ).all(cutoffMs) as Session[];
     db.prepare('DELETE FROM sessions WHERE updated_ts < ?').run(cutoffMs);
     return expired;
+  },
+  countAll(): number {
+    return (db.prepare('SELECT COUNT(*) AS c FROM sessions').get() as { c: number }).c;
+  },
+  clearAll(): number {
+    return db.prepare('DELETE FROM sessions').run().changes;
   },
 };
 
