@@ -1089,11 +1089,21 @@ async function viewTrace(taskId) {
         _traceTask = t;
         _traceRaw = t.sdk_trace || '';
 
+        // 消息总数：sdk_trace 是消息流 JSON 数组，长度即消息条数
+        let msgCount = 0;
+        if (_traceRaw) {
+            try {
+                const parsed = JSON.parse(_traceRaw);
+                if (Array.isArray(parsed)) msgCount = parsed.length;
+            } catch { /* 解析失败按 0 处理 */ }
+        }
+
         document.getElementById('traceModalTitle').innerHTML = '<i class="fas fa-terminal"></i> sdk_trace';
         document.getElementById('traceMeta').innerHTML =
             '<strong>Task ID:</strong> <code>' + escHtml(t.task_id) + '</code>'
             + ' &nbsp;|&nbsp; <strong>Link ID:</strong> <code>' + escHtml(t.linkid || '-') + '</code>'
-            + ' &nbsp;|&nbsp; <strong>大小:</strong> ' + fmtSize(_traceRaw ? new Blob([_traceRaw]).size : 0);
+            + ' &nbsp;|&nbsp; <strong>大小:</strong> ' + fmtSize(_traceRaw ? new Blob([_traceRaw]).size : 0)
+            + ' &nbsp;|&nbsp; <strong>消息总数:</strong> ' + msgCount;
 
         const pre = document.getElementById('traceContent');
         if (!_traceRaw) {
