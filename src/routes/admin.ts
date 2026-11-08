@@ -39,7 +39,7 @@ export function createAdminRouter(cfg: Config): Router {
     const tabs = [
       ...(isAdmin ? [
         { id: 'interfaces', icon: 'fa-brain', label: '模板管理' },
-        { id: 'memory', icon: 'fa-database', label: '记忆管理' },
+        { id: 'memory', icon: 'fa-memory', label: '记忆管理' },
         { id: 'simulate', icon: 'fa-flask', label: '操作模拟' },
         { id: 'tasks', icon: 'fa-list-alt', label: '任务监控' },
       ] : []),
