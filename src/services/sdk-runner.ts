@@ -95,7 +95,12 @@ function toolResultText(raw: unknown): string {
   return raw == null ? '' : JSON.stringify(raw);
 }
 
-/** 根据 LLM 配置构建 Claude Code 子进程环境变量 */
+/** prompt_config key → DP_ 前缀环境变量名：点→下划线，全大写 */
+function keyToEnvName(key: string): string {
+  return 'DP_' + key.replace(/\./g, '_').toUpperCase();
+}
+
+/** 根据 LLM 配置 + prompt_config 构建 Claude Code 子进程环境变量 */
 export function buildEnv(cfg: Config): Record<string, string | undefined> {
   // SDK 的 env 会整体替换子进程环境（不自动合并 process.env），
   // 因此先继承父进程环境，再用 adapter 配置覆盖。
@@ -126,7 +131,16 @@ export function buildEnv(cfg: Config): Record<string, string | undefined> {
   // ═══════════════════════════════════════════════════════════════
   delete env.ANTHROPIC_API_KEY;
 
-  // ── 文件下载 Token（从 CSV 读取，CLAUDE.md 中通过 $FILE_URL_TOKEN 引用） ──
+  // ═══════════════════════════════════════════════════════════════
+  // 注入 prompt_config 中的所有 key-value 作为 DP_ 前缀环境变量
+  // 同时保留特定兼容名称（向后兼容，不要删除）
+  // ═══════════════════════════════════════════════════════════════
+  const allConfigValues = promptConfigStore.getAllPlain();
+  for (const [key, plain] of allConfigValues.entries()) {
+    env[keyToEnvName(key)] = plain;
+  }
+
+  // 兼容旧名称：文件下载 Token
   const fileUrlToken = promptConfigStore.getPlain('doc.file_url_token')
     || promptConfigStore.getPlain('sys.file_url_token');
   if (fileUrlToken) {
@@ -135,7 +149,7 @@ export function buildEnv(cfg: Config): Record<string, string | undefined> {
     delete env.FILE_URL_TOKEN;
   }
 
-  // ── 文档审核服务 Token（从 CSV 读取，CLAUDE.md 中通过 $DOC_AUDIT_TOKEN 引用） ──
+  // 兼容旧名称：文档审核服务 Token
   const docAuditToken = promptConfigStore.getPlain('doc_audit.token');
   if (docAuditToken) {
     env.DOC_AUDIT_TOKEN = docAuditToken;
@@ -143,7 +157,7 @@ export function buildEnv(cfg: Config): Record<string, string | undefined> {
     delete env.DOC_AUDIT_TOKEN;
   }
 
-  // ── 回调 Token（从 CSV 读取，CLAUDE.md 中通过 $CALLBACK_TOKEN 引用） ──
+  // 兼容旧名称：回调 Token
   const callbackToken = promptConfigStore.getPlain('callback.token');
   if (callbackToken) {
     env.CALLBACK_TOKEN = callbackToken;
@@ -228,6 +242,20 @@ export async function buildClaudeMd(dataDir?: string): Promise<string> {
       memBlock += `| ${item.filename} | ${absPath} | ${item.description || item.title} |\n`;
     }
     template += memBlock;
+  }
+
+  // ── 注入可用环境变量清单（值不写入提示词，仅列出变量名 + 说明） ──
+  const configRows = promptConfigStore.list();
+  if (configRows.length > 0) {
+    let envBlock = '\n## 可用环境变量\n\n';
+    envBlock += '以下变量已注入到当前 shell 环境，可在 Bash 中按需读取（如 `echo $变量名`）。';
+    envBlock += '变量名以 `DP_` 为前缀；按 key 或说明理解其含义，需要时再取值，不必一次性全部读取。\n\n';
+    envBlock += '| 环境变量名 | key | 说明 | 是否敏感 |\n';
+    envBlock += '|-----------|-----|------|---------|\n';
+    for (const r of configRows) {
+      envBlock += `| \`$${keyToEnvName(r.key)}\` | \`${r.key}\` | ${(r.note || '-').replace(/\|/g, '\\|')} | ${r.is_secret ? '是' : '否'} |\n`;
+    }
+    template += envBlock;
   }
 
   return template;

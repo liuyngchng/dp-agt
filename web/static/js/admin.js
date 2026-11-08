@@ -261,6 +261,45 @@ function downloadCsvTemplate() {
     window.location.href = API + '/prompt-config/template';
 }
 
+// 单条添加配置项（全局环境变量）
+async function addConfigItem() {
+    const key = document.getElementById('cfgKeyInput').value.trim();
+    const value = document.getElementById('cfgValueInput').value;
+    const note = document.getElementById('cfgNoteInput').value.trim();
+    if (!key) return toast('请输入 key', 'error');
+    if (/^dp_/i.test(key)) return toast('key 不能以 DP_ 开头（前缀由系统自动添加）', 'error');
+    if (!value) return toast('请输入 value', 'error');
+
+    const res = await fetch(API + '/prompt-config/item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value, note }),
+    });
+    const json = await res.json();
+    if (json.code !== 0) {
+        toast(json.message || '添加失败', 'error');
+        return;
+    }
+    document.getElementById('cfgKeyInput').value = '';
+    document.getElementById('cfgValueInput').value = '';
+    document.getElementById('cfgNoteInput').value = '';
+    await loadConfigKeys();
+    toast('已添加');
+}
+
+// 单条删除配置项
+async function deleteConfigItem(key) {
+    if (!confirm('确认删除配置项 ' + key + ' ？')) return;
+    const res = await fetch(API + '/prompt-config/item/' + encodeURIComponent(key), { method: 'DELETE' });
+    const json = await res.json();
+    if (json.code !== 0) {
+        toast(json.message || '删除失败', 'error');
+        return;
+    }
+    await loadConfigKeys();
+    toast('已删除');
+}
+
 // 上传 CSV
 async function uploadCsv() {
     const input = document.getElementById('csvFileInput');
@@ -306,20 +345,23 @@ async function loadConfigKeys() {
     } catch {}
 
     let html = '<table class="result-table" style="font-size:0.85rem;">';
-    html += '<thead><tr><th>Key</th><th>值</th><th>说明</th></tr></thead><tbody>';
+    html += '<thead><tr><th>Key</th><th>值</th><th>说明</th><th class="col-action">操作</th></tr></thead><tbody>';
     rows.forEach((r, idx) => {
         const key = escHtml(r.key);
         const note = escHtml(r.note || '-');
         const uid = 'val-' + idx;
+        const delBtn = '<button class="cfg-btn-sm del-btn" data-key="' + key + '" title="删除"><i class="fas fa-trash"></i></button>';
         if (r.is_secret) {
             html += '<tr><td><code>' + key + '</code></td>'
                 + '<td class="val-cell"><span class="val-text" id="' + uid + '" title="' + escHtml(r.value) + '">' + escHtml(r.value) + '</span> '
                 + '<button class="cfg-btn-sm eye-btn" data-idx="' + idx + '" data-key="' + key + '"><i class="fas fa-eye"></i></button></td>'
-                + '<td>' + note + '</td></tr>';
+                + '<td>' + note + '</td>'
+                + '<td>' + delBtn + '</td></tr>';
         } else {
             html += '<tr><td><code>' + key + '</code></td>'
                 + '<td class="val-cell"><span class="val-text" title="' + escHtml(r.value) + '">' + escHtml(r.value) + '</span></td>'
-                + '<td>' + note + '</td></tr>';
+                + '<td>' + note + '</td>'
+                + '<td>' + delBtn + '</td></tr>';
         }
     });
     html += '</tbody></table>';
@@ -346,6 +388,13 @@ async function loadConfigKeys() {
                 span.dataset.revealed = '1';
                 this.innerHTML = '<i class="fas fa-eye-slash"></i>';
             }
+        });
+    });
+
+    // 事件委托：删除按钮
+    table.querySelectorAll('.del-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            deleteConfigItem(this.dataset.key);
         });
     });
 }

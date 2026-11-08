@@ -687,6 +687,11 @@ export function createAdminRouter(cfg: Config): Router {
         res.status(400).json({ code: 1001, message: `第 ${i + 1} 行 key 或 value 为空: ${line}` });
         return;
       }
+      const keyErr = validatePromptConfigKey(key);
+      if (keyErr) {
+        res.status(400).json({ code: 1001, message: `第 ${i + 1} 行 ${keyErr}: ${line}` });
+        return;
+      }
       // 敏感检测：key 以 .token /.key /.secret /.password 或 _token/_key/_secret/_password 结尾
       const isSecret = /[._](token|secret|password|key)$/i.test(key);
       rows.push({ key, value, is_secret: isSecret, note });
@@ -741,6 +746,39 @@ export function createAdminRouter(cfg: Config): Router {
     promptConfigStore.clearAll();
     log.info('prompt_config_cleared');
     res.json({ code: 0, message: '已清空' });
+  });
+
+  // 新增/更新单个配置项（页面直接添加环境变量，无需编辑 CSV）
+  router.post('/admin/prompt-config/item', (req: Request, res: Response) => {
+    const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
+    const value = typeof req.body?.value === 'string' ? req.body.value : '';
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+
+    const keyErr = validatePromptConfigKey(key);
+    if (keyErr) {
+      res.status(400).json({ code: 1001, message: keyErr });
+      return;
+    }
+    if (!value) {
+      res.status(400).json({ code: 1001, message: 'value 不能为空' });
+      return;
+    }
+
+    promptConfigStore.upsertItem(key, value, note);
+    log.info({ key }, 'prompt_config_item_upserted');
+    res.json({ code: 0, data: { key } });
+  });
+
+  // 删除单个配置项
+  router.delete('/admin/prompt-config/item/:key', (req: Request, res: Response) => {
+    const key = req.params.key;
+    const ok = promptConfigStore.deleteItem(key);
+    if (!ok) {
+      res.status(404).json({ code: 1001, message: '配置项不存在' });
+      return;
+    }
+    log.info({ key }, 'prompt_config_item_deleted');
+    res.json({ code: 0, message: '已删除' });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -1177,4 +1215,16 @@ function parseCsvLine(line: string): string[] {
   }
   result.push(current);
   return result;
+}
+
+/** 校验 prompt_config key 格式，返回错误信息字符串，合法时返回 null */
+function validatePromptConfigKey(key: string): string | null {
+  if (!key) return 'key 不能为空';
+  if (key.length > 128) return 'key 长度不能超过 128 个字符';
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(key)) {
+    return 'key 只能包含字母、数字、下划线、点号和连字符，且必须以字母或数字开头';
+  }
+  if (/^dp_/i.test(key)) return 'key 不能以 DP_ 开头（前缀由系统自动添加）';
+  if (/\{\{|\}\}/.test(key)) return 'key 不能包含 {{ 或 }} 占位符标记';
+  return null;
 }

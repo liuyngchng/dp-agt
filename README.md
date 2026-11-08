@@ -159,11 +159,26 @@ AI 数字员工/
 | 数据 | 存放位置 | 流向 | 说明 |
 |------|----------|------|------|
 | 提示词模板（txt） | `prompts/` 目录 | **双向**：可上传 / 可下载 | 下载 → 离线编辑 → 上传覆盖 |
-| 业务配置（key/value/说明） | `prompt_config` 表（加密） | **单向**：只能上传，不可下载 | CSV 上传后 AES-256-GCM 加密入库 |
+| 业务配置（key/value/说明） | `prompt_config` 表（加密） | **单向加密**：明文不可下载 | CSV 批量上传 / 页面单条增删，AES-256-GCM 加密入库 |
 
-- **CSV 单向不可逆**：接口地址、Token 等敏感信息一旦上传就无法再下载明文，防止泄露
+- **明文不可逆**：接口地址、Token 等敏感信息一旦入库就无法再下载明文（页面可查看公开项、脱敏查看敏感项），防止泄露
 - **Tar 双向可迭代**：下载当前版本 → 离线修改 → 上传替换，闭环编辑
 - **加密密钥分离**：密钥独立存放在 `data/secrets.key`（首次启动自动生成，权限 600），与 `app.db` 分离，单独偷走任一文件无法解密
+
+#### 全局环境变量（`prompt_config` → Agent 子进程）
+
+`prompt_config` 表中的**所有 key-value** 会在每个任务启动时自动注入到 Agent 子进程的环境变量，命名规则：`DP_` 前缀 + key 中点号转下划线 + 全大写。key 不要手动加 `DP_` 前缀。
+
+| prompt_config key | 注入的环境变量 |
+|------------------|--------------|
+| `current_organization_name` | `DP_CURRENT_ORGANIZATION_NAME` |
+| `doc.file_url_token` | `DP_DOC_FILE_URL_TOKEN` |
+
+同时，每个新任务的 `CLAUDE.md` 末尾会自动追加一张「可用环境变量」清单，列出 `变量名 | key | 说明 | 是否敏感`（**只列名字和说明，不写入明文值**）。Agent 既能通过 key 名、也能通过说明理解变量含义，需要时再在 Bash 里 `echo $DP_xxx` 按需取值。
+
+> 兼容：`doc.file_url_token` → `FILE_URL_TOKEN`、`doc_audit.token` → `DOC_AUDIT_TOKEN`、`callback.token` → `CALLBACK_TOKEN` 三个旧命名仍保留，模板中已使用 `$FILE_URL_TOKEN` 等写法不受影响。
+
+**注意**：环境变量清单与 `CLAUDE.md` 一样，仅在**新任务创建时生成一次**；session 复用的旧任务不会拿到后续新增的变量。
 
 #### 三步引导式流程
 
@@ -185,13 +200,27 @@ AI 数字员工/
 
 ##### 步骤 1：上传配置 CSV
 
+配置支持两种录入方式：**页面直接添加**（推荐少量配置）和 **CSV 批量上传**（适合批量导入）。
+
+**方式一：页面直接添加**
+
+Tab 顶部提供 inline 表单（key / value / 说明），回车或点击「添加」即加密入库。每行右侧有删除按钮，支持单条删除。
+
+**方式二：CSV 批量上传**
+
 CSV 为三列：`key`, `value`, `说明`。点击「下载 CSV 模板」获取空模板，填写后上传。
 
 - key 以 `_token` / `_secret` / `_password` / `_key` 结尾的自动标记为 🔒 敏感项
 - 敏感项的 value 默认脱敏显示（`ab****cd`），点击 👁 图标可临时查看明文
-- CSV **只能上传，无法下载**（下载按钮只返回空模板，不包含已配置数据）
+- 已配置的数据**无法明文下载**（下载按钮只返回空模板）
+- CSV 上传为**全量替换**模式（先清空再批量导入），页面添加为**增量**模式（单条 upsert）
 
-配置列表上传后实时展示，供后续步骤中子 tar 的占位符校验使用。
+**key 格式校验**（两种方式统一）：
+
+- 非空，≤ 128 字符
+- 只允许字母、数字、下划线 `_`、点号 `.`、连字符 `-`，且必须以字母或数字开头
+- 不允许包含 `{{` 或 `}}` 占位符标记
+- 不允许以 `DP_` 开头（`DP_` 前缀由系统自动添加，手动加上会导致 `DP_DP_` 重复前缀）
 
 ##### 步骤 2：上传 Prompt tar 包
 
@@ -222,7 +251,7 @@ prompts/
 离线编辑后打包为 `.tar.gz`，上传时自动执行占位符校验：
 
 - 扫描所有 `.md` 文件中的 `{{...}}` 占位符
-- 对照步骤 1 已上传的 CSV key，**key 不存在则拒绝上传并列出缺失项**
+- 对照步骤 1 已配置的 key，**key 不存在则拒绝上传并列出缺失项**
 - `{{request.*}}` 和 `{{section:...}}` 开头的占位符无需 CSV 配置
 
 ##### 步骤 3：预览 / 下载
@@ -235,28 +264,28 @@ prompts/
 
 运行时由请求 JSON 替换。例如模板里写 `{{request.body}}`，运行时替换为整个请求体。
 
-**② CLAUDE.md — `{{key}}` （来自 CSV）**
+**② CLAUDE.md — `{{key}}` （来自配置）**
 
-直接引用 CSV 中配置的 key，运行时替换为对应的 value。例如模板里写 `{{sys.doc_util_url}}`，运行时从 `prompt_config` 表中取 `sys.doc_util_url` 的值替换。
+直接引用已配置的 key，运行时替换为对应的 value。例如模板里写 `{{sys.doc_util_url}}`，运行时从 `prompt_config` 表中取 `sys.doc_util_url` 的值替换。
 
 **③ 条件段落 — `{{section:名称:触发key}}`**
 
-语法：`{{section:片段名:CSV中的key}}`
+语法：`{{section:片段名:配置中的key}}`
 
-只有当 CSV 中对应的 key **有值**时，才会把 `sections/片段名.md` 的内容插入此处；否则整段静默删除。
+只有当配置中对应的 key **有值**时，才会把 `sections/片段名.md` 的内容插入此处；否则整段静默删除。
 
 示例：
 ```markdown
 {{section:audit:doc_audit.api_url}}
 ```
-- `doc_audit.api_url` 在 CSV 中有值 → 读取 `sections/audit.md` 插入
+- `doc_audit.api_url` 在配置中有值 → 读取 `sections/audit.md` 插入
 - 为空或不存在 → 整行移除
 
 #### 新增外部服务接口（无需改代码）
 
 假设要新增"组织机构查询服务"：
 
-**① 在 CSV 中新增一行**
+**① 在配置中新增一行**
 ```
 sys.org_api_url,https://oa-server:8080/api/org,组织机构查询服务地址
 ```

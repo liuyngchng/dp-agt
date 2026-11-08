@@ -247,6 +247,26 @@ export const promptConfigStore = {
     return m;
   },
 
+  /** 单条 upsert。key 以 .token/.key/.secret/.password 或 _token/_key/_secret/_password 结尾的视为敏感。 */
+  upsertItem(key: string, value: string, note?: string): void {
+    const isSecret = /[._](token|secret|password|key)$/i.test(key);
+    let enc: EncryptedValue;
+    try {
+      enc = encryptValue(value);
+    } catch {
+      return;
+    }
+    db.prepare(
+      'INSERT INTO prompt_config (key, value_enc, iv, tag, is_secret, note, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_enc = excluded.value_enc, iv = excluded.iv, tag = excluded.tag, is_secret = excluded.is_secret, note = excluded.note, updated_at = excluded.updated_at'
+    ).run(key, enc.enc, enc.iv, enc.tag, isSecret ? 1 : 0, note ?? '', nowReadable());
+  },
+
+  /** 删除单个 key */
+  deleteItem(key: string): boolean {
+    const info = db.prepare('DELETE FROM prompt_config WHERE key = ?').run(key);
+    return info.changes > 0;
+  },
+
   /** 清空所有配置（重新上传 CSV 前用） */
   clearAll(): void {
     db.prepare('DELETE FROM prompt_config').run();

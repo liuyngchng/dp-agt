@@ -278,6 +278,21 @@
 | `GET /admin/audit/:task_id` | 单任务详情（含 sdk_trace） |
 | `GET /admin/audit/link/:linkid/timeline?format=json\|html\|md` | 会话处理时间线（与对外 history 等价） |
 
+#### 全局配置管理接口（prompt_config）
+
+`/admin/prompt-config` 前缀，均需管理员权限：
+
+| 接口 | 说明 |
+|------|------|
+| `GET /admin/prompt-config` | 列出配置（敏感项默认脱敏，`?reveal=1` 返回明文） |
+| `POST /admin/prompt-config/item` | 单条 upsert（`{ key, value, note }`），带 key 格式校验 |
+| `DELETE /admin/prompt-config/item/:key` | 单条删除 |
+| `POST /admin/prompt-config/upload-csv` | CSV 批量上传（全量替换） |
+| `DELETE /admin/prompt-config` | 清空全部配置 |
+| `GET /admin/prompt-config/template` | 下载 CSV 模板 |
+
+key 格式校验规则：非空、≤128 字符、仅 `字母/数字/下划线/点号/连字符` 且以字母或数字开头、不以 `DP_` 开头、不含 `{{` `}}`。
+
 ---
 
 ## 4. 接口与提示词模板系统
@@ -308,6 +323,17 @@
 ```
 
 实现方式：在提示词渲染时，直接用 `JSON.stringify(value, null, 2)` 替换占位符。
+
+### 4.2.1 全局环境变量（prompt_config → Agent 子进程）
+
+`prompt_config` 表（key/value/说明）既是 CLAUDE.md 的 `{{key}}` 占位符数据源，也是 Agent 子进程环境变量的数据源：
+
+- **注入**：`buildEnv()` 将 `prompt_config` 中所有 key-value 以 `DP_` 前缀注入子进程环境变量（key 中 `.`→`_`、全大写），如 `current_organization_name` → `DP_CURRENT_ORGANIZATION_NAME`。key 不要手动加 `DP_` 前缀，避免产生 `DP_DP_` 双前缀。
+- **清单**：`buildClaudeMd()` 在每个新任务生成的 CLAUDE.md 末尾追加「可用环境变量」表格（变量名 / key / 说明 / 是否敏感），**只列名字与说明，不写入明文值**。
+- **兼容**：`doc.file_url_token`→`FILE_URL_TOKEN`、`doc_audit.token`→`DOC_AUDIT_TOKEN`、`callback.token`→`CALLBACK_TOKEN` 三个旧命名保留。
+- **时效**：CLAUDE.md 与环境变量均在**新任务创建时**构建一次，session 复用的旧任务不感知后续变更。
+
+这样 Agent 既能通过 key 名、也能通过说明理解变量含义，需要时在 Bash 中 `echo $DP_xxx` 按需读取。
 
 ### 4.3 提示词示例（path = document/classify）
 
@@ -397,6 +423,7 @@ const q = query({
     tools: { type: 'preset', preset: 'claude_code' },
     model: config.model || 'claude-sonnet-4-20250514',
     systemPrompt: { type: 'preset', preset: 'claude_code' },
+    env: buildEnv(config),        // 注入 DP_ 前缀全局环境变量（prompt_config）
   },
 });
 
@@ -485,6 +512,17 @@ CREATE TABLE agent_interfaces (
   path        TEXT NOT NULL UNIQUE,   -- 对外 path，如 "document/classify"
   prompt      TEXT NOT NULL,          -- 提示词模板（含 {{placeholder}}）
   created_at  TEXT,
+  updated_at  TEXT
+);
+
+-- 全局配置（key/value/说明，加密存储，作为环境变量 + CLAUDE.md 占位符数据源）
+CREATE TABLE prompt_config (
+  key         TEXT PRIMARY KEY,
+  value_enc   TEXT NOT NULL,          -- AES-256-GCM 加密后的 value
+  iv          TEXT NOT NULL,
+  tag         TEXT NOT NULL,
+  is_secret   INTEGER NOT NULL DEFAULT 0,
+  note        TEXT DEFAULT '',
   updated_at  TEXT
 );
 
