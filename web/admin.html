@@ -47,7 +47,7 @@
                 <!-- Tab 2：提示词模板 -->
                 <div class="sub-panel" id="sub-templates">
                     <div id="previewWrap" style="display:none;">
-                        <div id="previewFiles" style="display:flex;flex-direction:column;gap:12px;max-height:508px;overflow-y:auto;padding-right:4px;"></div>
+                        <div id="previewFiles" class="prompt-file-list"></div>
                     </div>
                 </div>
 
@@ -76,7 +76,9 @@
                         <span style="color:#888;font-size:0.82rem;margin-left:12px;">首次使用时内置默认模板，上传后下载即为上次上传的内容</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:12px;">
-                        <input type="file" id="tarFileInput" accept=".tar,.tar.gz,.tgz,.zip" style="flex:1;">
+                        <input type="file" id="tarFileInput" accept=".tar,.tar.gz,.tgz,.zip" style="display:none;">
+                        <label for="tarFileInput" class="file-btn"><i class="fas fa-folder-open"></i> 选择文件</label>
+                        <span class="file-name" id="tarFileName" style="flex:1;">未选择文件</span>
                         <button class="cfg-btn cfg-btn-save" onclick="uploadTar()"><i class="fas fa-upload"></i> 上传</button>
                     </div>
                     <div id="tarResult" style="margin-top:12px;"></div>
@@ -89,7 +91,9 @@
                         <span style="color:#888;font-size:0.82rem;margin-left:12px;">格式：key, value, 说明（三列）</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:12px;">
-                        <input type="file" id="csvFileInput" accept=".csv" style="flex:1;">
+                        <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+                        <label for="csvFileInput" class="file-btn"><i class="fas fa-folder-open"></i> 选择文件</label>
+                        <span class="file-name" id="csvFileName" style="flex:1;">未选择文件</span>
                         <button class="cfg-btn cfg-btn-save" onclick="uploadCsv()"><i class="fas fa-upload"></i> 上传</button>
                     </div>
                     <div id="csvResult" style="margin-top:12px;"></div>
@@ -120,7 +124,9 @@
                 <!-- Tab 2：文件上传 -->
                 <div class="sub-panel" id="sub-memory-upload">
                     <div style="display:flex;align-items:center;gap:12px;max-width:640px;">
-                        <input type="file" id="memoryFileInput" accept=".md,.xmind,.tar,.tar.gz,.tgz,.zip" style="flex:1;">
+                        <input type="file" id="memoryFileInput" accept=".md,.xmind,.tar,.tar.gz,.tgz,.zip" style="display:none;">
+                        <label for="memoryFileInput" class="file-btn"><i class="fas fa-folder-open"></i> 选择文件</label>
+                        <span class="file-name" id="memoryFileName" style="flex:1;">未选择文件</span>
                         <button class="cfg-btn cfg-btn-save" onclick="uploadMemory()"><i class="fas fa-upload"></i> 上传</button>
                     </div>
                     <div id="memoryResult" style="margin-top:12px;"></div>
@@ -277,7 +283,7 @@
                 <!-- ========== 系统设置 ========== -->
                 <div class="cfg-section" id="section-sys">
                     <h2><i class="fas fa-sliders-h"></i> 系统设置</h2>
-                    <div class="form-g" style="max-width:720px;">
+                    <div class="form-g" style="max-width:610px;">
                         <label>系统名称</label>
                         <input type="text" id="sysName" style="width:100%;">
                     </div>
@@ -288,18 +294,20 @@
                     </p>
                     <div style="margin-bottom:12px;">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                            <input type="checkbox" id="apiAuthEnabled" onchange="document.getElementById('apiTokenRow').style.display=this.checked?'flex':'none'"> 启用 API 认证
+                            <input type="checkbox" id="apiAuthEnabled" onchange="document.getElementById('apiTokenRow').style.display=this.checked?'block':'none'"> 启用 API 认证
                         </label>
                     </div>
-                    <div id="apiTokenRow" style="display:flex;gap:8px;align-items:center;max-width:720px;">
-                        <div class="form-g" style="flex:1;margin-bottom:0;position:relative;min-width:0;">
-                            <label>Token</label>
+                    <div id="apiTokenRow" style="max-width:610px;">
+                        <div class="form-g" style="margin-bottom:0;position:relative;">
+                            <label style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span>Token</span>
+                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="generateAPIToken()" style="padding:6px 14px;font-size:0.8rem;white-space:nowrap;">
+                                    <i class="fas fa-sync-alt"></i> 随机生成
+                                </button>
+                            </label>
                             <input type="password" id="apiAuthToken" placeholder="设置认证 token" style="width:100%;font-family:monospace;padding-right:36px;">
                             <i class="fas fa-eye" onclick="toggleTokenVisibility()" style="position:absolute;right:10px;bottom:12px;cursor:pointer;color:#999;font-size:0.9rem;" title="显示/隐藏"></i>
                         </div>
-                        <button type="button" class="cfg-btn cfg-btn-reset" onclick="generateAPIToken()" style="margin-top:20px;white-space:nowrap;">
-                            <i class="fas fa-sync-alt"></i> 随机生成
-                        </button>
                     </div>
                     <button class="cfg-btn cfg-btn-save" onclick="saveSysConfig()" style="margin-top:16px;">
                         <i class="fas fa-check"></i> 保存

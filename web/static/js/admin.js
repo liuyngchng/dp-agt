@@ -177,6 +177,16 @@ function fmtSize(bytes) {
     return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
+// 文件选择后，在自定义按钮旁显示所选文件名
+function bindFileLabel(inputId, nameId) {
+    const input = document.getElementById(inputId);
+    const nameEl = document.getElementById(nameId);
+    if (!input || !nameEl) return;
+    input.addEventListener('change', () => {
+        nameEl.textContent = input.files && input.files[0] ? input.files[0].name : '未选择文件';
+    });
+}
+
 async function uploadMemory() {
     const input = document.getElementById('memoryFileInput');
     const file = input.files[0];
@@ -385,9 +395,9 @@ async function loadPreview() {
     }
     wrap.style.display = 'block';
     container.innerHTML = previews.map((p, idx) => `
-        <div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:8px;height:40px;box-sizing:border-box;flex-shrink:0;" onclick="openPromptPreview(${idx})" onmouseover="this.style.borderColor='#4b6cb7'" onmouseout="this.style.borderColor='#e0e0e0'">
-            <i class="fas fa-file-code" style="color:#4b6cb7;"></i>
-            <span style="font-family:monospace;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(p.file)}</span>
+        <div class="prompt-file-item" onclick="openPromptPreview(${idx})" title="${escHtml(p.file)}">
+            <i class="fas fa-file-code prompt-file-icon"></i>
+            <span class="prompt-file-name">${escHtml(p.file)}</span>
         </div>
     `).join('');
     // 缓存预览数据供弹窗使用
@@ -510,6 +520,9 @@ document.getElementById('memoryModal').addEventListener('click', function(e) { i
 // Init
 initNav();
 loadSysConfig();
+bindFileLabel('tarFileInput', 'tarFileName');
+bindFileLabel('csvFileInput', 'csvFileName');
+bindFileLabel('memoryFileInput', 'memoryFileName');
 
 // ==== Utilities ====
 function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -766,7 +779,7 @@ async function loadSysConfig() {
             const tokenInput = document.getElementById('apiAuthToken');
             tokenInput.value = '';
             tokenInput.placeholder = hasToken ? '已配置（留空保持不变）' : '设置认证 token';
-            document.getElementById('apiTokenRow').style.display = apiEnabled ? 'flex' : 'none';
+            document.getElementById('apiTokenRow').style.display = apiEnabled ? 'block' : 'none';
         }
     } catch (_) {}
 }

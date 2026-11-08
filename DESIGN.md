@@ -73,7 +73,7 @@
      |                                                         |    {{request.files}}
      |                                                         |    ... (任意字段均可引用)
      |                                                         |
-     |                                                         | 7. 创建工作目录 data/tasks/{task_id}/
+     |                                                         | 7. 创建工作目录 runtime/tasks/{linkid}/
      |                                                         |    写入 CLAUDE.md（行为规范）
      |                                                         |
      |                                                         | 8. query({prompt, options})
@@ -369,7 +369,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 // 创建工作目录
-const workDir = path.join(DATA_DIR, 'tasks', taskId);
+const workDir = path.join(RUNTIME_DIR, 'tasks', sanitizeDirName(linkid));
 await fs.mkdir(workDir, { recursive: true });
 
 // 写入 CLAUDE.md 设定基本行为规范
@@ -458,12 +458,17 @@ AI 数字员工/
 │   └── style.css
 │
 ├── data/                       # 运行时数据 (容器挂载卷)
+│   ├── app.db                  # SQLite
+│   ├── logs/                   # 应用日志
+│   ├── memory/                 # 业务记忆文件
+│   └── cfg.yml                 # 配置文件
+│
+├── runtime/                    # 运行时工作目录 (容器内 ephemeral，不挂载)
 │   ├── tasks/                  # 各任务的工作目录 (Claude 在此读写)
-│   │   └── {task_id}/
+│   │   └── {linkid}/
 │   │       ├── CLAUDE.md
 │   │       └── (Claude 下载的文件)
-│   ├── app.db                  # SQLite
-│   └── cfg.yml                 # 配置文件
+│   └── claude-config/          # SDK 会话历史 (CLAUDE_CONFIG_DIR 指定)
 │
 └── build/
     ├── build.sh
@@ -653,9 +658,12 @@ AI 数字员工 容器:
   内容:
     data/cfg.yml        — 配置文件
     data/app.db         — SQLite
-    data/tasks/         — 任务工作目录 (Claude SDK 在此执行)
     data/logs/          — 应用日志
+    data/memory/        — 业务记忆文件
 ```
+
+> 注：SDK 工作目录 `runtime/tasks/`（容器内为 `/app/runtime/tasks/`）与会话历史
+> `runtime/claude-config/` 属临时数据，**不挂载**，容器重启后丢弃。
 
 ### 8.2 端口
 
