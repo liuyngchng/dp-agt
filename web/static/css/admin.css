@@ -440,6 +440,17 @@ header p {
     transform: translateY(-1px);
 }
 
+/* 压缩数据库 — 橙色警告按钮（危险度低于清空，但需注意锁库） */
+.cfg-btn-warn {
+    background: linear-gradient(135deg, #f6ad55, #ed8936);
+    color: white;
+}
+.cfg-btn-warn:hover {
+    background: linear-gradient(135deg, #ed8936, #dd6b20);
+    box-shadow: 0 4px 12px rgba(237, 137, 54, 0.3);
+    transform: translateY(-1px);
+}
+
 .cfg-btn-reset {
     background: #f0f0f0;
     color: #555;

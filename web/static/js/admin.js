@@ -1039,14 +1039,12 @@ function selectDataTable(tableId) {
 
 async function queryTraceTab() {
     const taskId = document.getElementById('traceQueryTaskId').value.trim();
-    const linkid = document.getElementById('traceQueryLinkId').value.trim();
-    if (!taskId && !linkid) {
-        toast('请至少输入 Task ID 或 Link ID', 'error');
+    if (!taskId) {
+        toast('请输入 Task ID', 'error');
         return;
     }
     const params = new URLSearchParams();
-    if (taskId) params.set('task_id', taskId);
-    if (linkid) params.set('linkid', linkid);
+    params.set('task_id', taskId);
 
     try {
         const res = await fetch(API + '/data-tables/task_logs/query?' + params.toString());

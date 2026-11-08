@@ -354,13 +354,12 @@
                     <!-- Tab 2：SDK Trace 查看 -->
                     <div class="sub-panel" id="sub-sys-trace">
                         <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">
-                            按 <code>task_id</code> 或 <code>linkid</code> 精确查询，查看 <code>sdk_trace</code> 原始消息流，可选择导出为 <code>&lt;taskid&gt;.json</code>。
+                            按 <code>task_id</code> 精确查询，查看 <code>sdk_trace</code> 原始消息流，可选择导出为 <code>&lt;taskid&gt;.json</code>。
                         </p>
 
                         <div style="background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:16px 18px;margin-bottom:20px;">
                             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-                                <div class="form-g" style="margin:0;flex:1;min-width:220px;"><label>Task ID</label><input type="text" id="traceQueryTaskId" placeholder="输入 Task ID（精确匹配）" style="width:100%;"></div>
-                                <div class="form-g" style="margin:0;flex:1;min-width:220px;"><label>Link ID</label><input type="text" id="traceQueryLinkId" placeholder="输入 Link ID（精确匹配）" style="width:100%;"></div>
+                                <div class="form-g" style="margin:0;flex:1;min-width:320px;"><label>Task ID</label><input type="text" id="traceQueryTaskId" placeholder="输入 Task ID（精确匹配）" style="width:100%;"></div>
                                 <button class="cfg-btn cfg-btn-save" onclick="queryTraceTab()"><i class="fas fa-search"></i> 查询</button>
                             </div>
                             <div id="traceQueryResult" style="margin-top:16px;"></div>
@@ -377,7 +376,7 @@
                         <div id="dataTableActions" style="display:none;"></div>
 
                         <div style="margin-top:24px;padding-top:20px;border-top:1px solid #e0e3e8;">
-                            <button class="cfg-btn cfg-btn-reset" onclick="vacuumDatabase()"><i class="fas fa-compress-alt"></i> 压缩数据库</button>
+                            <button class="cfg-btn cfg-btn-warn" onclick="vacuumDatabase()"><i class="fas fa-compress-alt"></i> 压缩数据库</button>
                             <span style="font-size:0.82rem;color:#888;margin-left:12px;">清空表后数据库文件不会自动变小，压缩（VACUUM）可回收磁盘空间，耗时视库大小而定。</span>
                         </div>
                     </div>
