@@ -177,6 +177,15 @@ function fmtSize(bytes) {
     return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
+function fmtDuration(ms) {
+    if (!ms || ms <= 0) return '0s';
+    if (ms < 1000) return ms + 'ms';
+    if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+    const m = Math.floor(ms / 60000);
+    const s = ((ms % 60000) / 1000).toFixed(1);
+    return m + 'm ' + s + 's';
+}
+
 // 文件选择后，在自定义按钮旁显示所选文件名
 function bindFileLabel(inputId, nameId) {
     const input = document.getElementById(inputId);
@@ -1089,21 +1098,48 @@ async function viewTrace(taskId) {
         _traceTask = t;
         _traceRaw = t.sdk_trace || '';
 
-        // 消息总数：sdk_trace 是消息流 JSON 数组，长度即消息条数
+        // 消息总数 & 统计信息：从 sdk_trace 数组和 result 消息中提取
         let msgCount = 0;
+        let totalTokens = null;     // 总 token 数
+        let numTurns = null;         // LLM 调用轮次
+        let apiDurationMs = null;    // LLM API 累计耗时（ms）
+        let totalDurationMs = null;  // 整个任务 wall-clock 总耗时（ms）
         if (_traceRaw) {
             try {
                 const parsed = JSON.parse(_traceRaw);
-                if (Array.isArray(parsed)) msgCount = parsed.length;
+                if (Array.isArray(parsed)) {
+                    msgCount = parsed.length;
+                    const resultMsg = parsed.find(m => m.type === 'result');
+                    if (resultMsg) {
+                        const u = resultMsg.usage;
+                        if (u) {
+                            totalTokens = (u.input_tokens || 0) + (u.output_tokens || 0)
+                                + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+                        }
+                        if (typeof resultMsg.num_turns === 'number') numTurns = resultMsg.num_turns;
+                        if (typeof resultMsg.duration_api_ms === 'number') apiDurationMs = resultMsg.duration_api_ms;
+                        if (typeof resultMsg.duration_ms === 'number') totalDurationMs = resultMsg.duration_ms;
+                    }
+                }
             } catch { /* 解析失败按 0 处理 */ }
         }
 
-        document.getElementById('traceModalTitle').innerHTML = '<i class="fas fa-terminal"></i> sdk_trace';
-        document.getElementById('traceMeta').innerHTML =
-            '<strong>Task ID:</strong> <code>' + escHtml(t.task_id) + '</code>'
+        // 第一行：身份 + 体积
+        let line1 = '<strong>Task ID:</strong> <code>' + escHtml(t.task_id) + '</code>'
             + ' &nbsp;|&nbsp; <strong>Link ID:</strong> <code>' + escHtml(t.linkid || '-') + '</code>'
             + ' &nbsp;|&nbsp; <strong>大小:</strong> ' + fmtSize(_traceRaw ? new Blob([_traceRaw]).size : 0)
             + ' &nbsp;|&nbsp; <strong>消息总数:</strong> ' + msgCount;
+
+        // 第二行：执行指标
+        let line2 = '<strong>轮次:</strong> ' + (numTurns !== null ? numTurns : '-');
+        line2 += ' &nbsp;|&nbsp; <strong>总 tokens:</strong> ' + (totalTokens !== null ? totalTokens.toLocaleString() : '-');
+        line2 += ' &nbsp;|&nbsp; <strong>API 耗时:</strong> ' + (apiDurationMs !== null ? fmtDuration(apiDurationMs) : '-');
+        line2 += ' &nbsp;|&nbsp; <strong>总耗时:</strong> ' + (totalDurationMs !== null ? fmtDuration(totalDurationMs) : '-');
+
+        document.getElementById('traceModalTitle').innerHTML = '<i class="fas fa-terminal"></i> sdk_trace';
+        document.getElementById('traceMeta').innerHTML =
+            '<div>' + line1 + '</div>'
+            + '<div style="margin-top:6px;">' + line2 + '</div>';
 
         const pre = document.getElementById('traceContent');
         if (!_traceRaw) {
