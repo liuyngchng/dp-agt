@@ -127,40 +127,55 @@ export function tryExtractCallbackFromTrace(
   try { messages = JSON.parse(sdkTrace); } catch { return null; }
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
-  const callbackIds = new Set<string>();
+  // Step 1: Find actual callback Bash commands (those using /tmp/callback_payload)
+  // and extract the request body from the heredoc.
+  // Key insight: the prompt tells the agent to use "/tmp/callback_payload" —
+  // this is the reliable marker.  Do NOT match every command that mentions
+  // "callback" (e.g. "getent hosts callback.test.me" is a DNS probe, not a callback).
+  const callbackMap = new Map<string, { payload: string; response: string }>();
   for (const msg of messages) {
     if (msg.type !== 'assistant') continue;
     for (const block of msg.message?.content ?? []) {
       if (block.type !== 'tool_use' || block.name !== 'Bash') continue;
       const cmd = typeof block.input?.command === 'string' ? block.input.command : '';
-      if (cmd.includes('/tmp/callback_payload') || cmd.includes('callback')) {
-        if (block.id) callbackIds.add(block.id);
-      }
+      if (!cmd.includes('/tmp/callback_payload')) continue;
+      if (!block.id) continue;
+      callbackMap.set(block.id, { payload: extractCallbackPayload(cmd), response: '' });
     }
   }
-  if (callbackIds.size === 0) return null;
 
-  const results: Array<{ toolId: string; content: string }> = [];
+  if (callbackMap.size === 0) return null;
+
+  // Step 2: Collect the tool_result (response) for each callback command
   for (const msg of messages) {
     if (msg.type !== 'user') continue;
     for (const block of msg.message?.content ?? []) {
       if (block.type !== 'tool_result') continue;
-      if (block.tool_use_id && !callbackIds.has(block.tool_use_id)) continue;
+      if (!block.tool_use_id || !callbackMap.has(block.tool_use_id)) continue;
       const raw = block.content;
-      if (typeof raw === 'string') {
-        results.push({ toolId: block.tool_use_id ?? '', content: raw });
-      } else if (Array.isArray(raw)) {
-        results.push({ toolId: block.tool_use_id ?? '', content: raw.map((c: Record<string, unknown>) =>
-          typeof c.text === 'string' ? c.text : JSON.stringify(c)
-        ).join('') });
-      }
+      const text = typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.map((c) => (typeof (c as Record<string, unknown>).text === 'string' ? (c as Record<string, unknown>).text : JSON.stringify(c))).join('')
+          : '';
+      callbackMap.get(block.tool_use_id)!.response = text.trim();
     }
   }
-  if (results.length === 0) return null;
 
-  const allOk = results.every(r => !r.content.includes('curl: (') && !r.content.includes('command failed') && !r.content.includes('Error'));
-  let detail = results.map(r => r.content.trim()).join('\n\n---\n\n');
-  if (results.length > 1) detail = results.map((r, i) => `[${i + 1}]\n${r.content.trim()}`).join('\n\n');
+  const entries = [...callbackMap.entries()];
+  const allOk = entries.every(([, e]) => {
+    const resp = e.response;
+    return !resp.includes('curl: (') && !resp.includes('command failed') && !resp.includes('Error');
+  });
+
+  // Build detail: for each callback, show the request body first, then the response
+  const parts = entries.map(([, e], i) => {
+    const prefix = entries.length > 1 ? `[回调 ${i + 1}]\n` : '';
+    const payloadBlock = e.payload ? `请求体:\n${e.payload}` : '(无法提取请求体)';
+    const responseBlock = `响应:\n${e.response || '(无响应)'}`;
+    return `${prefix}${payloadBlock}\n\n${responseBlock}`;
+  });
+  const detail = parts.join('\n\n---\n\n');
 
   return {
     time: fallbackTime,
@@ -168,6 +183,16 @@ export function tryExtractCallbackFromTrace(
     title: allOk ? '回调成功' : '回调失败',
     detail,
   };
+}
+
+/** Extract the JSON payload from a Bash heredoc that writes to /tmp/callback_payload.json */
+function extractCallbackPayload(cmd: string): string {
+  // Match: cat > /tmp/callback_payload.json << 'PAYLOAD_EOF'  (or "PAYLOAD_EOF" or PAYLOAD_EOF)
+  //        <content>
+  //        PAYLOAD_EOF
+  const m = cmd.match(/<<\s*['"]?PAYLOAD_EOF['"]?\s*\n([\s\S]*?)\nPAYLOAD_EOF/);
+  if (m && m[1]) return m[1].trim();
+  return '';
 }
 
 function jsonFmt(v: unknown): string {
