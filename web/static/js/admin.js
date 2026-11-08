@@ -1105,6 +1105,19 @@ async function queryTraceTab() {
     }
 }
 
+// 过滤 sdk_trace 中的 system 类型消息（SDK 内部记账，无业务价值）
+function filterTraceMessages(rawStr) {
+    if (!rawStr) return rawStr;
+    try {
+        const arr = JSON.parse(rawStr);
+        if (!Array.isArray(arr)) return rawStr;
+        const filtered = arr.filter(m => m.type !== 'system');
+        return filtered.length === arr.length ? rawStr : JSON.stringify(filtered);
+    } catch {
+        return rawStr;
+    }
+}
+
 async function viewTrace(taskId) {
     try {
         const res = await fetch(API + '/audit/' + encodeURIComponent(taskId));
@@ -1162,9 +1175,9 @@ async function viewTrace(taskId) {
         if (!_traceRaw) {
             pre.textContent = '(该任务无 sdk_trace 数据)';
         } else {
-            // sdk_trace 本身是 JSON 字符串（消息流数组），解析后美化展示
+            // sdk_trace 本身是 JSON 字符串（消息流数组），过滤 system 消息后美化展示
             try {
-                pre.textContent = JSON.stringify(JSON.parse(_traceRaw), null, 2);
+                pre.textContent = JSON.stringify(JSON.parse(filterTraceMessages(_traceRaw)), null, 2);
             } catch {
                 pre.textContent = _traceRaw;
             }
@@ -1178,7 +1191,8 @@ async function viewTrace(taskId) {
 
 function exportTrace() {
     if (!_traceTask || !_traceRaw) { toast('无数据', 'error'); return; }
-    const blob = new Blob([_traceRaw], { type: 'application/json;charset=utf-8' });
+    const filtered = filterTraceMessages(_traceRaw);
+    const blob = new Blob([filtered], { type: 'application/json;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = _traceTask.task_id + '.json';

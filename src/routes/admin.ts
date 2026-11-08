@@ -1296,14 +1296,24 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
+    // 过滤 system 类型消息（SDK 内部记账，无业务价值），与前端展示/导出保持一致
+    let exportTrace = sdkTrace;
+    try {
+      const arr = JSON.parse(sdkTrace);
+      if (Array.isArray(arr)) {
+        const filtered = arr.filter((m) => (m as Record<string, unknown>).type !== 'system');
+        if (filtered.length !== arr.length) exportTrace = JSON.stringify(filtered);
+      }
+    } catch { /* 非 JSON 保持原样导出 */ }
+
     const filename = `${task_id}.json`;
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Content-Disposition': `attachment; filename="${filename}"`,
-      'Content-Length': Buffer.byteLength(sdkTrace),
+      'Content-Length': Buffer.byteLength(exportTrace),
     });
-    res.end(sdkTrace);
-    log.info({ task_id, linkid: task.linkid, traceLen: sdkTrace.length }, 'data_task_sdk_trace_exported');
+    res.end(exportTrace);
+    log.info({ task_id, linkid: task.linkid, traceLen: exportTrace.length }, 'data_task_sdk_trace_exported');
   });
 
   // 清空整表数据
