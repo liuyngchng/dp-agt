@@ -787,6 +787,27 @@ input[type="file"]::file-selector-button:hover {
     gap: 8px;
 }
 
+/* 小模态框（添加配置项等简单表单） */
+.modal-sm {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px 32px;
+    width: 480px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.modal-sm h3 {
+    font-size: 1.05rem;
+    color: #2c3e50;
+    margin: 0 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 /* “会话终端”、”执行过程”、”执行结果”、”任务执行时间线”、”提示词模板预览”、”记忆文件预览” 窗口 — 固定高度 */
 #chatModal .modal-lg,
 #streamModal .modal-lg,

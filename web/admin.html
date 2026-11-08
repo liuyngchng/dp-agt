@@ -87,11 +87,8 @@
                 <!-- Tab 5：占位符配置（CSV 上传 / 单条添加） -->
                 <div class="sub-panel" id="sub-placeholders">
                     <p style="color:#888;font-size:0.82rem;margin:0 0 12px;">可在页面上直接添加全局环境变量，key 会以 <code>DP_</code> 前缀注入到 Agent 子进程环境变量（如 <code>current_organization_name</code> → <code>DP_CURRENT_ORGANIZATION_NAME</code>），并在每个新任务的 CLAUDE.md 中列出变量名与说明，Agent 可按需读取。</p>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-                        <input type="text" id="cfgKeyInput" placeholder="key（如 current_organization_name）" style="flex:1;min-width:180px;">
-                        <input type="text" id="cfgValueInput" placeholder="value" style="flex:1;min-width:140px;">
-                        <input type="text" id="cfgNoteInput" placeholder="说明（可选）" style="flex:1;min-width:160px;" onkeydown="if(event.key==='Enter')addConfigItem()">
-                        <button class="cfg-btn cfg-btn-save" onclick="addConfigItem()"><i class="fas fa-plus"></i> 添加</button>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                        <button class="cfg-btn cfg-btn-save" onclick="openCfgModal()"><i class="fas fa-plus"></i> 添加</button>
                     </div>
                     <div style="margin-bottom:12px;">
                         <button class="cfg-btn" onclick="downloadCsvTemplate()"><i class="fas fa-download"></i> 下载 CSV 模板</button>
@@ -104,6 +101,29 @@
                         <button class="cfg-btn cfg-btn-save" onclick="uploadCsv()"><i class="fas fa-upload"></i> 上传</button>
                     </div>
                     <div id="csvResult" style="margin-top:12px;"></div>
+
+                    <!-- 单条添加弹窗 -->
+                    <div id="cfgModal" class="modal-overlay">
+                        <div class="modal-sm">
+                            <h3><i class="fas fa-key"></i> 添加全局环境变量</h3>
+                            <div class="form-g">
+                                <label>Key <span style="color:#e53935;">*</span></label>
+                                <input type="text" id="cfgKeyInput" placeholder="如 current_organization_name" spellcheck="false">
+                            </div>
+                            <div class="form-g">
+                                <label>Value <span style="color:#e53935;">*</span></label>
+                                <input type="text" id="cfgValueInput" placeholder="变量值" spellcheck="false">
+                            </div>
+                            <div class="form-g">
+                                <label>说明</label>
+                                <input type="text" id="cfgNoteInput" placeholder="可选，说明该变量用途">
+                            </div>
+                            <div class="modal-actions">
+                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeCfgModal()">取消</button>
+                                <button type="button" class="cfg-btn cfg-btn-save" onclick="addConfigItem()"><i class="fas fa-check"></i> 保存</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

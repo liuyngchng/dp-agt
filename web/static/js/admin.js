@@ -261,7 +261,20 @@ function downloadCsvTemplate() {
     window.location.href = API + '/prompt-config/template';
 }
 
-// 单条添加配置项（全局环境变量）
+// 单条添加配置项（全局环境变量）— 打开弹窗
+function openCfgModal() {
+    document.getElementById('cfgKeyInput').value = '';
+    document.getElementById('cfgValueInput').value = '';
+    document.getElementById('cfgNoteInput').value = '';
+    document.getElementById('cfgModal').classList.add('show');
+    document.getElementById('cfgKeyInput').focus();
+}
+
+function closeCfgModal() {
+    document.getElementById('cfgModal').classList.remove('show');
+}
+
+// 单条添加配置项 — 提交保存
 async function addConfigItem() {
     const key = document.getElementById('cfgKeyInput').value.trim();
     const value = document.getElementById('cfgValueInput').value;
@@ -280,9 +293,7 @@ async function addConfigItem() {
         toast(json.message || '添加失败', 'error');
         return;
     }
-    document.getElementById('cfgKeyInput').value = '';
-    document.getElementById('cfgValueInput').value = '';
-    document.getElementById('cfgNoteInput').value = '';
+    closeCfgModal();
     await loadConfigKeys();
     toast('已添加');
 }
@@ -618,6 +629,7 @@ document.getElementById('auditDetailModal').addEventListener('click', function(e
 document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
 document.getElementById('chatModal').addEventListener('click', function(e) { if (e.target === this) closeChatModal(); });
 document.getElementById('memoryModal').addEventListener('click', function(e) { if (e.target === this) closeMemoryModal(); });
+document.getElementById('cfgModal').addEventListener('click', function(e) { if (e.target === this) closeCfgModal(); });
 
 // Init
 initNav();
@@ -654,8 +666,15 @@ document.addEventListener('keydown', function(e) {
         if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
         if (document.getElementById('auditDetailModal').classList.contains('show')) closeAuditDetail();
         if (document.getElementById('memoryModal').classList.contains('show')) closeMemoryModal();
+        if (document.getElementById('cfgModal').classList.contains('show')) closeCfgModal();
         if (document.getElementById('promptPreviewModal').classList.contains('show')) closePromptPreview();
         if (document.getElementById('chatModal').classList.contains('show')) closeChatModal();
+    }
+    // 配置弹窗内按回车提交
+    if (e.key === 'Enter' && document.getElementById('cfgModal').classList.contains('show')
+        && ['cfgKeyInput', 'cfgValueInput', 'cfgNoteInput'].includes(e.target.id)) {
+        e.preventDefault();
+        addConfigItem();
     }
 });
 
