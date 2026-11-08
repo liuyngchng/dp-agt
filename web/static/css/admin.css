@@ -472,6 +472,17 @@ header p {
     font-family: inherit;
 }
 
+/* 覆盖浏览器自动填充（autofill）时的黄色背景，保持白色输入框 */
+.form-g input:-webkit-autofill,
+.form-g input:-webkit-autofill:hover,
+.form-g input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px #fff inset;
+    box-shadow: 0 0 0 1000px #fff inset;
+    -webkit-text-fill-color: #333;
+    caret-color: #333;
+    transition: background-color 9999s ease-in-out 0s;
+}
+
 /* 上传文件选择框 */
 input[type="file"] {
     padding: 9px 12px;
