@@ -4,7 +4,7 @@
 
 ```bash
 curl -s -k --noproxy '*' -w'\n' \
-  '{{doc.workflow_config_url}}/<workflow_id>?_t=<当前时间戳毫秒>' \
+  "${DP_DOC_WORKFLOW_CONFIG_URL}/<workflow_id>?_t=<当前时间戳毫秒>" \
   -H 'Accept: application/json' \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $FILE_URL_TOKEN" | jq '.'

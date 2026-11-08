@@ -971,7 +971,7 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    // 校验占位符（仅提示，不阻断上传）
+    // 校验模板中引用的系统变量是否已配置（仅提示，不阻断上传）
     const warnings: string[] = [];
     for (const [name, content] of Object.entries(files)) {
       const placeholders = content.match(/\{\{([^}]+)\}\}/g) || [];
@@ -979,7 +979,7 @@ export function createAdminRouter(cfg: Config): Router {
         const inner = ph.slice(2, -2).trim();
         if (inner.startsWith('section:') || inner.startsWith('request.')) continue;
         if (!validKeys.has(inner)) {
-          warnings.push(name + ': 占位符 {{' + inner + '}} 未在 CSV 中配置');
+          warnings.push(name + ': 系统变量 {{' + inner + '}} 未在系统变量配置中配置');
         }
       }
     }

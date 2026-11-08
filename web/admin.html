@@ -29,9 +29,9 @@
                 <div class="sub-tabs" style="display:flex;gap:8px;margin:20px 0 24px;border-bottom:2px solid #eef1f6;">
                     <button type="button" class="sub-tab active" data-subtab="paths" onclick="switchInterfaceTab('paths')"><i class="fas fa-list"></i> 访问路径列表</button>
                     <button type="button" class="sub-tab" data-subtab="templates" onclick="switchInterfaceTab('templates')"><i class="fas fa-file-code"></i> 提示词模板</button>
-                    <button type="button" class="sub-tab" data-subtab="placeholder-preview" onclick="switchInterfaceTab('placeholder-preview')"><i class="fas fa-key"></i> 占位符预览</button>
+                    <button type="button" class="sub-tab" data-subtab="placeholder-preview" onclick="switchInterfaceTab('placeholder-preview')"><i class="fas fa-key"></i> 系统变量预览</button>
                     <button type="button" class="sub-tab" data-subtab="manage" onclick="switchInterfaceTab('manage')"><i class="fas fa-file-archive"></i> 提示词配置</button>
-                    <button type="button" class="sub-tab" data-subtab="placeholders" onclick="switchInterfaceTab('placeholders')"><i class="fas fa-file-csv"></i> 占位符配置</button>
+                    <button type="button" class="sub-tab" data-subtab="placeholders" onclick="switchInterfaceTab('placeholders')"><i class="fas fa-file-csv"></i> 系统变量配置</button>
                 </div>
 
                 <!-- Tab 1：访问路径列表 -->
@@ -62,7 +62,7 @@
                     </div>
                 </div>
 
-                <!-- Tab 3：占位符预览（只读，展示已配置 key） -->
+                <!-- Tab 3：系统变量预览（只读，展示已配置 key） -->
                 <div class="sub-panel" id="sub-placeholder-preview">
                     <div id="configKeysTable" style="overflow-x:auto;"></div>
                     <div id="configKeysEmpty" style="color:#999;padding:24px;text-align:center;display:none;">暂无配置项</div>
@@ -84,7 +84,7 @@
                     <div id="tarResult" style="margin-top:12px;"></div>
                 </div>
 
-                <!-- Tab 5：占位符配置（CSV 上传 / 单条添加） -->
+                <!-- Tab 5：系统变量配置（CSV 上传 / 单条添加） -->
                 <div class="sub-panel" id="sub-placeholders">
                     <p style="color:#888;font-size:0.82rem;margin:0 0 12px;">可在页面上直接添加全局环境变量，key 会以 <code>DP_</code> 前缀注入到 Agent 子进程环境变量（如 <code>current_organization_name</code> → <code>DP_CURRENT_ORGANIZATION_NAME</code>），并在每个新任务的 CLAUDE.md 中列出变量名与说明，Agent 可按需读取。</p>
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">

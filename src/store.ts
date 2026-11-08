@@ -299,7 +299,7 @@ export const promptConfigStore = {
     return (db.prepare('SELECT COUNT(*) AS c FROM prompt_config').get() as { c: number }).c;
   },
 
-  /** 获取所有 key 名，用于占位符校验 */
+  /** 获取所有 key 名，用于模板中的系统变量引用校验 */
   listKeys(): string[] {
     return (db.prepare('SELECT key FROM prompt_config ORDER BY key').all() as Array<{ key: string }>).map(r => r.key);
   },

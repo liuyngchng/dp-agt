@@ -7,7 +7,7 @@
 ### 提交审稿任务
 
 ```bash
-curl -s -k --noproxy '*' -w'\n' -X POST '{{doc_audit.api_url}}' \
+curl -s -k --noproxy '*' -w'\n' -X POST "$DP_DOC_AUDIT_API_URL" \
   -H "x-api-key: $DOC_AUDIT_TOKEN" \
   -F "file=@正文.docx" \
   -F "additional_instructions=请严格按 GB/T 9704-2012 党政机关公文格式标准进行校对"
@@ -20,7 +20,7 @@ curl -s -k --noproxy '*' -w'\n' -X POST '{{doc_audit.api_url}}' \
 ### 轮询获取结果
 
 ```bash
-curl -s -k --noproxy '*' -w'\n' -X GET '{{doc_audit.api_url}}/task?id=<审稿task_id>' \
+curl -s -k --noproxy '*' -w'\n' -X GET "${DP_DOC_AUDIT_API_URL}/task?id=<审稿task_id>" \
   -H "x-api-key: $DOC_AUDIT_TOKEN" | jq '.'
 ```
 

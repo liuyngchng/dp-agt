@@ -15,7 +15,7 @@ cat > /tmp/callback_payload.json << 'PAYLOAD_EOF'
 {"code":0,"message":"success","task_id":"<任务提示词中的task_id>","linkid":"<任务提示词中的linkid>","data":<你的结果JSON>}
 PAYLOAD_EOF
 
-curl -s -k --noproxy '*' -w'\n' -X POST '{{callback.url}}' \
+curl -s -k --noproxy '*' -w'\n' -X POST "$DP_CALLBACK_URL" \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $CALLBACK_TOKEN" \
   -d @/tmp/callback_payload.json

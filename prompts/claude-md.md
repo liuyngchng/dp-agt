@@ -16,7 +16,7 @@
 同时自动检测印章。文字版和扫描版 PDF 均支持。
 
 ```bash
-curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/extract/txt \
+curl -s -k --noproxy '*' -w'\n' -X POST "${DP_DOC_DOC_UTIL_URL}/extract/txt" \
   -F "file=@文件名" | jq '.'
 ```
 
@@ -28,7 +28,7 @@ curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/extract/txt \
 
 示例:
 ```bash
-curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/extract/txt \
+curl -s -k --noproxy '*' -w'\n' -X POST "${DP_DOC_DOC_UTIL_URL}/extract/txt" \
   -F "file=@document.pdf" | jq -r '.text'
 ```
 
@@ -43,7 +43,7 @@ curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/extract/txt \
 用于把正文提交到仅接受 `.docx` 的服务（如 rdCLI 审稿）之前做格式转换。
 
 ```bash
-curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/convert/doc \
+curl -s -k --noproxy '*' -w'\n' -X POST "${DP_DOC_DOC_UTIL_URL}/convert/doc" \
   -F "file=@正文.doc" \
   -o 正文.docx
 ```
@@ -79,11 +79,11 @@ curl -s -k --noproxy '*' -w'\n' -X POST {{doc.doc_util_url}}/convert/doc \
 8. 时间与步数预算：单个任务总时长控制在 5 分钟以内，工具调用控制在必要的最少次数。
    按「下载文件 → 解析/读取 → 判断 → 组装 → 回调/输出」主线直奔目标，
    不要反复推演、重复陈述结论，也不要做与主线无关的探索。
-9. 未替换的 {{...}} 占位符表示该项配置缺失（留空禁用）。任务若依赖某个未配置的
-   占位符（下载/解析/回调/接口调用的地址或凭证），应**立即停止**：禁止为补齐它去
-   查找或猜测数据库、源码、日志、cfg.yml、mock 数据或历史会话记录；直接在最终 JSON
-   中 need_human=true，并在 fail_reason 说明「缺少 XX 配置」。仅当该占位符对应的功能
-   是可选回退（如 renew_file_url_api）时才可跳过并继续。
+9. 本工作区的配置均通过环境变量（`DP_` 前缀）提供，变量名与说明见本文末尾「可用环境变量」表。
+   若某个功能所需的环境变量为空（未配置），表示该功能禁用。任务若依赖某个未配置的变量
+   （下载/解析/回调/接口调用的地址或凭证），应**立即停止**：禁止为补齐它去查找或猜测数据库、
+   源码、日志、cfg.yml、mock 数据或历史会话记录；直接在最终 JSON 中 need_human=true，
+   并在 fail_reason 说明「缺少 XX 配置」。仅当该功能是可选回退（如 renew_file_url_api）时才可跳过并继续。
 10. 只读取工作目录文件、任务提示词与 CLAUDE.md 明确给出的接口/环境变量/记忆库文件。
    不要读取 app.db、dist/、logs/、cfg*.yml、mock*.json 等系统文件或历史会话记录。
 

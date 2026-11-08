@@ -192,8 +192,9 @@ export async function buildClaudeMd(dataDir?: string): Promise<string> {
   }
 
   // ── 从 prompt_config（CSV）+ cfg.yml 系统级收集所有值 ──
+  // 这些值不再明文渲染进提示词，仅用于判断 {{section:...}} 段落是否触发。
   const cfgVals = promptConfigStore.getAllPlain();
-  // 系统级占位符（不在 CSV 中）
+  // 系统级变量（不在 CSV 中）
   const { getRawConfig } = await import('../config.js');
   const raw = getRawConfig() as Record<string, unknown>;
   const server = (raw.server as Record<string, unknown>) || {};
@@ -218,13 +219,8 @@ export async function buildClaudeMd(dataDir?: string): Promise<string> {
     return sectionContent ?? '';
   });
 
-  // ── 替换剩余 {{key}} 占位符（key 支持含点号） ──
-  template = template.replace(/\{\{([\w.]+)\}\}/g, (_: string, path: string) => {
-    const trimmed = path.trim();
-    if (trimmed.startsWith('section:')) return `{{${path}}}`;
-    const val = cfgVals.get(trimmed);
-    return val ?? `{{${path}}}`;
-  });
+  // 注：{{key}} 形式的明文占位符已废弃。所有配置值一律通过 DP_* 环境变量注入，
+  // 模板中直接写 $DP_XXX 由 Agent 在 shell 中按需读取，不再渲染明文进提示词。
 
   // ── 注入业务知识记忆库索引 ──
   const dataRoot = dataDir || join(process.cwd(), 'data');
