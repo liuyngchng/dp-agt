@@ -394,14 +394,67 @@ async function loadPreview() {
         return;
     }
     wrap.style.display = 'block';
-    container.innerHTML = previews.map((p, idx) => `
-        <div class="prompt-file-item" onclick="openPromptPreview(${idx})" title="${escHtml(p.file)}">
-            <i class="fas fa-file-code prompt-file-icon"></i>
-            <span class="prompt-file-name">${escHtml(p.file)}</span>
-        </div>
-    `).join('');
+    // 按路径构建目录树：{ dirs: {名: 子树}, files: [{name, idx}] }
+    const root = { dirs: {}, files: [] };
+    previews.forEach((p, idx) => {
+        const parts = p.file.split('/');
+        let node = root;
+        parts.forEach((part, i) => {
+            if (i === parts.length - 1) {
+                node.files.push({ name: part, idx });
+            } else {
+                if (!node.dirs[part]) node.dirs[part] = { dirs: {}, files: [] };
+                node = node.dirs[part];
+            }
+        });
+    });
+    container.innerHTML =
+        '<div class="file-tree-root"><i class="fas fa-folder-open"></i> prompts/</div>' +
+        renderFileTree(root, '');
     // 缓存预览数据供弹窗使用
     window._promptPreviews = previews;
+}
+
+// 递归渲染文件树（目录在前、文件在后，各自按名称排序）
+function renderFileTree(node, path) {
+    let html = '';
+    const dirNames = Object.keys(node.dirs).sort();
+    dirNames.forEach((dirName) => {
+        const fullPath = path + dirName + '/';
+        const uid = 'dir-' + fullPath.replace(/[^a-zA-Z0-9]/g, '_');
+        html +=
+            '<div class="file-tree-dir">' +
+                '<div class="file-tree-row file-tree-dir-row" onclick="toggleFileDir(\'' + uid + '\')" title="' + escHtml(dirName) + '/">' +
+                    '<i class="fas fa-chevron-right file-tree-chevron" id="' + uid + '-chevron"></i>' +
+                    '<i class="fas fa-folder file-tree-dir-icon"></i>' +
+                    '<span class="file-tree-name">' + escHtml(dirName) + '</span>' +
+                '</div>' +
+                '<div class="file-tree-children" id="' + uid + '" style="display:none;">' +
+                    renderFileTree(node.dirs[dirName], fullPath) +
+                '</div>' +
+            '</div>';
+    });
+    const files = node.files.slice().sort((a, b) => a.name.localeCompare(b.name));
+    files.forEach((f) => {
+        html +=
+            '<div class="file-tree-row file-tree-file-row" onclick="openPromptPreview(' + f.idx + ')" title="' + escHtml(path + f.name) + '">' +
+                '<i class="fas fa-file-code file-tree-file-icon"></i>' +
+                '<span class="file-tree-name">' + escHtml(f.name) + '</span>' +
+            '</div>';
+    });
+    return html;
+}
+
+// 折叠 / 展开目录
+function toggleFileDir(uid) {
+    const el = document.getElementById(uid);
+    const chevron = document.getElementById(uid + '-chevron');
+    if (!el) return;
+    const collapsed = el.style.display === 'none';
+    el.style.display = collapsed ? 'block' : 'none';
+    if (chevron) {
+        chevron.className = 'fas ' + (collapsed ? 'fa-chevron-down' : 'fa-chevron-right') + ' file-tree-chevron';
+    }
 }
 
 // 打开提示词模板预览弹窗
