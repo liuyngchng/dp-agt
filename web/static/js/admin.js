@@ -966,7 +966,7 @@ async function saveSysConfig() {
     } catch (err) { toast('保存失败: ' + err.message, 'error'); }
 }
 
-// ==== 数据管理 ====
+// ==== 系统管理（设置 / SDK Trace / 数据管理） ====
 
 function switchSysTab(name) {
     document.querySelectorAll('#section-sys .sub-tab').forEach(b => {
@@ -977,6 +977,9 @@ function switchSysTab(name) {
     });
     if (name === 'settings') {
         loadSysConfig();
+    } else if (name === 'trace') {
+        // 切到 SDK Trace 时清空旧结果
+        document.getElementById('traceQueryResult').innerHTML = '';
     } else if (name === 'data') {
         loadDataTables();
     }
@@ -1024,36 +1027,19 @@ function selectDataTable(tableId) {
 
     const actions = document.getElementById('dataTableActions');
     actions.style.display = 'block';
-
-    if (tableId === 'sessions') {
-        // sessions 表：无导出，仅清空
-        actions.innerHTML =
-            '<div style="background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:16px 18px;">'
-            + '<div style="font-weight:600;color:#333;margin-bottom:12px;"><i class="fas fa-cog"></i> ' + escHtml(t.label) + ' — 操作</div>'
-            + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">'
-            + '<button class="cfg-btn cfg-btn-danger-sm" style="padding:11px 28px;font-size:0.95rem;font-weight:600;border-radius:8px;" onclick="clearDataTable(\'' + escJs(tableId) + '\', \'' + escJs(t.label) + '\', ' + t.count + ')"><i class="fas fa-trash-alt"></i> 清空数据</button>'
-            + '<span style="font-size:0.82rem;color:#888;">sessions 表无需导出</span>'
-            + '</div></div>';
-    } else {
-        // task_logs 表：先按 task_id / linkid 查询
-        actions.innerHTML =
-            '<div style="background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:16px 18px;">'
-            + '<div style="font-weight:600;color:#333;margin-bottom:12px;"><i class="fas fa-search"></i> ' + escHtml(t.label) + ' — 查询</div>'
-            + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">'
-            + '<div class="form-g" style="margin:0;flex:1;min-width:220px;"><label>Task ID</label><input type="text" id="dataQueryTaskId" placeholder="输入 Task ID" style="width:100%;"></div>'
-            + '<div class="form-g" style="margin:0;flex:1;min-width:220px;"><label>Link ID</label><input type="text" id="dataQueryLinkId" placeholder="输入 Link ID" style="width:100%;"></div>'
-            + '<button class="cfg-btn cfg-btn-save" onclick="queryTaskLogs()"><i class="fas fa-search"></i> 查询</button>'
-            + '</div>'
-            + '<div id="taskLogQueryResult" style="margin-top:16px;"></div>'
-            + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px;border-top:1px solid #e0e3e8;padding-top:16px;">'
-            + '<button class="cfg-btn cfg-btn-danger-sm" style="padding:11px 28px;font-size:0.95rem;font-weight:600;border-radius:8px;" onclick="clearDataTable(\'' + escJs(tableId) + '\', \'' + escJs(t.label) + '\', ' + t.count + ')"><i class="fas fa-trash-alt"></i> 清空全表</button>'
-            + '</div></div>';
-    }
+    actions.innerHTML =
+        '<div style="background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:16px 18px;">'
+        + '<div style="font-weight:600;color:#333;margin-bottom:12px;"><i class="fas fa-cog"></i> ' + escHtml(t.label) + ' — 操作</div>'
+        + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">'
+        + '<button class="cfg-btn cfg-btn-danger-sm" style="padding:11px 28px;font-size:0.95rem;font-weight:600;border-radius:8px;" onclick="clearDataTable(\'' + escJs(tableId) + '\', \'' + escJs(t.label) + '\', ' + t.count + ')"><i class="fas fa-trash-alt"></i> 清空全表</button>'
+        + '</div></div>';
 }
 
-async function queryTaskLogs() {
-    const taskId = document.getElementById('dataQueryTaskId').value.trim();
-    const linkid = document.getElementById('dataQueryLinkId').value.trim();
+// ==== SDK Trace 查询 ====
+
+async function queryTraceTab() {
+    const taskId = document.getElementById('traceQueryTaskId').value.trim();
+    const linkid = document.getElementById('traceQueryLinkId').value.trim();
     if (!taskId && !linkid) {
         toast('请至少输入 Task ID 或 Link ID', 'error');
         return;
@@ -1067,14 +1053,14 @@ async function queryTaskLogs() {
         const json = await res.json();
         const items = (json.data && json.data.items) || [];
         const total = (json.data && json.data.total) || 0;
-        const box = document.getElementById('taskLogQueryResult');
+        const box = document.getElementById('traceQueryResult');
 
         if (items.length === 0) {
             box.innerHTML = '<div style="color:#999;padding:12px 0;">未查询到任务记录</div>';
             return;
         }
 
-        let html = '<div style="font-size:0.82rem;color:#888;margin-bottom:8px;">共 ' + total + ' 条（最多显示 50 条）</div>';
+        let html = '<div style="font-size:0.82rem;color:#888;margin-bottom:8px;">共 ' + total + ' 条</div>';
         html += '<div class="table-scroll"><table class="result-table"><thead><tr>'
             + '<th class="col-seq">序号</th><th>标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-action">操作</th>'
             + '</tr></thead><tbody>';
@@ -1091,7 +1077,7 @@ async function queryTaskLogs() {
         html += '</tbody></table></div>';
         box.innerHTML = html;
     } catch (err) {
-        document.getElementById('taskLogQueryResult').innerHTML = '<div style="color:#e53e3e;padding:12px 0;">查询失败: ' + escHtml(err.message) + '</div>';
+        document.getElementById('traceQueryResult').innerHTML = '<div style="color:#e53e3e;padding:12px 0;">查询失败: ' + escHtml(err.message) + '</div>';
     }
 }
 
@@ -1157,6 +1143,25 @@ async function clearDataTable(tableId, label, count) {
         }
     } catch (err) {
         toast('清空失败: ' + err.message, 'error');
+    }
+}
+
+async function vacuumDatabase() {
+    if (!confirm('确定要压缩数据库吗？\n\n压缩会短暂锁库，且需要额外临时磁盘空间。建议在低峰期操作。')) return;
+    const btn = event && event.currentTarget;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 压缩中...'; }
+    try {
+        const res = await fetch(API + '/data-tables/vacuum', { method: 'POST' });
+        const json = await res.json();
+        if (json.code === 0) {
+            toast(json.message || '压缩完成', 'success');
+        } else {
+            toast(json.message || '压缩失败', 'error');
+        }
+    } catch (err) {
+        toast('压缩失败: ' + err.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-compress-alt"></i> 压缩数据库'; }
     }
 }
 

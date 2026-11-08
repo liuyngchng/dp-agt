@@ -314,6 +314,7 @@
                     <!-- 横向子 tab -->
                     <div class="sub-tabs" style="display:flex;gap:8px;margin:20px 0 24px;border-bottom:2px solid #eef1f6;">
                         <button type="button" class="sub-tab active" data-subtab="settings" onclick="switchSysTab('settings')"><i class="fas fa-cog"></i> 系统设置</button>
+                        <button type="button" class="sub-tab" data-subtab="trace" onclick="switchSysTab('trace')"><i class="fas fa-terminal"></i> SDK Trace</button>
                         <button type="button" class="sub-tab" data-subtab="data" onclick="switchSysTab('data')"><i class="fas fa-database"></i> 数据管理</button>
                     </div>
 
@@ -350,19 +351,34 @@
                         </button>
                     </div>
 
-                    <!-- Tab 2：数据管理 -->
+                    <!-- Tab 2：SDK Trace 查看 -->
+                    <div class="sub-panel" id="sub-sys-trace">
+                        <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">
+                            按 <code>task_id</code> 或 <code>linkid</code> 精确查询，查看 <code>sdk_trace</code> 原始消息流，可选择导出为 <code>&lt;taskid&gt;.json</code>。
+                        </p>
+
+                        <div style="background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:16px 18px;margin-bottom:20px;">
+                            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                                <div class="form-g" style="margin:0;flex:1;min-width:220px;"><label>Task ID</label><input type="text" id="traceQueryTaskId" placeholder="输入 Task ID（精确匹配）" style="width:100%;"></div>
+                                <div class="form-g" style="margin:0;flex:1;min-width:220px;"><label>Link ID</label><input type="text" id="traceQueryLinkId" placeholder="输入 Link ID（精确匹配）" style="width:100%;"></div>
+                                <button class="cfg-btn cfg-btn-save" onclick="queryTraceTab()"><i class="fas fa-search"></i> 查询</button>
+                            </div>
+                            <div id="traceQueryResult" style="margin-top:16px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3：数据管理 -->
                     <div class="sub-panel" id="sub-sys-data">
                         <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">
-                            按 <code>task_id</code> 或 <code>linkid</code> 查询任务日志，查看 <code>sdk_trace</code> 后可导出为单文件 JSON。<strong>清空操作不可逆</strong>，清空前建议先导出备份。
+                            管理数据库中的运行数据。<strong>清空操作不可逆</strong>，建议先导出备份。
                         </p>
 
                         <div id="dataTableSelector" style="margin-bottom:24px;"></div>
                         <div id="dataTableActions" style="display:none;"></div>
 
-                        <div style="margin-top:24px;">
-                            <p style="font-size:0.85rem;color:#999;">
-                                <i class="fas fa-info-circle"></i> <code>sessions</code> 表不提供导出。清空 <code>sessions</code> 表会一并清理对应 SDK 工作目录（上下文快照）。
-                            </p>
+                        <div style="margin-top:24px;padding-top:20px;border-top:1px solid #e0e3e8;">
+                            <button class="cfg-btn cfg-btn-reset" onclick="vacuumDatabase()"><i class="fas fa-compress-alt"></i> 压缩数据库</button>
+                            <span style="font-size:0.82rem;color:#888;margin-left:12px;">清空表后数据库文件不会自动变小，压缩（VACUUM）可回收磁盘空间，耗时视库大小而定。</span>
                         </div>
                     </div>
                 </div>

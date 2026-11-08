@@ -1197,18 +1197,24 @@ export function createAdminRouter(cfg: Config): Router {
 
   // 可管理的表清单
   const DATA_TABLES = [
-    { id: 'sessions', label: '会话表（sessions）', note: '会话与 linkid 的映射，删除后同一 linkid 再提交会新建会话', exportable: false },
-    { id: 'task_logs', label: '任务日志表（task_logs）', note: '任务执行记录、时间线、SDK 会话流等审计数据', exportable: true },
+    { id: 'sessions', label: '会话表（sessions）', note: '会话与 linkid 的映射，删除后同一 linkid 再提交会新建会话' },
+    { id: 'task_logs', label: '任务日志表（task_logs）', note: '任务执行记录、时间线等审计数据（不含 sdk_trace）' },
+    { id: 'sdk_traces', label: 'SDK Trace 表（sdk_traces）', note: 'Agent SDK 全量消息流 JSON，体积大，独立存储' },
   ];
 
   // 表信息 + 行数
   router.get('/admin/data-tables', (_req: Request, res: Response) => {
+    const countOf = (id: string): number => {
+      if (id === 'sessions') return sessionsStore.countAll();
+      if (id === 'task_logs') return taskLogsStore.countAll();
+      if (id === 'sdk_traces') return sdkTracesStore.countAll();
+      return 0;
+    };
     const tables = DATA_TABLES.map((t) => ({
       id: t.id,
       label: t.label,
       note: t.note,
-      exportable: t.exportable,
-      count: t.id === 'sessions' ? sessionsStore.countAll() : taskLogsStore.countAll(),
+      count: countOf(t.id),
     }));
     res.json({ code: 0, data: { tables } });
   });
@@ -1287,7 +1293,14 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    const before = id === 'sessions' ? sessionsStore.countAll() : taskLogsStore.countAll();
+    const countOf = (tid: string): number => {
+      if (tid === 'sessions') return sessionsStore.countAll();
+      if (tid === 'task_logs') return taskLogsStore.countAll();
+      if (tid === 'sdk_traces') return sdkTracesStore.countAll();
+      return 0;
+    };
+
+    const before = countOf(id);
     if (before === 0) {
       res.json({ code: 0, message: '表已是空的', deleted: 0 });
       return;
@@ -1305,23 +1318,56 @@ export function createAdminRouter(cfg: Config): Router {
         }
       }
       deleted = sessionsStore.clearAll();
-    } else {
+    } else if (id === 'task_logs') {
       deleted = taskLogsStore.clearAll();
-      sdkTracesStore.clearAll(); // 一并清理关联的 sdk_trace 数据
+    } else if (id === 'sdk_traces') {
+      deleted = sdkTracesStore.clearAll();
     }
 
     // 清空后重建 SQLite 自增序列，避免 sqlite_sequence 无限增长
     try {
       const db = getDb();
       db.prepare(`DELETE FROM sqlite_sequence WHERE name = ?`).run(id);
-      if (id === 'task_logs') db.prepare(`DELETE FROM sqlite_sequence WHERE name = 'sdk_traces'`).run();
     } catch { /* 无该序列则忽略 */ }
 
     log.info({ table: id, deleted }, 'data_table_cleared');
     res.json({ code: 0, message: `已清空 ${deleted} 条记录`, deleted });
   });
 
+  // 压缩数据库（VACUUM）
+  router.post('/admin/data-tables/vacuum', (_req: Request, res: Response) => {
+    const dbPath = join(cfg.sys.data_dir, 'app.db');
+    let beforeSize = 0;
+    try { beforeSize = statSync(dbPath).size; } catch { /* */ }
+
+    try {
+      const db = getDb();
+      db.pragma('journal_mode = DELETE'); // VACUUM 要求 journal_mode 非 WAL
+      db.exec('VACUUM');
+      db.pragma('journal_mode = WAL');   // 切回 WAL
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error({ error: msg }, 'vacuum_failed');
+      res.status(500).json({ code: 1001, message: '压缩失败: ' + msg });
+      return;
+    }
+
+    let afterSize = 0;
+    try { afterSize = statSync(dbPath).size; } catch { /* */ }
+
+    const shrunk = beforeSize - afterSize;
+    const pct = beforeSize > 0 ? ((shrunk / beforeSize) * 100).toFixed(1) : '0';
+    log.info({ beforeSize, afterSize, shrunk, pct }, 'vacuum_ok');
+    res.json({ code: 0, message: `压缩完成：${fmtSize(beforeSize)} → ${fmtSize(afterSize)}，回收 ${fmtSize(Math.max(0, shrunk))}（${pct}%）` });
+  });
+
   return router;
+}
+
+function fmtSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
 function sanitizeLinkid(linkid: string): string {
