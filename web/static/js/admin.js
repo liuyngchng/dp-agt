@@ -1133,7 +1133,7 @@ async function viewTrace(taskId) {
         // 第二行：执行指标
         let line2 = '<strong>轮次:</strong> ' + (numTurns !== null ? numTurns : '-');
         line2 += ' &nbsp;|&nbsp; <strong>总 tokens:</strong> ' + (totalTokens !== null ? totalTokens.toLocaleString() : '-');
-        line2 += ' &nbsp;|&nbsp; <strong>API 耗时:</strong> ' + (apiDurationMs !== null ? fmtDuration(apiDurationMs) : '-');
+        line2 += ' &nbsp;|&nbsp; <strong>API 累计耗时:</strong> ' + (apiDurationMs !== null ? fmtDuration(apiDurationMs) : '-');
         line2 += ' &nbsp;|&nbsp; <strong>总耗时:</strong> ' + (totalDurationMs !== null ? fmtDuration(totalDurationMs) : '-');
 
         document.getElementById('traceModalTitle').innerHTML = '<i class="fas fa-terminal"></i> sdk_trace';
