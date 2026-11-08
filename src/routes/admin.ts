@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
+import { cancelTask } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
@@ -229,6 +230,48 @@ export function createAdminRouter(cfg: Config): Router {
       request_body: safeParse(task.request_body),
       request_response: safeParse(task.request_response),
     }});
+  });
+
+  // 取消任务（支持 pending 和 processing）
+  router.delete('/admin/tasks/:task_id', (req: Request, res: Response) => {
+    const { task_id } = req.params;
+    const fromIp = req.ip || '';
+    const task = taskLogsStore.get(task_id);
+
+    if (!task) {
+      log.warn({ from_ip: fromIp, task_id }, 'admin_cancel_task_not_found');
+      res.status(404).json({ code: 1001, message: '任务不存在或已结束' });
+      return;
+    }
+
+    if (task.status !== 'pending' && task.status !== 'processing') {
+      log.warn({ from_ip: fromIp, task_id, status: task.status }, 'admin_cancel_task_rejected');
+      res.json({ code: 1001, message: '任务已结束，无法取消' });
+      return;
+    }
+
+    const cancelled = cancelTask(task_id);
+
+    if (cancelled?.cancelled === 'processing') {
+      taskLogsStore.updateStatus(task_id, 'cancelled');
+      log.info({ from_ip: fromIp, task_id, mode: 'processing' }, 'admin_cancel_task_ok');
+      res.json({ code: 0, message: '任务停止中' });
+      return;
+    }
+
+    if (cancelled?.cancelled === 'pending') {
+      taskLogsStore.updateResult(task_id, {
+        status: 'cancelled',
+        error_message: '任务已被管理员取消',
+        finished_at: nowReadable(),
+      });
+      log.info({ from_ip: fromIp, task_id, mode: 'pending' }, 'admin_cancel_task_ok');
+      res.json({ code: 0, message: '任务已取消' });
+      return;
+    }
+
+    log.warn({ from_ip: fromIp, task_id, status: task.status }, 'admin_cancel_task_noop');
+    res.json({ code: 1001, message: '未找到可取消的任务' });
   });
 
   // ---- 会话记录（SDK 原生对话） ----

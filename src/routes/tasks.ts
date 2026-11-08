@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { taskLogsStore } from '../store.js';
+import { cancelTask } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { buildTimelineEvents, buildOutputOnlyEvents, renderHistoryHtml, renderHistoryMd } from '../services/timeline.js';
@@ -35,7 +36,7 @@ export function createTasksRouter(): Router {
     });
   });
 
-  // DELETE /api/v1/tasks/:task_id — 取消任务
+  // DELETE /api/v1/tasks/:task_id — 取消任务（支持 pending 和 processing）
   router.delete('/api/v1/tasks/:task_id', (req: Request, res: Response) => {
     const { task_id } = req.params;
     const fromIp = req.ip || '';
@@ -46,15 +47,40 @@ export function createTasksRouter(): Router {
       res.status(404).json({ code: 1001, message: '任务不存在或已结束', task_id: '', linkid: '' });
       return;
     }
-    if (task.status !== 'pending') {
+
+    // 已结束的任务不可取消
+    if (task.status !== 'pending' && task.status !== 'processing') {
       log.warn({ from_ip: fromIp, task_id, status: task.status, linkid: task.linkid }, 'api_cancel_task_rejected');
-      res.json({ code: 1001, message: '任务正在处理中，无法取消', task_id, linkid: task.linkid || '' });
+      res.json({ code: 1001, message: '任务已结束，无法取消', task_id, linkid: task.linkid || '' });
       return;
     }
 
-    taskLogsStore.updateStatus(task_id, 'cancelled');
-    log.info({ from_ip: fromIp, task_id, linkid: task.linkid }, 'api_cancel_task_ok');
-    res.json({ code: 0, message: '任务已取消', task_id, linkid: task.linkid || '' });
+    // pending → 从队列移除并置 cancelled；processing → 中断 SDK 执行
+    const cancelled = cancelTask(task_id);
+
+    if (cancelled?.cancelled === 'processing') {
+      // 处理中：置为 cancelled，但让 runAgent 收尾后最终覆盖 finished 信息；
+      // 这里先标记，避免其它并发请求重复取消。
+      taskLogsStore.updateStatus(task_id, 'cancelled');
+      log.info({ from_ip: fromIp, task_id, linkid: task.linkid, mode: 'processing' }, 'api_cancel_task_ok');
+      res.json({ code: 0, message: '任务停止中', task_id, linkid: task.linkid || '' });
+      return;
+    }
+
+    if (cancelled?.cancelled === 'pending') {
+      taskLogsStore.updateResult(task_id, {
+        status: 'cancelled',
+        error_message: '任务已被管理员取消',
+        finished_at: nowReadable(),
+      });
+      log.info({ from_ip: fromIp, task_id, linkid: task.linkid, mode: 'pending' }, 'api_cancel_task_ok');
+      res.json({ code: 0, message: '任务已取消', task_id, linkid: task.linkid || '' });
+      return;
+    }
+
+    // 理论上不会走到这里：状态是 pending/processing 但队列里找不到
+    log.warn({ from_ip: fromIp, task_id, status: task.status, linkid: task.linkid }, 'api_cancel_task_noop');
+    res.json({ code: 1001, message: '未找到可取消的任务', task_id, linkid: task.linkid || '' });
   });
 
   // GET /api/v1/task/trace?taskid=xxx — 任务追踪

@@ -361,7 +361,7 @@ async function loadConfigKeys() {
         const key = escHtml(r.key);
         const note = escHtml(r.note || '-');
         const uid = 'val-' + idx;
-        const delBtn = '<button class="cfg-btn-sm del-btn" data-key="' + key + '" title="删除"><i class="fas fa-trash"></i></button>';
+        const delBtn = '<button class="cfg-btn-sm del-btn" data-key="' + key + '" title="删除"><i class="fas fa-trash-alt"></i></button>';
         if (r.is_secret) {
             html += '<tr><td><code>' + key + '</code></td>'
                 + '<td class="val-cell"><span class="val-text" id="' + uid + '" title="' + escHtml(r.value) + '">' + escHtml(r.value) + '</span> '
@@ -568,6 +568,11 @@ function renderTasksPage(list) {
         const viewBtn = sessionOpen
             ? `<button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewSession('${escHtml(t.session_id)}', '${taskId}', '${escHtml(t.status || '')}')" title="会话记录"><i class="fas fa-comments"></i></button>`
             : `<button class="cfg-btn-sm cfg-btn-icon" disabled title="${hasSession ? '会话已关闭' : '无会话记录'}"><i class="fas fa-comments"></i></button>`;
+        // 停止按钮：仅排队中/处理中可用
+        const canStop = t.status === 'pending' || t.status === 'processing';
+        const stopBtn = canStop
+            ? `<button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-danger" onclick="event.stopPropagation();stopTask('${taskId}', '${escHtml(t.status || '')}')" title="停止任务" style="margin-left:4px;"><i class="fas fa-stop"></i></button>`
+            : '';
         return `<tr class="main-row">
             <td class="col-seq">${no}</td>
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
@@ -576,7 +581,7 @@ function renderTasksPage(list) {
             <td>${statusText(t.status)}</td>
             <td class="col-date">${fmtTs(t.created_at)}</td>
             <td class="col-date">${fmtTs(t.finished_at)}</td>
-            <td class="col-action">${viewBtn}</td>
+            <td class="col-action">${viewBtn}${stopBtn}</td>
         </tr>
         <tr class="row-detail" id="${rid}" style="display:none;">
             <td colspan="8" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
@@ -597,6 +602,22 @@ async function viewTask(taskId) {
 
     document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
     document.getElementById('taskModal').classList.add('show');
+}
+
+async function stopTask(taskId, status) {
+    const label = status === 'processing' ? '停止' : '取消';
+    if (!confirm('确认' + label + '该任务？\n\n' + (status === 'processing'
+        ? '将中断正在执行的 Agent。'
+        : '将从队列中移除该排队任务。'))) return;
+    try {
+        const res = await fetch(API + '/tasks/' + encodeURIComponent(taskId), { method: 'DELETE' });
+        const json = await res.json();
+        if (json.code !== 0) return toast(json.message || '操作失败', 'error');
+        toast(json.message || '已提交', 'success');
+        loadTasks(_tasksPage);
+    } catch (e) {
+        toast('请求失败: ' + (e.message || e), 'error');
+    }
 }
 
 function taskDetailHtml(t) {
@@ -955,7 +976,7 @@ async function loadUsers() {
         tbody.innerHTML = data.map(function(u, idx) {
             const roleLabel = u.role === 1 ? '管理员' : '普通用户';
             return '<tr><td>' + (idx + 1) + '</td><td>' + escHtml(u.user_name) + '</td><td>' + roleLabel + '</td><td>' + escHtml(u.note||'') + '</td>' +
-                '<td>' + (u.user_name !== 'admin' ? '<button class="cfg-btn cfg-btn-reset" onclick="deleteUser(\'' + escHtml(u.user_name) + '\')" style="padding:4px 10px;font-size:0.8rem;color:#c62828;">删除</button>' : '') + '</td></tr>';
+                '<td>' + (u.user_name !== 'admin' ? '<button class="cfg-btn-danger-sm" onclick="deleteUser(\'' + escHtml(u.user_name) + '\')" title="删除"><i class="fas fa-trash-alt"></i></button>' : '') + '</td></tr>';
         }).join('');
     } catch (err) { toast('加载用户失败: ' + err.message, 'error'); }
 }

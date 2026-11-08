@@ -29,6 +29,7 @@ interface CfgFile {
     subagent_model?: string;
     effort_level?: string;
     timeout_ms?: number;
+    max_turns?: number;
     disable_nonessential_traffic?: boolean;
     attribution_header?: boolean;
     auto_mode_server?: boolean;
@@ -58,6 +59,7 @@ export interface Config {
     subagent_model: string;
     effort_level: string;
     timeout_ms: number;
+    max_turns: number;
     disable_nonessential_traffic: boolean;
     attribution_header: boolean;
     auto_mode_server: boolean;
@@ -143,7 +145,8 @@ export function loadConfig(): Config {
       haiku_model: env('ANTHROPIC_DEFAULT_HAIKU_MODEL', l.haiku_model ?? ''),
       subagent_model: env('CLAUDE_CODE_SUBAGENT_MODEL', l.subagent_model ?? ''),
       effort_level: env('CLAUDE_CODE_EFFORT_LEVEL', l.effort_level ?? ''),
-      timeout_ms: envInt('API_TIMEOUT_MS', l.timeout_ms ?? 600000),
+      timeout_ms: envInt('API_TIMEOUT_MS', l.timeout_ms ?? 300000),
+      max_turns: envInt('MAX_TURNS', l.max_turns ?? 100),
       disable_nonessential_traffic: envBool('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', l.disable_nonessential_traffic ?? true),
       attribution_header: envBool('CLAUDE_CODE_ATTRIBUTION_HEADER', l.attribution_header ?? false),
       auto_mode_server: envBool('CLAUDE_CODE_AUTO_MODE_SERVER', l.auto_mode_server ?? false),

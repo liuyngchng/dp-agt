@@ -413,6 +413,9 @@ header p {
 }
 .cfg-btn-sm:hover { background: #f0f2f5; }
 
+.del-btn { color: #e53e3e; border-color: #e53e3e; }
+.del-btn:hover { background: #fff5f5; }
+
 .cfg-btn-danger-sm {
     padding: 6px 14px;
     font-size: 0.8rem;
@@ -609,6 +612,11 @@ input[type="file"]::file-selector-button:hover {
     box-shadow: 0 4px 12px rgba(75, 108, 183, 0.3);
 }
 
+/* 统一 checkbox 颜色 */
+input[type="checkbox"] {
+    accent-color: #4b6cb7;
+}
+
 .form-g input:focus,
 .form-g textarea:focus,
 .form-g select:focus {
@@ -739,6 +747,15 @@ input[type="file"]::file-selector-button:hover {
 .cfg-btn-icon-primary:hover {
     background: #eef2fb;
     border-color: #4b6cb7;
+}
+
+/* 红色图标按钮 — 停止/取消任务 */
+.cfg-btn-icon-danger {
+    color: #e53e3e;
+    border-color: #e53e3e;
+}
+.cfg-btn-icon-danger:hover {
+    background: #fff5f5;
 }
 
 /* 状态徽章 */

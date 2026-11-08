@@ -51,8 +51,11 @@ llm:
   # 推理强度: low | medium | high | xhigh | max
   effort_level: "max"
 
-  # API 超时（毫秒）
-  timeout_ms: 600000
+  # API 超时（毫秒），单任务最长执行时间
+  timeout_ms: 300000
+
+  # 单任务最大 agentic turns（API 往返次数），防无限循环
+  max_turns: 100
 
   # 离线/私有部署优化：关闭非必要遥测
   disable_nonessential_traffic: true

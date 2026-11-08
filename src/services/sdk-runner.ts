@@ -286,6 +286,7 @@ export async function runAgent(
   cfg: Config,
   resumeSessionId?: string,
   onSessionId?: (sessionId: string) => void,
+  abortSignal?: AbortSignal,
 ): Promise<SdkResult> {
   const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeDirName(linkid));
   await mkdir(workDir, { recursive: true });
@@ -329,7 +330,20 @@ export async function runAgent(
   const traceMessages: unknown[] = [];
   const callbackToolIds = new Set<string>();
 
+  const abortController = new AbortController();
+  let onAbort: (() => void) | undefined;
+
   try {
+    // 外部取消信号（管理员在任务监控里点「停止」）触发 SDK 中断
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        abortController.abort();
+      } else {
+        onAbort = () => abortController.abort();
+        abortSignal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
+
     const q = query({
       prompt: renderedPrompt,
       options: {
@@ -339,6 +353,8 @@ export async function runAgent(
         model: cfg.llm.model,
         env: buildEnv(cfg),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
+        maxTurns: cfg.llm.max_turns,
+        abortController,
         ...(effectiveResumeId ? { resume: effectiveResumeId } : {}),
       },
     });
@@ -416,5 +432,9 @@ export async function runAgent(
       publish(capturedSessionId, { type: 'end' });
     }
     return { success: false, rawOutput: fullOutput, trace, sessionId: capturedSessionId, errorMessage: message, durationMs };
+  } finally {
+    if (abortSignal && onAbort) {
+      abortSignal.removeEventListener('abort', onAbort);
+    }
   }
 }

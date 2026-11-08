@@ -30,6 +30,9 @@ const pending: WorkerItem[] = [];
 // ── per-linkid 串行化 ──
 const linkChains = new Map<string, Promise<void>>();
 
+// ── 运行中任务的取消控制器：task_id → AbortController ──
+const runningAborts = new Map<string, AbortController>();
+
 function nowLocal(): string {
   return nowReadable();
 }
@@ -70,14 +73,32 @@ async function processItem(item: WorkerItem): Promise<void> {
   // 调用 Claude Code Agent SDK。
   // 通过 onSessionId 回调在首条流式消息拿到 session_id 的瞬间就写入 DB，
   // 这样任务仍在 processing 时，前端「对话」按钮就能实时看到会话。
+  const abortController = new AbortController();
+  runningAborts.set(task_id, abortController);
   const result = await runAgent(linkid, task_id, rendered, cfg, resumeSessionId, (sessionId) => {
     sessionsStore.upsert(sessionId, linkid);
     taskLogsStore.updateResult(task_id, { session_id: sessionId });
-  });
+  }, abortController.signal);
+  const wasAborted = abortController.signal.aborted;
+  runningAborts.delete(task_id);
 
   // 兜底：若 onSessionId 未触发（例如异常路径），任务结束后再写一次
   if (result.sessionId) {
     sessionsStore.upsert(result.sessionId, linkid);
+  }
+
+  // 被管理员手动停止：状态应记为 cancelled，而非 failed/completed
+  if (wasAborted) {
+    taskLogsStore.updateResult(task_id, {
+      status: 'cancelled' as TaskStatus,
+      session_id: result.sessionId || null,
+      sdk_output: result.rawOutput,
+      sdk_trace: result.trace,
+      error_message: '任务已被管理员停止',
+      finished_at: nowLocal(),
+    });
+    log.info({ task_id, linkid, status: 'cancelled' }, 'task_cancelled');
+    return;
   }
 
   if (!result.success) {
@@ -223,4 +244,28 @@ export function getRunningCount(): number {
 
 export function getPendingCount(): number {
   return pending.length;
+}
+
+/**
+ * 取消一个任务。
+ * - pending：直接从队列移除（当前 pending 是数组，简单过滤）。
+ * - processing：通过 AbortController 中断正在执行的 SDK query。
+ * 返回被取消的任务 id 对应的状态，或 null 表示未找到可取消的任务。
+ */
+export function cancelTask(taskId: string): { cancelled: 'pending' | 'processing' } | null {
+  // 1) 处理中的任务：中断 SDK
+  const abortController = runningAborts.get(taskId);
+  if (abortController) {
+    abortController.abort();
+    return { cancelled: 'processing' };
+  }
+
+  // 2) 排队中的任务：从 pending 数组移除
+  const idx = pending.findIndex((item) => item.task_id === taskId);
+  if (idx >= 0) {
+    pending.splice(idx, 1);
+    return { cancelled: 'pending' };
+  }
+
+  return null;
 }
