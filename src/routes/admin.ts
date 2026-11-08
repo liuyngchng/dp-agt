@@ -1219,6 +1219,28 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({ code: 0, data: { tables } });
   });
 
+  // 获取最新 N 条任务（SDK Trace tab 默认展示，无需先检索）
+  router.get('/admin/data-tables/task_logs/latest', (_req: Request, res: Response) => {
+    const limit = Math.min(parseInt(String(_req.query.limit), 10) || 5, 50);
+    const items = taskLogsStore.listLatest(limit);
+    res.json({
+      code: 0,
+      data: {
+        total: items.length,
+        items: items.map((task) => ({
+          task_id: task.task_id,
+          linkid: task.linkid,
+          session_id: task.session_id,
+          title: extractTitle(task.request_body),
+          path: task.path,
+          status: task.status,
+          created_at: task.created_at,
+          finished_at: task.finished_at,
+        })),
+      },
+    });
+  });
+
   // 按 task_id 或 linkid 查询任务（用于数据管理：先查再导出 sdk_trace）
   // 精确匹配，只返回轻量列（不含 sdk_trace 大字段）；task_id limit 1，linkid limit 50
   router.get('/admin/data-tables/task_logs/query', (req: Request, res: Response) => {

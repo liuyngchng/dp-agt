@@ -209,7 +209,7 @@
                 <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
                 <div class="table-scroll">
 <table class="result-table">
-                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">会话记录</th></tr></thead>
+                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">操作</th></tr></thead>
                     <tbody id="tasksTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 </div>
@@ -354,7 +354,7 @@
                     <!-- Tab 2：SDK Trace 查看 -->
                     <div class="sub-panel" id="sub-sys-trace">
                         <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">
-                            按 <code>task_id</code> 精确查询，查看 <code>sdk_trace</code> 原始消息流，可选择导出为 <code>&lt;taskid&gt;.json</code>。
+                            默认展示最新 5 条任务，可直接点击查看 <code>sdk_trace</code> 原始消息流并导出为 <code>&lt;taskid&gt;.json</code>；也可按 <code>task_id</code> 精确查询。
                         </p>
 
                         <div style="background:#f8f9fb;border:1px solid #e0e3e8;border-radius:8px;padding:16px 18px;margin-bottom:20px;">

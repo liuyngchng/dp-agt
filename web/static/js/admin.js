@@ -590,13 +590,15 @@ function renderTasksPage(list) {
             <td>${statusText(t.status)}</td>
             <td class="col-date">${fmtTs(t.created_at)}</td>
             <td class="col-date">${fmtTs(t.finished_at)}</td>
-            <td class="col-action">${viewBtn}${stopBtn}</td>
+            <td class="col-action">${viewBtn}</td>
         </tr>
         <tr class="row-detail" id="${rid}" style="display:none;">
             <td colspan="8" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
-                <span class="audit-info-label">Task ID:</span> ${taskId}
-                &nbsp;&nbsp;&nbsp;
-                <span class="audit-info-label">LinkID:</span> ${escHtml(t.linkid || '-')}
+                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                    <span><span class="audit-info-label">Task ID:</span> ${taskId}</span>
+                    <span><span class="audit-info-label">LinkID:</span> ${escHtml(t.linkid || '-')}</span>
+                    <span style="margin-left:auto;">${stopBtn}</span>
+                </div>
             </td>
         </tr>`;
     }).join('');
@@ -987,8 +989,8 @@ function switchSysTab(name) {
     if (name === 'settings') {
         loadSysConfig();
     } else if (name === 'trace') {
-        // 切到 SDK Trace 时清空旧结果
-        document.getElementById('traceQueryResult').innerHTML = '';
+        // 切到 SDK Trace 时默认显示最新 5 条
+        loadLatestTraces();
     } else if (name === 'data') {
         loadDataTables();
     }
@@ -1046,6 +1048,43 @@ function selectDataTable(tableId) {
 
 // ==== SDK Trace 查询 ====
 
+function renderTraceList(items, total, label) {
+    const box = document.getElementById('traceQueryResult');
+    if (items.length === 0) {
+        box.innerHTML = '<div style="color:#999;padding:12px 0;">暂无任务记录</div>';
+        return;
+    }
+
+    let html = '<div style="font-size:0.82rem;color:#888;margin-bottom:8px;">' + label + '，共 ' + total + ' 条</div>';
+    html += '<div class="table-scroll"><table class="result-table"><thead><tr>'
+        + '<th class="col-seq">序号</th><th>标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-action">操作</th>'
+        + '</tr></thead><tbody>';
+    items.forEach((t, idx) => {
+        html += '<tr>'
+            + '<td class="col-seq">' + (idx + 1) + '</td>'
+            + '<td class="col-title" title="' + escHtml(t.title || '-') + '">' + escHtml(t.title || '-') + '</td>'
+            + '<td>' + escHtml(t.path || '-') + '</td>'
+            + '<td>' + escHtml(statusText(t.status)) + '</td>'
+            + '<td>' + escHtml(fmtTs(t.created_at)) + '</td>'
+            + '<td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewTrace(\'' + escJs(t.task_id) + '\')" title="查看 sdk_trace"><i class="fas fa-terminal"></i></button></td>'
+            + '</tr>';
+    });
+    html += '</tbody></table></div>';
+    box.innerHTML = html;
+}
+
+async function loadLatestTraces() {
+    try {
+        const res = await fetch(API + '/data-tables/task_logs/latest?limit=5');
+        const json = await res.json();
+        const items = (json.data && json.data.items) || [];
+        const total = (json.data && json.data.total) || 0;
+        renderTraceList(items, total, '最新 5 条任务');
+    } catch (err) {
+        document.getElementById('traceQueryResult').innerHTML = '<div style="color:#e53e3e;padding:12px 0;">加载失败: ' + escHtml(err.message) + '</div>';
+    }
+}
+
 async function queryTraceTab() {
     const taskId = document.getElementById('traceQueryTaskId').value.trim();
     if (!taskId) {
@@ -1060,29 +1099,7 @@ async function queryTraceTab() {
         const json = await res.json();
         const items = (json.data && json.data.items) || [];
         const total = (json.data && json.data.total) || 0;
-        const box = document.getElementById('traceQueryResult');
-
-        if (items.length === 0) {
-            box.innerHTML = '<div style="color:#999;padding:12px 0;">未查询到任务记录</div>';
-            return;
-        }
-
-        let html = '<div style="font-size:0.82rem;color:#888;margin-bottom:8px;">共 ' + total + ' 条</div>';
-        html += '<div class="table-scroll"><table class="result-table"><thead><tr>'
-            + '<th class="col-seq">序号</th><th>标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-action">操作</th>'
-            + '</tr></thead><tbody>';
-        items.forEach((t, idx) => {
-            html += '<tr>'
-                + '<td class="col-seq">' + (idx + 1) + '</td>'
-                + '<td class="col-title" title="' + escHtml(t.title || '-') + '">' + escHtml(t.title || '-') + '</td>'
-                + '<td>' + escHtml(t.path || '-') + '</td>'
-                + '<td>' + escHtml(statusText(t.status)) + '</td>'
-                + '<td>' + escHtml(fmtTs(t.created_at)) + '</td>'
-                + '<td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewTrace(\'' + escJs(t.task_id) + '\')" title="查看 sdk_trace"><i class="fas fa-terminal"></i></button></td>'
-                + '</tr>';
-        });
-        html += '</tbody></table></div>';
-        box.innerHTML = html;
+        renderTraceList(items, total, '查询结果');
     } catch (err) {
         document.getElementById('traceQueryResult').innerHTML = '<div style="color:#e53e3e;padding:12px 0;">查询失败: ' + escHtml(err.message) + '</div>';
     }

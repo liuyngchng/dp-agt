@@ -412,6 +412,12 @@ export const taskLogsStore = {
     ).all(limit, offset) as TaskLog[];
     return { items, total };
   },
+  // ── 最新 N 条（轻量列，SDK Trace 默认列表用） ──
+  listLatest(limit: number): TaskLog[] {
+    return db.prepare(
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_at DESC LIMIT ?`
+    ).all(limit) as TaskLog[];
+  },
   // ── 活跃任务（轻量列） ──
   countActive(): number {
     const row = db.prepare(
