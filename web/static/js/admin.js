@@ -1183,6 +1183,7 @@ async function viewTrace(taskId) {
             }
         }
         document.getElementById('traceExportBtn').style.display = _traceRaw ? 'inline-flex' : 'none';
+        document.getElementById('traceExportMdBtn').style.display = _traceRaw ? 'inline-flex' : 'none';
         document.getElementById('traceModal').classList.add('show');
     } catch (err) {
         toast('查看失败: ' + err.message, 'error');
@@ -1199,6 +1200,73 @@ function exportTrace() {
     a.click();
     URL.revokeObjectURL(a.href);
     toast('已导出 ' + _traceTask.task_id + '.json', 'success');
+}
+
+// 将 sdk_trace 消息流导出为 markdown 文档（taskid.md）
+function exportTraceMd() {
+    if (!_traceTask || !_traceRaw) { toast('无数据', 'error'); return; }
+
+    let messages;
+    try {
+        const parsed = JSON.parse(_traceRaw);
+        messages = Array.isArray(parsed) ? parsed.filter(m => m.type !== 'system') : [];
+    } catch {
+        messages = [];
+    }
+
+    const t = _traceTask;
+    const totalTokens = countTraceTokens(messages);
+    const md = buildTraceMd(t, messages, totalTokens);
+
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = t.task_id + '.md';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('已导出 ' + t.task_id + '.md', 'success');
+}
+
+// 统计 result 消息中的 token 总量（输入+输出+缓存读写）
+function countTraceTokens(messages) {
+    for (const m of messages) {
+        if (m.type === 'result' && m.usage) {
+            return (m.usage.input_tokens || 0) + (m.usage.output_tokens || 0)
+                + (m.usage.cache_creation_input_tokens || 0) + (m.usage.cache_read_input_tokens || 0);
+        }
+    }
+    return 0;
+}
+
+function buildTraceMd(t, messages, totalTokens) {
+    const lines = [];
+    lines.push('# sdk_trace 消息流');
+    lines.push('');
+    lines.push('- Task ID: `' + t.task_id + '`');
+    lines.push('- Link ID: `' + (t.linkid || '-') + '`');
+    lines.push('- Session ID: `' + (t.session_id || '-') + '`');
+    lines.push('- 访问路径: `' + (t.path || '-') + '`');
+    lines.push('- 消息总数: ' + messages.length);
+    lines.push('- 总 tokens: ' + (totalTokens || 0).toLocaleString());
+    lines.push('- 导出时间: ' + fmtTimelineTs(new Date().toISOString()));
+    lines.push('');
+
+    messages.forEach((m, i) => {
+        const ts = m.message?.timestamp || m.timestamp || '';
+        const tsStr = ts ? fmtTimelineTs(ts) : '';
+        const roleLabel = m.type === 'user' ? '用户' : m.type === 'assistant' ? '助手' : m.type;
+        lines.push('## [' + (i + 1) + '] ' + tsStr + ' [' + roleLabel + ']');
+        lines.push('');
+
+        if (m.type === 'result') {
+            lines.push(mdCodeBlock(JSON.stringify(m, null, 2), 'json'));
+            return;
+        }
+
+        lines.push(mdFromContent(m.message?.content));
+    });
+
+    return lines.join('\n');
 }
 
 function closeTraceModal() {
@@ -1790,6 +1858,50 @@ function mdCodeBlock(text, lang) {
     return fence + (lang || '') + '\n' + text + '\n' + fence + '\n\n';
 }
 
+// 将消息 content（string 或 block 数组）渲染为 markdown 片段（text/tool_use/tool_result/thinking）
+function mdFromContent(c) {
+    let out = '';
+    if (typeof c === 'string') {
+        out += mdCodeBlock(c);
+    } else if (Array.isArray(c)) {
+        for (const b of c) {
+            if (b.type === 'text' && b.text) {
+                out += mdCodeBlock(b.text);
+            } else if (b.type === 'tool_use') {
+                out += '> >> 工具调用: ' + (b.name || '?');
+                if (b.id) out += '  (' + b.id + ')';
+                out += '\n>\n';
+                if (b.input) {
+                    out += mdCodeBlock(JSON.stringify(b.input, null, 2), 'json');
+                }
+            } else if (b.type === 'tool_result') {
+                out += '> [工具返回]';
+                if (b.tool_use_id) out += '  (' + b.tool_use_id + ')';
+                out += '\n>\n';
+                let toolText = '';
+                if (typeof b.content === 'string') {
+                    toolText = b.content;
+                } else if (Array.isArray(b.content)) {
+                    for (const cb of b.content) {
+                        if (cb.type === 'text' && cb.text) toolText += cb.text;
+                    }
+                }
+                if (toolText) {
+                    out += mdCodeBlock(toolText);
+                } else {
+                    out += '\n';
+                }
+            } else if (b.type === 'thinking' && b.thinking) {
+                out += '> 🤔 思考:\n>\n';
+                out += mdCodeBlock(b.thinking);
+            } else if (b.type === 'redacted_thinking') {
+                out += '> 🤔 思考 (已过滤): 内容不可见\n\n';
+            }
+        }
+    }
+    return out;
+}
+
 function formatSessionMessagesMD(messages, sessionId) {
     let md = '# 会话记录 ' + sessionId + '\n\n';
     let seq = 0;
@@ -1799,45 +1911,7 @@ function formatSessionMessagesMD(messages, sessionId) {
         const tsStr = ts ? fmtTimelineTs(ts) : '';
         const roleLabel = msg.type === 'user' ? '用户' : msg.type === 'assistant' ? '助手' : msg.type;
         md += '## [' + seq + '] ' + tsStr + ' [' + roleLabel + ']\n\n';
-        const c = msg.message?.content;
-        if (typeof c === 'string') {
-            md += mdCodeBlock(c);
-        } else if (Array.isArray(c)) {
-            for (const b of c) {
-                if (b.type === 'text' && b.text) {
-                    md += mdCodeBlock(b.text);
-                } else if (b.type === 'tool_use') {
-                    md += '> >> 工具调用: ' + (b.name || '?');
-                    if (b.id) md += '  (' + b.id + ')';
-                    md += '\n>\n';
-                    if (b.input) {
-                        md += mdCodeBlock(JSON.stringify(b.input, null, 2), 'json');
-                    }
-                } else if (b.type === 'tool_result') {
-                    md += '> [工具返回]';
-                    if (b.tool_use_id) md += '  (' + b.tool_use_id + ')';
-                    md += '\n>\n';
-                    let toolText = '';
-                    if (typeof b.content === 'string') {
-                        toolText = b.content;
-                    } else if (Array.isArray(b.content)) {
-                        for (const cb of b.content) {
-                            if (cb.type === 'text' && cb.text) toolText += cb.text;
-                        }
-                    }
-                    if (toolText) {
-                        md += mdCodeBlock(toolText);
-                    } else {
-                        md += '\n';
-                    }
-                } else if (b.type === 'thinking' && b.thinking) {
-                    md += '> 🤔 思考:\n>\n';
-                    md += mdCodeBlock(b.thinking);
-                } else if (b.type === 'redacted_thinking') {
-                    md += '> 🤔 思考 (已过滤): 内容不可见\n\n';
-                }
-            }
-        }
+        md += mdFromContent(msg.message?.content);
     }
     return md;
 }
