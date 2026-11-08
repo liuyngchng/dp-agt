@@ -1136,7 +1136,7 @@ async function openChat(sessionId, linkid) {
 }
 
 async function newChat() {
-    const msg = prompt('请输入第一条消息：', '你好，请帮我分析公司现有业务知识。');
+    const msg = prompt('请输入第一条消息：', '你好，请帮我分析现有业务背景知识。');
     if (!msg || !msg.trim()) return;
 
     _chatSessionId = '';

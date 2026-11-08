@@ -14,7 +14,7 @@ import { fmtLocalTs } from '../time.js';
 import { publish } from './sse-bus.js';
 import type { Config } from '../config.js';
 import { promptConfigStore, sessionsStore } from '../store.js';
-import { listMemories } from './memory-store.js';
+import { listMemories, getMemoryDir } from './memory-store.js';
 
 const log = getLogger();
 
@@ -213,18 +213,18 @@ export async function buildClaudeMd(dataDir?: string): Promise<string> {
   });
 
   // ── 注入业务知识记忆库索引 ──
-  const memoryDir = dataDir || join(process.cwd(), 'data');
-  const memItems = listMemories(memoryDir);
+  const dataRoot = dataDir || join(process.cwd(), 'data');
+  const memoryDir = getMemoryDir(dataRoot);
+  const memItems = listMemories(dataRoot);
   if (memItems.length > 0) {
-    const memAbsDir = join(memoryDir, 'memory');
     let memBlock = '\n## 业务知识记忆库\n\n';
-    memBlock += '以下是可用的公司业务背景知识文件，存储于 `' + memAbsDir + '` 目录。';
-    memBlock += '当任务需要了解公司组织架构、领导班子分工、各部门职责范围或业务流程规则时，';
-    memBlock += '使用 Read 工具读取对应文件的绝对路径（如 `' + join(memAbsDir, '公司领导班子成员工作分工.md') + '`）。\n\n';
+    memBlock += '以下是可用的业务背景知识文件，存储于 `' + memoryDir + '` 目录。';
+    memBlock += '当任务需要相关业务背景知识时，';
+    memBlock += '使用 Read 工具读取对应文件的绝对路径（如 `' + join(memoryDir, memItems[0].filename) + '`）。\n\n';
     memBlock += '| 文件 | 绝对路径 | 说明 |\n';
     memBlock += '|------|----------|------|\n';
     for (const item of memItems) {
-      const absPath = join(memAbsDir, item.filename);
+      const absPath = join(memoryDir, item.filename);
       memBlock += `| ${item.filename} | ${absPath} | ${item.description || item.title} |\n`;
     }
     template += memBlock;

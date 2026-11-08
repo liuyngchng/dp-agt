@@ -9,7 +9,7 @@ import { readFileSync, readdirSync, statSync, mkdirSync, writeFileSync, rmSync }
 import { join, basename } from 'node:path';
 
 export interface MemoryItem {
-  filename: string;      // 文件名，如 公司领导班子成员工作分工.md
+  filename: string;      // 文件名，如 xxx.md
   title: string;         // 从文件第一行 # 提取
   description: string;   // 标题后第一个非空段落，作为一句话说明
   size: number;          // 文件字节数
