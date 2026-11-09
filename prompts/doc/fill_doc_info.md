@@ -8,7 +8,8 @@
 
 ## 请求结构说明
 
-- `linkid` / `target` / `deptid`：公文与处理人身份信息，需原样透传到结果
+- `linkid`：业务流水号，回调时原样带回用于关联任务
+- `target` / `deptid`：处理人身份信息（仅作分析上下文，不随结果返回）
 - `form_data`：当前已有的表单元数据（可能为空或部分字段已填）
 - `form_data_desc`：表单字段的中文说明映射（字段名 → 中文含义）
 - `files`：公文附件数组，其中 `file_type = "main_body"` 的是正文
@@ -87,4 +88,5 @@
 - 只填充能够从正文中确认的字段，不要臆造值
 - 日期统一为 `YYYY-MM-DD` 格式
 - 若正文无法下载或解析失败，将 `need_human` 设为 `true` 并在 `fail_reason` 中说明原因
+- 结果只包含业务数据（`need_human`、`fail_reason`、`filled_fields`），除 `linkid` 外不要回传输入 JSON 中的其他字段
 - `JSON` 代码块之外不要输出任何其他内容

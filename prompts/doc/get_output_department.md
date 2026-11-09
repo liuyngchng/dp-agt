@@ -8,7 +8,8 @@
 
 ## 请求结构说明
 
-- `linkid` / `target` / `deptid`：公文与处理人身份信息，需原样透传到结果
+- `linkid`：业务流水号，回调时原样带回用于关联任务
+- `target` / `deptid`：处理人身份信息（仅作分析上下文，不随结果返回）
 - `form_data`：表单元数据（标题 `title`、来文单位 `unitOfReceipt`、所属部门 `docDeptDisplayName` 等）
 - `files`：公文附件数组，其中 `file_type = "main_body"` 的是正文
 - `approval_history`：审批流转记录（含领导批示意见）
@@ -94,4 +95,5 @@
 - 承办部门必须依据领导批示或部门职责判断，不得凭空猜测
 - 优先从 `next_nodes` 中匹配已存在的节点，避免选择不存在的节点
 - 若正文无法下载、部门无法判断、接口调用失败，将 `need_human` 设为 `true` 并在 `fail_reason` 中说明原因
+- 结果只包含业务数据（`need_human`、`fail_reason`、`departments`、`next_node`、`opinion_text`、`remark`），除 `linkid` 外不要回传输入 JSON 中的其他字段
 - json 代码块之外不要输出任何其他内容
