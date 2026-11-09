@@ -41,6 +41,7 @@ export interface TaskLog {
   finished_at: string | null;
   created_ts: number | null;    // Unix 毫秒时间戳（检索用）
   finished_ts: number | null;
+  started_ts: number | null;    // 进入 processing 的时间戳（观测/排查用）
 }
 
 // ============================================================
