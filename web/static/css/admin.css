@@ -853,6 +853,7 @@ input[type="checkbox"] {
 #auditDetailModal .modal-lg,
 #promptPreviewModal .modal-lg,
 #memoryModal .modal-lg,
+#sessionFilePreviewModal .modal-lg,
 #traceModal .modal-lg {
     width: min(1280px, calc(100vw - 40px));
     height: 90vh;
@@ -864,6 +865,33 @@ input[type="checkbox"] {
     gap: 12px;
     margin-top: 24px;
     justify-content: flex-end;
+}
+
+/* 系统变量配置：左右两栏（单条添加 / CSV 批量导入） */
+.cfg-two-col {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+}
+.cfg-col {
+    flex: 1;
+    min-width: 0;
+    padding: 18px 20px;
+    background: #f5f7fa;
+    border: 1px solid #e6eaf0;
+    border-radius: 10px;
+}
+.cfg-col-title {
+    margin: 0 0 14px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+@media (max-width: 720px) {
+    .cfg-two-col { flex-direction: column; }
 }
 
 /* ---- 任务详情 ---- */

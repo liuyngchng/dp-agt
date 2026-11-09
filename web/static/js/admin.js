@@ -263,6 +263,28 @@ function escJs(s) {
     return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
+// 复制文本到剪贴板：优先异步 API，失败时回退到 execCommand
+async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch {}
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    document.body.removeChild(ta);
+    return ok;
+}
+
 // ==== 模板管理（CSV / Tar / 预览） ====
 
 // 下载 CSV 模板
@@ -371,21 +393,34 @@ async function loadConfigKeys() {
         const note = escHtml(r.note || '-');
         const uid = 'val-' + idx;
         const delBtn = '<button class="cfg-btn-sm del-btn" data-key="' + key + '" title="删除"><i class="fas fa-trash-alt"></i></button>';
+        const copyBtn = '<button class="cfg-btn-sm copy-btn" data-key="' + key + '" data-idx="' + idx + '" title="复制值"><i class="fas fa-copy"></i></button>';
         if (r.is_secret) {
             html += '<tr><td><code>' + key + '</code></td>'
                 + '<td class="val-cell"><span class="val-text" id="' + uid + '" title="' + escHtml(r.value) + '">' + escHtml(r.value) + '</span> '
                 + '<button class="cfg-btn-sm eye-btn" data-idx="' + idx + '" data-key="' + key + '"><i class="fas fa-eye"></i></button></td>'
                 + '<td>' + note + '</td>'
-                + '<td>' + delBtn + '</td></tr>';
+                + '<td>' + copyBtn + ' ' + delBtn + '</td></tr>';
         } else {
             html += '<tr><td><code>' + key + '</code></td>'
                 + '<td class="val-cell"><span class="val-text" title="' + escHtml(r.value) + '">' + escHtml(r.value) + '</span></td>'
                 + '<td>' + note + '</td>'
-                + '<td>' + delBtn + '</td></tr>';
+                + '<td>' + copyBtn + ' ' + delBtn + '</td></tr>';
         }
     });
     html += '</tbody></table>';
     table.innerHTML = html;
+
+    // 事件委托：复制按钮
+    table.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const idx = parseInt(this.dataset.idx);
+            const key = this.dataset.key;
+            const plain = (revealMap[key] !== undefined ? revealMap[key] : (rows[idx] && rows[idx].value)) || '';
+            copyText(plain).then(ok => {
+                toast(ok ? '已复制 ' + key : '复制失败', ok ? 'success' : 'error');
+            });
+        });
+    });
 
     // 事件委托：眼睛按钮
     table.querySelectorAll('.eye-btn').forEach(btn => {
@@ -417,6 +452,21 @@ async function loadConfigKeys() {
             deleteConfigItem(this.dataset.key);
         });
     });
+}
+
+// 复制全部系统变量（key=value 逐行）
+async function copyAllConfigKeys() {
+    try {
+        const rr = await fetch(API + '/prompt-config?reveal=1');
+        const rj = await rr.json();
+        const rrows = (rj.data && rj.data.rows) || [];
+        if (rrows.length === 0) return toast('暂无配置项', 'error');
+        const text = rrows.map(r => r.key + '=' + r.value).join('\n');
+        const ok = await copyText(text);
+        toast(ok ? '已复制全部 ' + rrows.length + ' 项' : '复制失败', ok ? 'success' : 'error');
+    } catch (err) {
+        toast('复制失败: ' + err.message, 'error');
+    }
 }
 
 // 上传 Tar

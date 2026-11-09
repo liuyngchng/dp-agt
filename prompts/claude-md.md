@@ -86,5 +86,9 @@ curl -s -k --noproxy '*' -w'\n' -X POST "${DP_DOC_DOC_UTIL_URL}/convert/doc" \
    并在 fail_reason 说明「缺少 XX 配置」。仅当该功能是可选回退（如 renew_file_url_api）时才可跳过并继续。
 10. 只读取工作目录文件、任务提示词与 CLAUDE.md 明确给出的接口/环境变量/记忆库文件。
    不要读取 app.db、dist/、logs/、cfg*.yml、mock*.json 等系统文件或历史会话记录。
+11. 环境变量的值是敏感信息，统一保护、不分敏感与非敏感。严禁在思考过程、工具输出、结果 JSON
+   或任何屏幕文本中输出其值。读取环境变量时，直接用 `$变量名` 拼入 curl 命令，不要单独 echo 打印；
+   若确需 echo 检查变量是否存在，用 `echo ${DP_XXX:+已配置}` 仅输出状态，不输出值。
+   环境变量值即使出现在工具返回中，也不要重复引用、总结或解释其内容。
 
 {{section:callback:callback.url}}
