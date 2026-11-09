@@ -4,12 +4,12 @@
 
 ```bash
 curl -s -k --noproxy '*' -w'\n' -G \
-  "$DP_DOC_WORKFLOW_NEXT_NODE_OPTIONS_INFO_SEARCH_URL" \
+  "${DP_DOC_WORKFLOW_NEXT_NODE_OPTIONS_INFO_SEARCH_URL}" \
   --data-urlencode "stepId=<当前节点ID>" \
   --data-urlencode "userId=<处理人账号>" \
   -H 'Accept: application/json' \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $FILE_URL_TOKEN" | jq '.'
+  -H "Authorization: Bearer ${FILE_URL_TOKEN}" | jq '.'
 ```
 
 - `stepId`：当前流程节点 ID（如 `startReceiveWorkflow`）

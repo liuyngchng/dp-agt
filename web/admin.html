@@ -59,6 +59,10 @@
                             <button type="button" class="cfg-btn cfg-btn-reset" onclick="closePromptPreview()" style="margin-left:auto;">关闭</button>
                         </h3>
                         <pre id="promptPreviewContent" style="flex:1;min-height:0;overflow:auto;margin-top:16px;padding:14px;background:#2d2d2d;color:#f8f8f2;border-radius:8px;font-size:0.82rem;font-family:'SF Mono','Consolas',monospace;white-space:pre-wrap;word-break:break-all;"></pre>
+                        <div id="promptPreviewVars" style="flex-shrink:0;margin-top:16px;padding:14px;background:#f5f7fa;border-radius:8px;display:none;">
+                            <div style="font-weight:600;color:#2c3e50;margin-bottom:10px;font-size:0.88rem;"><i class="fas fa-cubes"></i> 变量清单</div>
+                            <div id="promptPreviewVarsList" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -304,6 +308,29 @@
                             <thead><tr><th class="col-seq">序号</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">更新时间</th><th class="col-action">操作</th></tr></thead>
                             <tbody id="sessionsTbody"><tr><td colspan="6" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- 会话工作目录文件浏览弹窗 -->
+                <div id="sessionFilesModal" class="modal-overlay" onclick="if(event.target===this)closeSessionFiles()">
+                    <div class="modal-lg" style="display:flex;flex-direction:column;">
+                        <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                            <span id="sessionFilesTitle"><i class="fas fa-folder-open"></i> 工作目录文件</span>
+                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeSessionFiles()" style="margin-left:auto;">关闭</button>
+                        </h3>
+                        <div id="sessionFilesMeta" style="flex-shrink:0;margin-top:12px;font-size:0.82rem;color:#888;word-break:break-all;"></div>
+                        <div id="sessionFilesList" style="flex:1;min-height:0;margin-top:12px;font-family:'SF Mono','Consolas',monospace;font-size:0.84rem;"></div>
+                    </div>
+                </div>
+
+                <!-- 会话文件预览弹窗 -->
+                <div id="sessionFilePreviewModal" class="modal-overlay" onclick="if(event.target===this)closeSessionFilePreview()">
+                    <div class="modal-lg" style="display:flex;flex-direction:column;">
+                        <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                            <span id="sessionFilePreviewTitle"><i class="fas fa-file-alt"></i> 文件预览</span>
+                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeSessionFilePreview()" style="margin-left:auto;">关闭</button>
+                        </h3>
+                        <pre id="sessionFilePreviewContent" style="flex:1;min-height:0;overflow:auto;margin-top:16px;padding:14px;background:#2d2d2d;color:#f8f8f2;border-radius:8px;font-size:0.82rem;font-family:'SF Mono','Consolas',monospace;white-space:pre-wrap;word-break:break-all;"></pre>
                     </div>
                 </div>
 

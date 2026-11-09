@@ -533,6 +533,27 @@ function openPromptPreview(idx) {
     if (!p) return;
     document.getElementById('promptPreviewTitle').innerHTML = '<i class="fas fa-file-code"></i> ' + escHtml(p.file);
     document.getElementById('promptPreviewContent').textContent = p.raw || '';
+
+    // 渲染变量清单
+    const varsWrap = document.getElementById('promptPreviewVars');
+    const varsList = document.getElementById('promptPreviewVarsList');
+    if (p.variables && p.variables.length > 0) {
+        varsWrap.style.display = 'block';
+        varsList.innerHTML = p.variables.map(function (v) {
+            var typeConfig = {
+                'request': { color: '#1565c0', bg: '#e3f2fd', icon: 'fa-arrow-right-to-bracket' },
+                'section': { color: '#6a1b9a', bg: '#f3e5f5', icon: 'fa-puzzle-piece' },
+                'task':    { color: '#2e7d32', bg: '#e8f5e9', icon: 'fa-hashtag' },
+                'config':  { color: '#e65100', bg: '#fff3e0', icon: 'fa-gear' },
+                'env':     { color: '#00838f', bg: '#e0f7fa', icon: 'fa-terminal' }
+            }[v.type] || { color: '#555', bg: '#f0f0f0', icon: 'fa-circle' };
+            return '<span title="' + escHtml(v.hint) + '" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:0.78rem;font-family:\'SF Mono\',\'Consolas\',monospace;background:' + typeConfig.bg + ';color:' + typeConfig.color + ';cursor:default;white-space:nowrap;"><i class="fas ' + typeConfig.icon + '" style="font-size:0.7rem;"></i>' + escHtml(v.label) + '</span>';
+        }).join('');
+    } else {
+        varsWrap.style.display = 'none';
+        varsList.innerHTML = '';
+    }
+
     document.getElementById('promptPreviewModal').classList.add('show');
 }
 
@@ -1473,13 +1494,15 @@ async function loadSessions() {
         const delBtn = isActive
             ? `<button class="cfg-btn-danger-sm" onclick="event.stopPropagation();deleteSession('${escHtml(sid)}', '${escHtml(linkid)}')" title="删除会话"><i class="fas fa-trash-alt"></i></button>`
             : `<button class="cfg-btn-danger-sm" disabled title="会话已关闭" style="opacity:0.45;cursor:not-allowed;"><i class="fas fa-trash-alt"></i></button>`;
+        const filesBtn = `<button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();openSessionFiles('${escHtml(sid)}', '${escHtml(linkid)}')" title="浏览工作目录文件" style="margin-right:4px;"><i class="fas fa-folder-open"></i></button>`;
         return `<tr id="${rowId}" style="cursor:pointer;" onclick="toggleSessionExpand('${rowId}', '${expandId}')">
             <td class="col-seq">${i + 1}</td>
             <td><span style="font-family:monospace;font-size:0.82rem;">${escHtml(linkid)}</span></td>
             <td>${isActive ? '<span class="badge badge-processing">活跃</span>' : '<span class="badge badge-cancelled">关闭</span>'}</td>
             <td class="col-date">${fmtTs(s.created_at)}</td>
             <td class="col-date">${fmtTs(s.updated_at)}</td>
-            <td class="col-action" style="width:120px;">
+            <td class="col-action" style="width:160px;">
+                ${filesBtn}
                 <button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();viewLinkTimeline('${escHtml(linkid)}')" title="处理时间线" style="margin-right:4px;"><i class="fas fa-history"></i></button>
                 ${chatBtn}
                 ${delBtn}
@@ -1498,6 +1521,159 @@ function toggleSessionExpand(rowId, expandId) {
     const row = document.getElementById(expandId);
     if (!row) return;
     row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+// 会话工作目录文件浏览
+let _sessionFilesSessionId = '';
+let _sessionFilesLinkid = '';
+
+async function openSessionFiles(sessionId, linkid) {
+    _sessionFilesSessionId = sessionId;
+    _sessionFilesLinkid = linkid;
+    document.getElementById('sessionFilesTitle').innerHTML = '<i class="fas fa-folder-open"></i> 工作目录文件 <span style="font-weight:normal;font-size:0.82rem;color:#888;">(' + escHtml(linkid || '-') + ')</span>';
+    document.getElementById('sessionFilesMeta').textContent = '';
+    document.getElementById('sessionFilesList').innerHTML = '<div style="padding:24px;text-align:center;color:#999;">加载中...</div>';
+    document.getElementById('sessionFilesModal').classList.add('show');
+    await loadSessionFiles(sessionId);
+}
+
+async function loadSessionFiles(sessionId) {
+    const listEl = document.getElementById('sessionFilesList');
+    const metaEl = document.getElementById('sessionFilesMeta');
+    try {
+        const r = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/files');
+        const j = await r.json();
+        if (j.code !== 0) {
+            listEl.innerHTML = '<div style="padding:24px;text-align:center;color:#e53e3e;">加载失败: ' + escHtml(j.message || '未知错误') + '</div>';
+            return;
+        }
+        const data = j.data || {};
+        const files = data.files || [];
+        metaEl.textContent = '目录: ' + (data.workDir || '-');
+        if (files.length === 0) {
+            listEl.innerHTML = '<div style="padding:24px;text-align:center;color:#999;">该会话工作目录为空</div>';
+            return;
+        }
+        // 扁平列表 → 目录树（{ dirs: {名: 子树}, files: [{name, relPath, size}] }）
+        const root = { dirs: {}, files: [] };
+        for (const f of files) {
+            const clean = f.isDir ? f.path.replace(/\/+$/, '') : f.path;
+            const parts = clean.split('/').filter(Boolean);
+            let node = root;
+            parts.forEach((part, i) => {
+                const isLast = i === parts.length - 1;
+                if (isLast && !f.isDir) {
+                    node.files.push({ name: part, relPath: f.path, size: f.size });
+                } else {
+                    if (!node.dirs[part]) node.dirs[part] = { dirs: {}, files: [] };
+                    node = node.dirs[part];
+                }
+            });
+        }
+        listEl.innerHTML = renderSessionFileTree(root, '');
+    } catch (e) {
+        listEl.innerHTML = '<div style="padding:24px;text-align:center;color:#e53e3e;">加载失败: ' + escHtml(e.message) + '</div>';
+    }
+}
+
+// 递归渲染会话文件树（目录在前、文件在后，各自按名称排序，文件夹默认折叠）
+function renderSessionFileTree(node, prefix) {
+    let html = '';
+    const dirNames = Object.keys(node.dirs).sort();
+    dirNames.forEach((dirName) => {
+        const uid = ('sessdir-' + prefix + dirName).replace(/[^a-zA-Z0-9_-]/g, '_');
+        html +=
+            '<div class="file-tree-dir">' +
+                '<div class="file-tree-row file-tree-dir-row" onclick="toggleSessionDir(\'' + uid + '\')" title="' + escHtml(dirName) + '/">' +
+                    '<i class="fas fa-chevron-right file-tree-chevron" id="' + uid + '-chevron"></i>' +
+                    '<i class="fas fa-folder file-tree-dir-icon"></i>' +
+                    '<span class="file-tree-name">' + escHtml(dirName) + '</span>' +
+                '</div>' +
+                '<div class="file-tree-children" id="' + uid + '" style="display:none;">' +
+                    renderSessionFileTree(node.dirs[dirName], prefix + dirName + '/') +
+                '</div>' +
+            '</div>';
+    });
+    node.files.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((f) => {
+        const icon = fileIconForName(f.name);
+        const isMd = f.name.toLowerCase().endsWith('.md');
+        const previewBtn = isMd
+            ? '<button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="previewSessionFile(\'' + escJs(f.relPath) + '\')" title="预览" style="flex-shrink:0;"><i class="fas fa-eye"></i></button>'
+            : '';
+        html +=
+            '<div class="file-tree-row file-tree-file-row" title="' + escHtml(f.relPath) + '">' +
+                icon +
+                '<span class="file-tree-name">' + escHtml(f.name) + '</span>' +
+                '<span style="color:#999;font-size:0.72rem;flex-shrink:0;">' + formatFileSize(f.size) + '</span>' +
+                previewBtn +
+                '<button class="cfg-btn-sm cfg-btn-icon" onclick="downloadSessionFile(\'' + escJs(f.relPath) + '\')" title="下载" style="flex-shrink:0;"><i class="fas fa-download"></i></button>' +
+            '</div>';
+    });
+    return html;
+}
+
+// 折叠 / 展开会话文件目录
+function toggleSessionDir(uid) {
+    const el = document.getElementById(uid);
+    const chevron = document.getElementById(uid + '-chevron');
+    if (!el) return;
+    const collapsed = el.style.display === 'none';
+    el.style.display = collapsed ? 'block' : 'none';
+    if (chevron) {
+        chevron.className = 'fas ' + (collapsed ? 'fa-chevron-down' : 'fa-chevron-right') + ' file-tree-chevron';
+    }
+}
+
+function fileIconForName(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    if (ext === 'md') return '<i class="fas fa-file-code" style="color:#4b6cb7;flex-shrink:0;"></i>';
+    if (ext === 'json') return '<i class="fas fa-file-code" style="color:#9c27b0;flex-shrink:0;"></i>';
+    if (ext === 'txt') return '<i class="fas fa-file-lines" style="color:#607d8b;flex-shrink:0;"></i>';
+    if (ext === 'doc' || ext === 'docx') return '<i class="fas fa-file-word" style="color:#2b579a;flex-shrink:0;"></i>';
+    if (ext === 'pdf') return '<i class="fas fa-file-pdf" style="color:#d32f2f;flex-shrink:0;"></i>';
+    if (ext === 'xls' || ext === 'xlsx') return '<i class="fas fa-file-excel" style="color:#217346;flex-shrink:0;"></i>';
+    if (['png','jpg','jpeg','gif'].includes(ext)) return '<i class="fas fa-file-image" style="color:#00897b;flex-shrink:0;"></i>';
+    return '<i class="fas fa-file" style="color:#90a4ae;flex-shrink:0;"></i>';
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function closeSessionFiles() {
+    document.getElementById('sessionFilesModal').classList.remove('show');
+    _sessionFilesSessionId = '';
+    _sessionFilesLinkid = '';
+}
+
+async function previewSessionFile(relPath) {
+    if (!_sessionFilesSessionId) return;
+    const contentEl = document.getElementById('sessionFilePreviewContent');
+    document.getElementById('sessionFilePreviewTitle').innerHTML = '<i class="fas fa-file-alt"></i> ' + escHtml(relPath);
+    contentEl.textContent = '加载中...';
+    document.getElementById('sessionFilePreviewModal').classList.add('show');
+    try {
+        const r = await fetch(API + '/sessions/' + encodeURIComponent(_sessionFilesSessionId) + '/file-content?path=' + encodeURIComponent(relPath));
+        const j = await r.json();
+        if (j.code === 0) {
+            contentEl.textContent = j.data.content || '';
+        } else {
+            contentEl.textContent = '无法预览: ' + (j.message || '未知错误');
+        }
+    } catch (e) {
+        contentEl.textContent = '预览失败: ' + e.message;
+    }
+}
+
+function closeSessionFilePreview() {
+    document.getElementById('sessionFilePreviewModal').classList.remove('show');
+}
+
+function downloadSessionFile(relPath) {
+    if (!_sessionFilesSessionId) return;
+    window.location.href = API + '/sessions/' + encodeURIComponent(_sessionFilesSessionId) + '/file-download?path=' + encodeURIComponent(relPath);
 }
 
 // 会话处理时间线（按 linkid 聚合）

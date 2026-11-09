@@ -7,8 +7,8 @@
 ### 提交审稿任务
 
 ```bash
-curl -s -k --noproxy '*' -w'\n' -X POST "$DP_DOC_AUDIT_API_URL" \
-  -H "x-api-key: $DOC_AUDIT_TOKEN" \
+curl -s -k --noproxy '*' -w'\n' -X POST "${DP_DOC_AUDIT_API_URL}" \
+  -H "x-api-key: ${DOC_AUDIT_TOKEN}" \
   -F "file=@正文.docx" \
   -F "additional_instructions=请严格按 GB/T 9704-2012 党政机关公文格式标准进行校对"
 ```
@@ -21,7 +21,7 @@ curl -s -k --noproxy '*' -w'\n' -X POST "$DP_DOC_AUDIT_API_URL" \
 
 ```bash
 curl -s -k --noproxy '*' -w'\n' -X GET "${DP_DOC_AUDIT_API_URL}/task?id=<审稿task_id>" \
-  -H "x-api-key: $DOC_AUDIT_TOKEN" | jq '.'
+  -H "x-api-key: ${DOC_AUDIT_TOKEN}" | jq '.'
 ```
 
 当 `data.status` 为 `"completed"` 时，`data.result_text` 即为 Markdown 格式的核稿意见。

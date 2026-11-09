@@ -5,7 +5,7 @@
 ## 文件下载
 - 对方传递的 JSON 中的文件 URL 已开放白名单，无需认证
 - 如果文件 URL 需要认证，可用环境变量 `FILE_URL_TOKEN`（Bearer Token）下载：
-  `curl -s -k --noproxy '*' -w'\n' -H "Authorization: Bearer $FILE_URL_TOKEN" '<file_url>' -o 文件名`
+  `curl -s -k --noproxy '*' -w'\n' -H "Authorization: Bearer ${FILE_URL_TOKEN}" '<file_url>' -o 文件名`
 - 用 curl 下载文件到当前工作目录
 
 {{section:wps:doc.renew_file_url_api}}

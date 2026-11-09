@@ -6,9 +6,9 @@
 接口令牌通过环境变量 `FILE_URL_TOKEN` 提供，**不要在日志或屏幕上输出此 Token**。
 
 ```bash
-curl -s -k --noproxy '*' -w'\n' -X POST "$DP_DOC_RENEW_FILE_URL_API" \
+curl -s -k --noproxy '*' -w'\n' -X POST "${DP_DOC_RENEW_FILE_URL_API}" \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $FILE_URL_TOKEN" \
+  -H "Authorization: Bearer ${FILE_URL_TOKEN}" \
   -d '{"fileId": "<文件ID>", "getFileUrlType": "download"}' | jq -r '.data'
 ```
 

@@ -1,8 +1,8 @@
 import { gunzipSync } from 'node:zlib';
 import AdmZip from 'adm-zip';
 import { Router, Request, Response } from 'express';
-import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, existsSync, readdirSync, statSync, lstatSync, createReadStream, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'node:crypto';
@@ -28,6 +28,11 @@ import { syncInterfacesFromPrompts } from '../store.js';import type { Config } f
 import type { TaskLog } from '../types.js';
 
 const log = getLogger();
+
+/** 会话工作目录根路径（与下方各 session 路由保持一致） */
+function sessionWorkDir(cfg: Config, linkid: string): string {
+  return join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
+}
 
 export function createAdminRouter(cfg: Config): Router {
   const router = Router();
@@ -365,7 +370,7 @@ export function createAdminRouter(cfg: Config): Router {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
-    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(session.linkid));
+    const workDir = sessionWorkDir(cfg, session.linkid);
     if (existsSync(workDir)) {
       try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
     }
@@ -375,6 +380,136 @@ export function createAdminRouter(cfg: Config): Router {
     sessionsStore.close(session_id);
     log.info({ session_id, linkid: session.linkid, workDir, cancelledTasks: cancelled }, 'session_deleted');
     res.json({ code: 0, message: '已删除' });
+  });
+
+  // ---- 会话工作目录文件浏览 ----
+
+  /** 递归列出工作目录下的所有文件，返回扁平数组 */
+  router.get('/admin/sessions/:session_id/files', (req: Request, res: Response) => {
+    const { session_id } = req.params;
+    const session = sessionsStore.get(session_id);
+    if (!session) {
+      res.status(404).json({ code: 1001, message: '会话不存在' });
+      return;
+    }
+    const workDir = sessionWorkDir(cfg, session.linkid);
+    if (!existsSync(workDir)) {
+      res.json({ code: 0, data: { workDir, files: [] } });
+      return;
+    }
+
+    const entries: Array<{ path: string; size: number; isDir: boolean; modifiedAt: string }> = [];
+    const walkDir = (dir: string, prefix: string) => {
+      let items: string[];
+      try { items = readdirSync(dir); } catch { return; }
+      for (const name of items) {
+        if (name.startsWith('.')) continue; // skip hidden
+        const full = join(dir, name);
+        const rel = prefix + name;
+        let st;
+        try { st = lstatSync(full); } catch { continue; }
+        if (st.isDirectory()) {
+          entries.push({ path: rel + sep, size: 0, isDir: true, modifiedAt: st.mtime.toISOString() });
+          walkDir(full, rel + sep);
+        } else {
+          entries.push({ path: rel, size: st.size, isDir: false, modifiedAt: st.mtime.toISOString() });
+        }
+      }
+    };
+    walkDir(workDir, '');
+
+    // 排序：目录在前，文件在后；同类按名称排序
+    entries.sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return a.path.localeCompare(b.path);
+    });
+
+    res.json({ code: 0, data: { workDir, files: entries } });
+  });
+
+  /** 读取工作目录下的文件内容（仅 .md/.txt/.json/.yml/.yaml 等文本类文件返回 JSON 供预览） */
+  router.get('/admin/sessions/:session_id/file-content', (req: Request, res: Response) => {
+    const { session_id } = req.params;
+    const relPath = req.query.path as string | undefined;
+    if (!relPath) {
+      res.status(400).json({ code: 1001, message: '缺少 path 参数' });
+      return;
+    }
+
+    const session = sessionsStore.get(session_id);
+    if (!session) {
+      res.status(404).json({ code: 1001, message: '会话不存在' });
+      return;
+    }
+
+    const workDir = sessionWorkDir(cfg, session.linkid);
+    const fullPath = join(workDir, relPath);
+
+    // 防止路径穿越
+    if (!fullPath.startsWith(workDir + sep) && fullPath !== workDir) {
+      res.status(403).json({ code: 1001, message: '路径非法' });
+      return;
+    }
+    if (!existsSync(fullPath) || lstatSync(fullPath).isDirectory()) {
+      res.status(404).json({ code: 1001, message: '文件不存在' });
+      return;
+    }
+
+    // 大小限制：超过 512KB 拒绝预览，提示下载
+    const st = lstatSync(fullPath);
+    if (st.size > 512 * 1024) {
+      res.status(413).json({ code: 1001, message: '文件过大，请使用下载' });
+      return;
+    }
+
+    try {
+      const content = readFileSync(fullPath, 'utf8');
+      res.json({ code: 0, data: { path: relPath, size: st.size, content } });
+    } catch {
+      // 可能是二进制文件
+      res.status(415).json({ code: 1001, message: '无法读取为文本文件' });
+    }
+  });
+
+  /** 下载工作目录下的任意文件 */
+  router.get('/admin/sessions/:session_id/file-download', (req: Request, res: Response) => {
+    const { session_id } = req.params;
+    const relPath = req.query.path as string | undefined;
+    if (!relPath) {
+      res.status(400).json({ code: 1001, message: '缺少 path 参数' });
+      return;
+    }
+
+    const session = sessionsStore.get(session_id);
+    if (!session) {
+      res.status(404).json({ code: 1001, message: '会话不存在' });
+      return;
+    }
+
+    const workDir = sessionWorkDir(cfg, session.linkid);
+    const fullPath = join(workDir, relPath);
+
+    // 防止路径穿越
+    if (!fullPath.startsWith(workDir + sep) && fullPath !== workDir) {
+      res.status(403).json({ code: 1001, message: '路径非法' });
+      return;
+    }
+    if (!existsSync(fullPath) || lstatSync(fullPath).isDirectory()) {
+      res.status(404).json({ code: 1001, message: '文件不存在' });
+      return;
+    }
+
+    const basename = fullPath.split(sep).pop() || 'download';
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(basename)}"`);
+
+    const st = lstatSync(fullPath);
+    res.setHeader('Content-Length', st.size);
+
+    const readStream = createReadStream(fullPath);
+    readStream.on('error', () => {
+      if (!res.headersSent) res.status(500).json({ code: 1001, message: '读取文件失败' });
+    });
+    readStream.pipe(res);
   });
 
   // ---- 新建聊天：不绑定公文，发送首条消息并流式返回，session 由 SDK 真实创建 ----
@@ -1024,7 +1159,51 @@ export function createAdminRouter(cfg: Config): Router {
   // 预览模板（渲染后的内容）
   router.get('/admin/prompt-preview', (_req: Request, res: Response) => {
     const promptsDir = resolve(process.cwd(), 'prompts');
-    const previews: Array<{ file: string; raw: string }> = [];
+    const previews: Array<{ file: string; raw: string; variables: Array<{ type: string; label: string; hint: string }> }> = [];
+
+    // 环境变量名 → { key, note } 反向映射（与 sdk-runner 的 keyToEnvName 保持一致）
+    const envMap = new Map<string, { key: string; note: string }>();
+    for (const row of promptConfigStore.list()) {
+      envMap.set('DP_' + row.key.replace(/\./g, '_').toUpperCase(), { key: row.key, note: row.note });
+    }
+    // 兼容旧名称（与 sdk-runner.buildEnv 保持一致）
+    envMap.set('FILE_URL_TOKEN', { key: 'doc.file_url_token', note: '文件下载 Bearer Token' });
+    envMap.set('DOC_AUDIT_TOKEN', { key: 'doc_audit.token', note: '文档审核服务 Token' });
+    envMap.set('CALLBACK_TOKEN', { key: 'callback.token', note: '回调 Token' });
+
+    // 从模板文本中提取 {{...}} 占位符与 $ENV / ${ENV} 环境变量引用，归类为变量清单
+    const extractVariables = (content: string) => {
+      const map = new Map<string, { type: string; label: string; hint: string }>();
+
+      // 1) {{...}} 占位符
+      const placeholders = content.match(/\{\{([^}]+)\}\}/g) || [];
+      for (const ph of placeholders) {
+        const inner = ph.slice(2, -2).trim();
+        const sectionMatch = inner.match(/^section:([\w-]+):([\w.]+)$/);
+        if (sectionMatch) {
+          map.set(inner, { type: 'section', label: inner, hint: `片段 ${sectionMatch[1]}，由变量 ${sectionMatch[2]} 触发` });
+        } else if (inner.startsWith('request.')) {
+          map.set(inner, { type: 'request', label: inner, hint: '请求变量' });
+        } else if (inner === 'task_id') {
+          map.set(inner, { type: 'task', label: inner, hint: '任务编号' });
+        } else {
+          map.set(inner, { type: 'config', label: inner, hint: '系统变量' });
+        }
+      }
+
+      // 2) shell 环境变量引用 $ENV / ${ENV}
+      const envRefs = content.match(/\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*/g) || [];
+      for (const ref of envRefs) {
+        const name = ref.startsWith('${') ? ref.slice(2, -1) : ref.slice(1);
+        // 跳过 SDK 网关自身变量，仅保留业务相关环境变量
+        if (name.startsWith('ANTHROPIC_') || name === 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' || name === 'CLAUDE_CODE_ATTRIBUTION_HEADER' || name === 'CLAUDE_CODE_AUTO_MODE_SERVER') continue;
+        const info = envMap.get(name);
+        const hint = info ? `${info.key}${info.note ? ' — ' + info.note : ''}` : '环境变量';
+        map.set(name, { type: 'env', label: '${' + name + '}', hint });
+      }
+
+      return Array.from(map.values());
+    };
 
     if (existsSync(promptsDir)) {
       const walk = (dir: string, prefix: string) => {
@@ -1035,9 +1214,11 @@ export function createAdminRouter(cfg: Config): Router {
             walk(full, rel + '/');
           } else if (entry.endsWith('.md')) {
             try {
+              const raw = readFileSync(full, 'utf8');
               previews.push({
                 file: rel,
-                raw: readFileSync(full, 'utf8'),
+                raw,
+                variables: extractVariables(raw),
               });
             } catch { /* skip */ }
           }
