@@ -75,10 +75,26 @@ async function processItem(item: WorkerItem): Promise<void> {
   // 这样任务仍在 processing 时，前端「对话」按钮就能实时看到会话。
   const abortController = new AbortController();
   runningAborts.set(task_id, abortController);
+
+  // SDK 超时兜底：若 SDK 调用长时间不返回（网络/网关挂死），强制中断，避免任务卡死在 processing。
+  const hardTimeoutMs = cfg.llm.timeout_ms;
+  let timeoutFired = false;
+  const timeoutTimer =
+    hardTimeoutMs && hardTimeoutMs > 0
+      ? setTimeout(() => {
+          if (!abortController.signal.aborted) {
+            timeoutFired = true;
+            log.warn({ task_id, linkid, timeoutMs: hardTimeoutMs }, 'task_sdk_timeout_force_abort');
+            abortController.abort();
+          }
+        }, hardTimeoutMs)
+      : undefined;
+
   const result = await runAgent(linkid, task_id, rendered, cfg, resumeSessionId, (sessionId) => {
     sessionsStore.upsert(sessionId, linkid);
     taskLogsStore.updateResult(task_id, { session_id: sessionId });
   }, abortController.signal);
+  if (timeoutTimer) clearTimeout(timeoutTimer);
   const wasAborted = abortController.signal.aborted;
   runningAborts.delete(task_id);
 
@@ -88,7 +104,7 @@ async function processItem(item: WorkerItem): Promise<void> {
   }
 
   // 被管理员手动停止：状态应记为 cancelled，而非 failed/completed
-  if (wasAborted) {
+  if (wasAborted && !timeoutFired) {
     taskLogsStore.updateResult(task_id, {
       status: 'cancelled' as TaskStatus,
       session_id: result.sessionId || null,
@@ -98,6 +114,20 @@ async function processItem(item: WorkerItem): Promise<void> {
     });
     if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
     log.info({ task_id, linkid, status: 'cancelled' }, 'task_cancelled');
+    return;
+  }
+
+  // SDK 超时：记为 failed
+  if (wasAborted && timeoutFired) {
+    taskLogsStore.updateResult(task_id, {
+      status: 'failed' as TaskStatus,
+      session_id: result.sessionId || null,
+      sdk_output: result.rawOutput,
+      error_message: 'SDK 执行超时（超过 ' + hardTimeoutMs + 'ms），已强制中断',
+      finished_at: nowLocal(),
+    });
+    if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
+    log.error({ task_id, linkid, timeoutMs: hardTimeoutMs }, 'task_sdk_timeout_failed');
     return;
   }
 
@@ -131,16 +161,12 @@ async function processItem(item: WorkerItem): Promise<void> {
 
 async function pump(): Promise<void> {
   const maxConcurrent = cfg.sys.max_concurrent_tasks;
-  const maxPending = cfg.sys.max_pending_tasks;
   while (running < maxConcurrent && pending.length > 0) {
     const item = pending.shift()!;
-    if (running >= maxPending) {
-      pending.unshift(item);
-      break;
-    }
     running++;
 
-    // per-linkid 串行化：挂到该 linkid 的 Promise 链后面
+    // per-linkid 串行化：提交侧已保证同一 linkid 不会同时有多个活跃任务，
+    // 此链实际最多只有一个任务，但保留串行语义以防未来改动引入并发同 linkid。
     const prev = linkChains.get(item.body.linkid) ?? Promise.resolve();
     const next = prev
       .then(() => processItem(item))
