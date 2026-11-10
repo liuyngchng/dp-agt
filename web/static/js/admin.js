@@ -1649,7 +1649,7 @@ function renderSessionFileTree(node, prefix) {
         const isMd = f.name.toLowerCase().endsWith('.md');
         const previewBtn = isMd
             ? '<button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="previewSessionFile(\'' + escJs(f.relPath) + '\')" title="预览" style="flex-shrink:0;"><i class="fas fa-eye"></i></button>'
-            : '';
+            : '<button class="cfg-btn-sm cfg-btn-icon" style="visibility:hidden;flex-shrink:0;pointer-events:none;" tabindex="-1"><i class="fas fa-eye"></i></button>';
         html +=
             '<div class="file-tree-row file-tree-file-row" title="' + escHtml(f.relPath) + '">' +
                 icon +

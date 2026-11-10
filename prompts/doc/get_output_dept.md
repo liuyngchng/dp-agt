@@ -84,7 +84,7 @@
     "id": "",
     "name": ""
   },
-  "opinion_text": "计划财务部、新",
+  "opinion_text": "计划财务部、XXX、请按照领导的批示执行相关任务",
   "remark": ""
 }
 ```
