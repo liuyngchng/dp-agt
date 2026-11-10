@@ -59,43 +59,40 @@ npm start          # HTTPS 模式（读取 deploy/certs/cert.pem、key.pem）
 - **无业务逻辑**：系统只是 Claude Agent SDK 的网关壳，所有文档分析判断全交给 LLM
 ## 任务状态机
 
-```
-                   ┌─────────────────────┐
-                   │       pending       │  排队等待
-                   └─────────┬───────────┘
-                             │  worker 取出
-                             ▼
-                   ┌─────────────────────┐
-        ┌──────────│     processing      │──────────┐
-        │          └─────────┬───────────┘          │
-        │                    │                       │
-        │   SDK 调用异常      │  SDK 返回成功          │  外部取消
-        │                    │                       │
-        ▼                    ▼                       ▼
-  ┌──────────┐     ┌──────────────────┐     ┌──────────────┐
-  │  failed  │     │  回调 callback_url │     │  cancelled   │
-  └──────────┘     └────────┬─────────┘     └──────────────┘
-                            │
-                   ┌────────┴────────┐
-                   │                 │
-               回调成功           回调失败（重试耗尽）
-                   │                 │
-                   ▼                 ▼
-           ┌───────────┐     ┌───────────────┐
-           │ completed │     │ callback_fail │
-           └───────────┘     └───────────────┘
+任务状态机定义在 `src/types.ts`（状态类型）与 `src/services/task-queue.ts`（转移逻辑）中。
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: enqueue() 入队
+
+    pending --> processing: 并发有空位，pump() 取出
+
+    pending --> cancelled: 管理员取消
+
+    processing --> completed: SDK 返回成功
+    processing --> failed: SDK 调用失败 / 超时 / 模板缺失
+    processing --> cancelled: 管理员取消（中断 SDK）
+
+    completed --> [*]
+    failed --> [*]
+    cancelled --> [*]
 ```
 
 | 状态 | 含义 |
 |------|------|
-| `pending` | 已入队，等待 worker 消费 |
-| `processing` | worker 正在调用 Claude Agent SDK |
-| `completed` | SDK 处理完成 + 回调对方 URL 成功，整条链路走完 |
-| `failed` | SDK 调用本身异常（网络、超时、模型错误等） |
-| `callback_fail` | SDK 输出成功，但回调对方 URL 失败（重试次数耗尽） |
-| `cancelled` | 仍在排队 `pending` 时被外部系统取消 |
+| `pending` | 已入队，等待并发空位 |
+| `processing` | 正在调用 Claude Agent SDK |
+| `completed` | SDK 处理成功 |
+| `failed` | SDK 调用失败、超时、提示词模板缺失，或服务重启时被中断 |
+| `cancelled` | 被管理员手动取消 |
 
-失败时回调**仍然尝试投递**（状态为 `failed` 时也会回调，payload 里 `code: 5000`，`data: null`），以便对方感知失败。
+**服务重启时的恢复**（`recoverOrphanedTasks()`）：
+
+- DB 中 `pending` 且关联接口模板已被删除 → `failed`
+- DB 中 `processing` → `failed`（原进程已退出，任务被中断）
+- 其余 `pending` 任务重新入队，继续等待处理
+
+> 说明：系统本身**不投递回调**。回调是 Agent 按提示词指令自行通过 `curl` 调用对方的 `callback_url`，因此回调结果不进入任务状态机。
 
 ## 项目结构
 
@@ -112,8 +109,7 @@ AI 数字员工/
 │   └── services/
 │       ├── sdk-runner.ts     # Claude Agent SDK 封装
 │       ├── prompt-engine.ts  # 模板查找 + 占位符渲染
-│       ├── callback.ts       # 回调投递 + 重试
-│       └── task-queue.ts     # 异步任务队列
+│       ├── task-queue.ts     # 异步任务队列（状态机核心）
 ├── web/                      # 管理后台前端（内嵌 SPA）
 ├── prompts/                  # 提示词文件（无需重编译，热更新）
 │   ├── doc/                   # 业务提示词（目录结构即访问路径）

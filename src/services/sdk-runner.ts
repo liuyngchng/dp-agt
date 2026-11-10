@@ -82,6 +82,11 @@ function sanitizeDirName(s: string): string {
   return s.replace(/[/\\:*?"<>|]/g, '_');
 }
 
+/** 任务工作目录：runtime/tasks/<sanitize(linkid)>/（按 linkid 唯一，供看门狗定位 SDK 子进程） */
+export function taskWorkDir(cfg: Config, linkid: string): string {
+  return join(cfg.sys.runtime_dir, 'tasks', sanitizeDirName(linkid));
+}
+
 /** 将 tool_result 的 content（string 或 blocks 数组）转为纯文本 */
 function toolResultText(raw: unknown): string {
   if (typeof raw === 'string') return raw;
@@ -283,8 +288,9 @@ export async function runAgent(
   resumeSessionId?: string,
   onSessionId?: (sessionId: string) => void,
   abortSignal?: AbortSignal,
+  onActivity?: () => void,
 ): Promise<SdkResult> {
-  const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeDirName(linkid));
+  const workDir = taskWorkDir(cfg, linkid);
   await mkdir(workDir, { recursive: true });
 
   // 验证 resume session 是否仍然存在。
@@ -357,6 +363,8 @@ export async function runAgent(
 
     for await (const message of q) {
       traceMessages.push(message);
+      // 滑动超时：每收到一条消息（模型输出/工具结果等）都算活动，由调用方重置计时
+      onActivity?.();
 
       // 首条消息即捕获 session_id，用于立即写入 sessions 表
       const sid = (message as Record<string, unknown>).session_id;

@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore, getDb, sdkTracesStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
-import { cancelTask } from '../services/task-queue.js';
+import { cancelTask, cancelByLinkidInQueue } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
@@ -370,6 +370,10 @@ export function createAdminRouter(cfg: Config): Router {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
+    // 先中断该 linkid 下还在队列中的任务（处理中 / 链上等待 / 排队），
+    // 再删工作目录，避免任务在已删除的目录中继续执行、或结束后覆盖取消状态。
+    const aborted = cancelByLinkidInQueue(session.linkid);
+
     const workDir = sessionWorkDir(cfg, session.linkid);
     if (existsSync(workDir)) {
       try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
@@ -378,7 +382,7 @@ export function createAdminRouter(cfg: Config): Router {
     // 使后续同一 linkid 重新提交时不再命中旧任务/旧会话。
     const cancelled = taskLogsStore.cancelByLinkid(session.linkid);
     sessionsStore.close(session_id);
-    log.info({ session_id, linkid: session.linkid, workDir, cancelledTasks: cancelled }, 'session_deleted');
+    log.info({ session_id, linkid: session.linkid, workDir, abortedTasks: aborted, cancelledTasks: cancelled }, 'session_deleted');
     res.json({ code: 0, message: '已删除' });
   });
 

@@ -18,6 +18,7 @@ interface CfgFile {
     retention_days?: number;
     data_dir?: string;
     runtime_dir?: string;
+    watchdog_grace_ms?: number;
   };
   llm?: {
     base_url?: string;
@@ -48,6 +49,7 @@ export interface Config {
     retention_days: number;
     data_dir: string;
     runtime_dir: string;
+    watchdog_grace_ms: number;
   };
   llm: {
     base_url: string;
@@ -135,6 +137,8 @@ export function loadConfig(): Config {
       retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 30),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
       runtime_dir: env('RUNTIME_DIR', y.runtime_dir ?? RUNTIME_DIR),
+      // SDK 硬超时后，再等这么久仍未结束，看门狗强制杀进程树并落库 failed
+      watchdog_grace_ms: envInt('WATCHDOG_GRACE_MS', y.watchdog_grace_ms ?? 60000),
     },
     llm: {
       base_url: llmBaseUrl,
@@ -145,7 +149,7 @@ export function loadConfig(): Config {
       haiku_model: env('ANTHROPIC_DEFAULT_HAIKU_MODEL', l.haiku_model ?? ''),
       subagent_model: env('CLAUDE_CODE_SUBAGENT_MODEL', l.subagent_model ?? ''),
       effort_level: env('CLAUDE_CODE_EFFORT_LEVEL', l.effort_level ?? ''),
-      timeout_ms: envInt('API_TIMEOUT_MS', l.timeout_ms ?? 300000),
+      timeout_ms: envInt('API_TIMEOUT_MS', l.timeout_ms ?? 600000),
       max_turns: envInt('MAX_TURNS', l.max_turns ?? 100),
       disable_nonessential_traffic: envBool('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', l.disable_nonessential_traffic ?? true),
       attribution_header: envBool('CLAUDE_CODE_ATTRIBUTION_HEADER', l.attribution_header ?? false),
