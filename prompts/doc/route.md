@@ -10,6 +10,15 @@
 {{request.body}}
 ```
 
+## 请求结构说明
+
+- `linkid` / `target` / `deptid`：公文与处理人身份信息，需原样透传到结果
+- `targetName` / `deptFullPath`：处理人姓名 / 部门完整路径，若输入提供则原样透传
+- `workflow_id` / `current_stepid` / `current_step`：流程标识信息，需原样透传到结果（`workflow_id` 缺省固定为 `00000000-0000-0000-0000-000000000000`）
+- `approval_history`：审批流转记录
+- `next_nodes`：当前节点可选的下一流转节点
+- `leader_division`：领导分工信息
+
 ## 执行步骤
 
 ### 步骤 1：下载并读取文件
@@ -39,6 +48,14 @@
 
 ```json
 {
+  "linkid": "<linkid>",
+  "target": "ptr\\exampleUser",
+  "targetName": "张三",
+  "deptid": "<deptid>",
+  "deptFullPath": "某分公司-某部门",
+  "workflow_id": "00000000-0000-0000-0000-000000000000",
+  "current_stepid": "<current_stepid>",
+  "current_step": "<current_step>",
   "need_human": false,
   "fail_reason": "",
   "next_node": {
@@ -54,5 +71,6 @@
 
 ## 注意事项
 - 所有文本字段（fail_reason、opinion_text、remark 等）必须输出简体中文
+- 凡输入 JSON 中已有的同名字段（`linkid`、`target`、`targetName`、`deptid`、`deptFullPath`、`workflow_id`、`current_stepid`、`current_step`），一律原样透传，不要改动值
 - next_node 必须从 next_nodes / person_list / org_list 中选择已存在的节点
 - 如果无法确定，将 need_human 设为 true 并在 fail_reason 中说明原因

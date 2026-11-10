@@ -9,8 +9,8 @@
 
 ## 请求结构说明
 
-- `linkid`：业务流水号，回调时原样带回用于关联任务
-- `target` / `deptid` / `targetName` / `deptFullPath`：处理人身份与部门信息（仅作分析上下文，不随结果返回）
+- `linkid` / `target` / `deptid`：公文与处理人身份信息，需原样透传到结果
+- `targetName` / `deptFullPath`：处理人姓名 / 部门完整路径，若输入提供则原样透传
 - `current_stepid` / `current_step`：当前流程节点（如 `startReceiveWorkflow` / `待收公文`）
 - `form_data`：表单元数据（标题 `title`、来文单位 `unitOfReceipt`、所属部门 `docDeptDisplayName`、类型 `type` 等）
 - `feedback`：反馈信息（`direction` 流转方向、`needIdea` 是否需要办理意见）
@@ -51,12 +51,22 @@
 
 | 字段 | 来源 |
 |------|------|
-| `linkid` | 透传 `linkid`（用于标识本次任务） |
+| `linkid` | 透传 `linkid` |
+| `target` | 透传 `target` |
+| `targetName` | 透传 `targetName` |
+| `deptid` | 透传 `deptid` |
+| `deptFullPath` | 透传 `deptFullPath` |
+| `workflow_id` | 固定 `"00000000-0000-0000-0000-000000000000"` |
+| `current_stepid` | 透传 `current_stepid` |
+| `current_step` | 透传 `current_step` |
 | `need_human` | 固定 `false` |
 | `next_node.name` | 固定 `"启动"`（待收公文选择流程启动时固定传此值） |
 | `feedback.workflowFormId` | 步骤 3 获取的表单 ID |
 | `feedback.workflowFormName` | 步骤 2 判断的工作流名（如 `"公司收文"`） |
-| `feedback.feedBackIdea` | 根据公文标题与内容生成的简短办理意见（`feedback.needIdea` 为 `true` 时生成，否则为空字符串） |
+| `feedback.direction` | 透传 `feedback.direction` |
+| `feedback.feedBackIdea` | 根据公文标题与内容生成的简短办理意见 |
+| `feedback.needIdea` | 透传 `feedback.needIdea` |
+| `feedback.userId` | 透传 `target` |
 
 ### 步骤 5：执行结果回调
 
@@ -80,6 +90,13 @@
 ```json
 {
   "linkid": "<linkid>",
+  "target": "ptr\\exampleUser",
+  "targetName": "张三",
+  "deptid": "<deptid>",
+  "deptFullPath": "某分公司-某部门",
+  "workflow_id": "00000000-0000-0000-0000-000000000000",
+  "current_stepid": "startReceiveWorkflow",
+  "current_step": "待收公文",
   "need_human": false,
   "fail_reason": "",
   "next_node": {
@@ -88,7 +105,10 @@
   "feedback": {
     "workflowFormId": "<workflowFormId>",
     "workflowFormName": "公司收文",
-    "feedBackIdea": "请相关部门阅处"
+    "direction": "发文到收文",
+    "feedBackIdea": "请相关部门阅处",
+    "needIdea": true,
+    "userId": "ptr\\exampleUser"
   }
 }
 ```
@@ -97,18 +117,16 @@
 
 | 字段 | 说明 |
 |------|------|
-| `linkid` | 业务流水号，原样带回用于调用方关联任务 |
 | `need_human` | 正常完成时为 `false`；仅当工作流无法判断、接口调用失败、回调失败等异常时才设为 `true` 并在 `fail_reason` 说明原因 |
 | `fail_reason` | 正常为空字符串；异常时填简体中文原因 |
 | `next_node` | 「待收公文」节点选择流程启动时，固定 `{"name": "启动"}` |
 | `feedback.workflowFormName` | 即识别出的收文工作流名称（"公司收文" / "部门收文"），决定后续走哪条流程 |
-| `feedback.workflowFormId` | 步骤 3 获取的表单 ID |
-| `feedback.feedBackIdea` | 根据公文标题与内容生成的简短办理意见（`feedback.needIdea` 为 `true` 时生成，否则为空字符串） |
+| `feedback.feedBackIdea` | 办理意见；`feedback.needIdea` 为 `true` 时根据公文内容生成一句简短意见，否则可留空 |
 
 ## 注意事项
 
 - 所有文本字段（`fail_reason`、`feedBackIdea` 等）必须使用简体中文
-- 除 `linkid` 外，结果只包含业务数据（识别出的工作流、办理意见等），不要回传输入 JSON 中的其他字段
+- 凡输入 JSON 中已有的同名字段，一律原样透传，不要改动值
 - 文件下载前先检查本地是否已有该文件
 - 如果文件无法下载、工作流无法判断或接口调用失败，将 `need_human` 设为 `true` 并在 `fail_reason` 中说明原因
 - json 代码块之外不要输出任何其他内容

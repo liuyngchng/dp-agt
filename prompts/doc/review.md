@@ -8,6 +8,9 @@
 
 ## 请求结构说明
 
+- `linkid` / `target` / `deptid`：公文与处理人身份信息，需原样透传到结果
+- `targetName` / `deptFullPath`：处理人姓名 / 部门完整路径，若输入提供则原样透传
+- `workflow_id` / `current_stepid` / `current_step`：流程标识信息，需原样透传到结果（`workflow_id` 缺省固定为 `00000000-0000-0000-0000-000000000000`）
 - `form_data`: 表单元数据（标题、文种、紧急程度、密级、主送机关等）
 - `files`: 文件数组，其中 `file_type` = `"main_body"` 的是正文（.docx），其余为附件
 - `approval_history`: 审批流转记录（含各部门会签意见）
@@ -77,6 +80,14 @@
 
 ```json
 {
+  "linkid": "<linkid>",
+  "target": "ptr\\exampleUser",
+  "targetName": "张三",
+  "deptid": "<deptid>",
+  "deptFullPath": "某分公司-某部门",
+  "workflow_id": "00000000-0000-0000-0000-000000000000",
+  "current_stepid": "<current_stepid>",
+  "current_step": "<current_step>",
   "audit_result": "warning",
   "result_text": "## 发文审核报告\n\n**审核时间**: 2026-01-15\n**标题**: xx公司关于xx的通知\n\n---\n\n### 一、政策与合规审核\n\n#### 1.1 发文必要性\n该文涉及...确有必要发文。\n\n#### 1.2 文种选用\n使用\"通知\"文种，符合...\n\n...\n\n### 二、内容与逻辑审核\n\n...\n\n### 三、体例格式审核\n\n（以下为 rdCLI 自动核稿意见）\n\n#### 3.1 错别字\n...\n\n### 四、程序与附件审核\n\n...\n\n### 五、审核结论\n\n> 共发现 xx 个问题（严重 yy 项、一般 zz 项、提示 ww 项）。建议...",
   "issues_count": 5,
@@ -95,6 +106,7 @@
 
 ## 注意事项
 - 所有文本内容（`result_text`）必须使用简体中文
+- 凡输入 JSON 中已有的同名字段（`linkid`、`target`、`targetName`、`deptid`、`deptFullPath`、`workflow_id`、`current_stepid`、`current_step`），一律原样透传，不要改动值
 - `result_text` 中的 Markdown 要规范，使用 ## 作为一级标题、### 作为二级标题、**加粗**用于强调
 - rdCLI 核稿意见原样保留到 `result_text` 的"体例格式审核"章节中，不要改写
 - 如果某维度未发现问题，在报告中写"未发现问题"即可，不要留空

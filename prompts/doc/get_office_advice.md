@@ -8,8 +8,9 @@
 
 ## 请求结构说明
 
-- `linkid`：业务流水号，回调时原样带回用于关联任务
-- `target` / `deptid`：处理人身份信息（仅作分析上下文，不随结果返回）
+- `linkid` / `target` / `deptid`：公文与处理人身份信息，需原样透传到结果
+- `targetName` / `deptFullPath`：处理人姓名 / 部门完整路径，若输入提供则原样透传
+- `workflow_id` / `current_stepid` / `current_step`：流程标识信息，需原样透传到结果（`workflow_id` 缺省固定为 `00000000-0000-0000-0000-000000000000`）
 - `form_data`：表单元数据（标题 `title`、来文单位 `unitOfReceipt`、所属部门 `docDeptDisplayName`、紧急程度 `emergencyLevel`、办文时限 `timeLimitWriting` 等）
 - `files`：公文附件数组，其中 `file_type = "main_body"` 的是正文
 - `approval_history`：审批流转记录
@@ -57,6 +58,14 @@
 
 ```json
 {
+  "linkid": "<linkid>",
+  "target": "ptr\\exampleUser",
+  "targetName": "张三",
+  "deptid": "<deptid>",
+  "deptFullPath": "某分公司-某部门",
+  "workflow_id": "00000000-0000-0000-0000-000000000000",
+  "current_stepid": "<current_stepid>",
+  "current_step": "<current_step>",
   "need_human": false,
   "fail_reason": "",
   "opinion_text": "请某领导阅示，转某部门承办",
@@ -84,8 +93,8 @@
 ## 注意事项
 
 - 所有文本字段（`fail_reason`、`advice_text` 等）必须使用简体中文
+- 凡输入 JSON 中已有的同名字段（`linkid`、`target`、`targetName`、`deptid`、`deptFullPath`、`workflow_id`、`current_stepid`、`current_step`），一律原样透传，不要改动值
 - 拟办意见文本要符合机关公文习惯，简明扼要，避免口语化
 - 领导与部门的建议必须依据记忆库中的分工与职责信息，不得凭空猜测
 - 若正文无法下载、领导或部门无法判断、接口调用失败，将 `need_human` 设为 `true` 并在 `fail_reason` 中说明原因
-- 结果只包含业务数据（`need_human`、`fail_reason`、`advice_text`、`suggest_leaders`、`suggest_departments`、`form_fill`），除 `linkid` 外不要回传输入 JSON 中的其他字段
 - json 代码块之外不要输出任何其他内容
