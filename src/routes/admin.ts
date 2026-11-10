@@ -1125,14 +1125,20 @@ export function createAdminRouter(cfg: Config): Router {
 
     // 替换 prompts/ 目录
     const promptsDir = resolve(process.cwd(), 'prompts');
-    if (existsSync(promptsDir)) {
-      rmSync(promptsDir, { recursive: true, force: true });
-    }
-    mkdirSync(promptsDir, { recursive: true });
-    for (const [name, content] of Object.entries(files)) {
-      const dest = join(promptsDir, name);
-      mkdirSync(join(dest, '..'), { recursive: true });
-      writeFileSync(dest, content);
+    try {
+      if (existsSync(promptsDir)) {
+        rmSync(promptsDir, { recursive: true, force: true });
+      }
+      mkdirSync(promptsDir, { recursive: true });
+      for (const [name, content] of Object.entries(files)) {
+        const dest = join(promptsDir, name);
+        mkdirSync(join(dest, '..'), { recursive: true });
+        writeFileSync(dest, content);
+      }
+    } catch (err) {
+      log.error({ err }, 'prompt_archive_write_failed');
+      res.status(500).json({ code: 1001, message: '写入提示词目录失败，请检查服务端目录权限' });
+      return;
     }
 
     // 重新扫描并同步 agent_interfaces 表

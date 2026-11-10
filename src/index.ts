@@ -18,6 +18,21 @@ import { rescanPromptsDir } from './services/prompt-engine.js';
 
 const log = getLogger();
 
+// ═══════════════════════════════════════════════════════════
+// 全局兜底——单个请求失败，不应导致进程崩溃
+// ═══════════════════════════════════════════════════════════
+process.on('unhandledRejection', (reason, promise) => {
+  log.error({ reason, promise: String(promise) }, 'unhandled_rejection');
+  // 记录后不退出——让 Node 保持运行，仅影响本次请求
+});
+
+process.on('uncaughtException', (err) => {
+  log.error({ err: String(err), stack: err.stack }, 'uncaught_exception');
+  // uncaughtException 之后进程状态不确定，但它发生在
+  // Express 的 try/catch 之外时至少可以记录日志再退出
+  process.exit(1);
+});
+
 log.info('==== AI 数字员工 starting ====');
 
 const cfg = loadConfig();

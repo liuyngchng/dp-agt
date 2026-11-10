@@ -126,6 +126,11 @@ COPY --chown=agent:agent package.json tsconfig.json /app/
 COPY --chown=agent:agent web/ /app/web/
 COPY --chown=agent:agent prompts/ /app/prompts/
 
+# /app/prompts 会被模板上传接口 rmSync 后重建，且容器可能以任意 HOST_UID 运行
+# （deploy.sh 的 --user $HOST_UID）。删除目录项还需要父目录 /app 的写权限，
+# 因此 /app 与 /app/prompts 都需任意 uid 可写（与 /app/runtime 的 777 同理）。
+RUN chmod 777 /app && chmod -R 777 /app/prompts
+
 # ---- 第2类静态资源（镜像内，不依赖宿主机挂载） ----
 COPY --chown=agent:agent data/cfg.csv.template data/mock.json /app/assets/
 
