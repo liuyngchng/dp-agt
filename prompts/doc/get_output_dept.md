@@ -84,7 +84,7 @@
     "id": "",
     "name": ""
   },
-  "opinion_text": "转某部门承办",
+  "opinion_text": "计划财务部、新",
   "remark": ""
 }
 ```
