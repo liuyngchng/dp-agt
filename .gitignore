@@ -14,7 +14,7 @@ data/app.db-shm
 data/app.db-wal
 data/cfg.yml
 data/mock.json
-data/mock1.json
+data/mock*.json
 data/secrets.key
 data/logs/
 data/tasks/
