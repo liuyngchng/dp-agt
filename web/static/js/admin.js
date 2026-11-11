@@ -80,6 +80,9 @@ async function initNav() {
         // 激活默认 tab
         const defaultEl = sidebar.querySelector('[data-tab="' + defaultTab + '"]');
         if (defaultEl) defaultEl.click();
+
+        // 预加载访问路径→功能名映射，供任务/审计表格 tooltip 使用
+        refreshIfaceNameMap();
     } catch (_) {}
 }
 
@@ -98,11 +101,33 @@ function toast(msg, type) {
 // ==== Modal helpers ====
 function closeTaskModal() { document.getElementById('taskModal').classList.remove('show'); }
 
+// ==== 访问路径 → 功能名 缓存（用于任务/审计表格的访问路径 tooltip） ====
+let _ifaceNameMap = {};
+function _setIfaceNameMap(list) {
+    const m = {};
+    (list || []).forEach(i => { if (i.path) m[i.path] = i.name || ''; });
+    _ifaceNameMap = m;
+}
+async function refreshIfaceNameMap() {
+    try {
+        const res = await fetch(API + '/interfaces');
+        const json = await res.json();
+        _setIfaceNameMap(Array.isArray(json.data) ? json.data : []);
+    } catch (_) { /* 加载失败则 tooltip 仅显示路径 */ }
+}
+// 返回用于 title 的提示文本：有功能名时显示「功能名（路径）」，否则仅路径
+function ifacePathTip(path) {
+    const p = path || '';
+    const name = _ifaceNameMap[p];
+    return name ? (name + '（' + p + '）') : p;
+}
+
 // ==== Interfaces ====
 async function loadInterfaces() {
     const res = await fetch(API + '/interfaces');
     const json = await res.json();
     const list = Array.isArray(json.data) ? json.data : [];
+    _setIfaceNameMap(list);
     const tbody = document.getElementById('ifacesTbody');
     if (list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">暂无访问路径</td></tr>';
@@ -656,7 +681,7 @@ function renderTasksPage(list) {
         return `<tr class="main-row">
             <td class="col-seq">${no}</td>
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
-            <td>${escHtml(t.path || '-')}</td>
+            <td title="${escHtml(ifacePathTip(t.path))}">${escHtml(t.path || '-')}</td>
             <td><code style="font-size:0.78rem;">${escHtml((t.linkid || '-').substring(0,8))}...</code></td>
             <td>${statusText(t.status)}</td>
             <td class="col-date">${fmtTs(t.created_at)}</td>
@@ -709,7 +734,7 @@ function taskDetailHtml(t) {
     let html = '<div class="task-info-bar" style="flex-shrink:0;">' +
         '<div class="task-info-row"><span class="task-info-label">标题：</span>' + escHtml(t.title || '-') + '</div>' +
         '<div class="task-info-row"><span class="task-info-label">Task ID：</span>' + escHtml(t.task_id) + '<span class="task-info-label" style="margin-left:8px;">LinkID：</span>' + escHtml(t.linkid || '-') + '<span class="task-info-label" style="margin-left:8px;">Session：</span>' + escHtml((t.session_id || '-').substring(0,8)) + '</div>' +
-        '<div class="task-info-row"><span class="task-info-label">访问路径：</span>' + escHtml(t.path || '-') + '<span class="task-info-label" style="margin-left:8px;">状态：</span>' + statusText(t.status) + '</div>' +
+        '<div class="task-info-row"><span class="task-info-label">访问路径：</span><span title="' + escHtml(ifacePathTip(t.path)) + '">' + escHtml(t.path || '-') + '</span><span class="task-info-label" style="margin-left:8px;">状态：</span>' + statusText(t.status) + '</div>' +
         '<div class="task-info-row"><span class="task-info-label">创建：</span>' + fmtTs(t.created_at) + '<span class="task-info-label" style="margin-left:8px;">完成：</span>' + fmtTs(t.finished_at) + '</div>' +
         (errMsg ? '<div class="task-info-row" style="color:#c62828;"><span class="task-info-label">错误信息：</span>' + escHtml(errMsg) + '</div>' : '') +
         '</div>';
@@ -1134,7 +1159,7 @@ function renderTraceList(items, total, label) {
         html += '<tr>'
             + '<td class="col-seq">' + (idx + 1) + '</td>'
             + '<td class="col-title" title="' + escHtml(t.title || '-') + '">' + escHtml(t.title || '-') + '</td>'
-            + '<td>' + escHtml(t.path || '-') + '</td>'
+            + '<td title="' + escHtml(ifacePathTip(t.path)) + '">' + escHtml(t.path || '-') + '</td>'
             + '<td>' + escHtml(statusText(t.status)) + '</td>'
             + '<td>' + escHtml(fmtTs(t.created_at)) + '</td>'
             + '<td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewTrace(\'' + escJs(t.task_id) + '\')" title="查看 sdk_trace"><i class="fas fa-terminal"></i></button></td>'
@@ -1487,7 +1512,7 @@ function renderAuditPage(list) {
         return `<tr class="main-row">
             <td class="col-seq">${no}</td>
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
-            <td>${escHtml(t.path || '-')}</td>
+            <td title="${escHtml(ifacePathTip(t.path))}">${escHtml(t.path || '-')}</td>
             <td><code style="font-size:0.78rem;">${escHtml((t.linkid || '-').substring(0,8))}...</code></td>
             <td>${statusText(t.status)}</td>
             <td class="col-date">${fmtTs(t.created_at)}</td>
