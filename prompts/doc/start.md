@@ -28,12 +28,20 @@
 
 ### 步骤 2：识别收文工作流
 
-根据公文内容，结合 `form_data.unitOfReceipt`（来文单位）、`form_data.docDeptDisplayName`（所属部门）等信息，
+首先通过 `echo ${DP_CURRENT_ORGANIZATION:+已配置}` 确认「当前公司名称」环境变量是否已配置。
+该变量（key `current_organization`，环境变量 `$DP_CURRENT_ORGANIZATION`）保存当前公司全称。
+
+根据公文内容，结合 `form_data.unitOfReceipt`（来文单位）、`form_data.docDeptDisplayName`（所属部门）、当前公司全称等信息，
 判断应启动的收文工作流，得到 `workflowFormName`：
 
-- **公司收文**：来文来自外部单位（其他公司、集团、政府机关等），进入公司层面收文流程。
+- **公司收文**：来文来自公司外部单位（其他公司、集团、政府机关等），进入公司层面收文流程。
+  判断依据：`unitOfReceipt` 为外部单位，或来文单位与当前公司全称（`$DP_CURRENT_ORGANIZATION`）不一致且非本公司内部部门。
   例如 `unitOfReceipt = "某外部单位"` 这类外部单位来文。
 - **部门收文**：来文在本公司内部部门之间或部门内部流转。
+  判断依据：`unitOfReceipt` 或 `docDeptDisplayName` 隶属于当前公司内部部门（以当前公司全称为前缀或为其下级部门）。
+
+若「当前公司名称」环境变量未配置（`${DP_CURRENT_ORGANIZATION}` 为空），
+则按原有规则判断（外部单位 → 公司收文；公司内部部门 → 部门收文），不要因缺少该变量而中断任务。
 
 ### 步骤 3：获取工作流表单 ID
 

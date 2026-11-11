@@ -8,3 +8,4 @@ doc_audit.api_url,,rdCLI审稿服务接口地址
 doc_audit.token,,审稿服务认证Token
 callback.url,,任务完成后的结果回调地址（留空则跳过回调，Agent 不执行 curl 回调步骤）
 callback.token,,回调接口 Bearer Token（留空则回调时不带认证头）
+current_organization,,当前公司全称（用于判断来文是外部单位来文还是内部部门来文）
