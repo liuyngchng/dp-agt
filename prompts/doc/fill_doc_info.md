@@ -33,7 +33,7 @@
 - **来文单位**（`unitOfReceipt`）：发文单位/来文单位名称
 - **成文日期**（`writtenDate`）：落款日期，格式 `YYYY-MM-DD`
 - **紧急程度**（`emergencyLevel`）：如"加急"、"特急"
-- **办文时限**（`timeLimitWriting`）：正文中要求反馈的期限（如"请于 X 年 X 月 X 日前反馈"）
+- **办文时限**（`timeLimitWriting`）：正文中要求反馈的期限，格式 `YYYY-MM-DD`
 - **密级**（`secretClass`）：如"绝密"、"机密"、"秘密"
 
 字段名以请求 `JSON` 中 `form_data` 实际出现的字段名为准，参考 `form_data_desc` 判断每个字段的含义。
@@ -44,7 +44,7 @@
 
 ### 步骤 4：执行结果回调
 
-前置检查：若系统提示（CLAUDE.md）中**没有**「结果回调」章节，或环境变量 `${DP_CALLBACK_URL}` 为空，说明回调地址未配置。此时**立即停止**，严禁从数据库、源码、日志、配置文件或历史会话中查找/猜测回调地址；跳过回调步骤，并在输出 JSON 中把 `need_human` 设为 `true`、`fail_reason` 注明「结果回调未配置」。回调地址已配置时才继续执行下方回调。
+前置检查：若系统提示（`CLAUDE.md`）中**没有**「结果回调」章节，或环境变量 `${DP_CALLBACK_URL}` 为空，说明回调地址未配置。此时**立即停止**，严禁从数据库、源码、日志、配置文件或历史会话中查找/猜测回调地址；跳过回调步骤，并在输出 `JSON` 中把 `need_human` 设为 `true`、`fail_reason` 注明「结果回调未配置」。回调地址已配置时才继续执行下方回调。
 
 重要参数：
 - 当前任务 `task_id`: `{{task_id}}`
@@ -79,7 +79,7 @@
     "unitOfReceipt": "某外部单位",
     "writtenDate": "2026-01-15",
     "emergencyLevel": "",
-    "timeLimitWriting": "",
+    "timeLimitWriting": "2026-01-18",
     "secretClass": ""
   }
 }
