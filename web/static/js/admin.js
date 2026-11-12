@@ -2157,10 +2157,12 @@ function formatSessionMessagesMD(messages, sessionId) {
     let md = '# 会话记录 ' + sessionId + '\n\n';
     let seq = 0;
     for (const msg of messages) {
+        // 与界面显示保持一致：只导出 user / assistant，过滤 system 等内部消息
+        if (msg.type !== 'user' && msg.type !== 'assistant') continue;
         seq++;
         const ts = msg.message?.timestamp || msg.timestamp || '';
         const tsStr = ts ? fmtTimelineTs(ts) : '';
-        const roleLabel = msg.type === 'user' ? '用户' : msg.type === 'assistant' ? '助手' : msg.type;
+        const roleLabel = msg.type === 'user' ? '用户' : '助手';
         md += '## [' + seq + '] ' + tsStr + ' [' + roleLabel + ']\n\n';
         md += mdFromContent(msg.message?.content);
     }
