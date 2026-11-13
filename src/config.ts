@@ -19,6 +19,8 @@ interface CfgFile {
     data_dir?: string;
     runtime_dir?: string;
     watchdog_grace_ms?: number;
+    log_rolled_count?: number;
+    log_gz_count?: number;
   };
   llm?: {
     base_url?: string;
@@ -50,6 +52,8 @@ export interface Config {
     data_dir: string;
     runtime_dir: string;
     watchdog_grace_ms: number;
+    log_rolled_count: number;
+    log_gz_count: number;
   };
   llm: {
     base_url: string;
@@ -139,6 +143,10 @@ export function loadConfig(): Config {
       runtime_dir: env('RUNTIME_DIR', y.runtime_dir ?? RUNTIME_DIR),
       // SDK 硬超时后，再等这么久仍未结束，看门狗强制杀进程树并落库 failed
       watchdog_grace_ms: envInt('WATCHDOG_GRACE_MS', y.watchdog_grace_ms ?? 60000),
+      // 按天滚动日志保留数量（.log，不含 .gz）
+      log_rolled_count: envInt('LOG_ROLLED_COUNT', y.log_rolled_count ?? 30),
+      // 压缩日志保留数量（.log.gz）
+      log_gz_count: envInt('LOG_GZ_COUNT', y.log_gz_count ?? 60),
     },
     llm: {
       base_url: llmBaseUrl,

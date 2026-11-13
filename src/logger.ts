@@ -30,7 +30,7 @@ function createLazyLogger(): pino.Logger {
   }) as pino.Logger;
 }
 
-export function initLogger(dataDir: string, debug = false) {
+export function initLogger(dataDir: string, debug = false, logRolledCount = 30) {
   const level = debug ? 'debug' : 'info';
   const logDir = join(dataDir, 'logs');
   const logFile = join(logDir, 'app');
@@ -44,8 +44,8 @@ export function initLogger(dataDir: string, debug = false) {
         dateFormat: 'yyyy-MM-dd',
         extension: 'log',
         mkdir: true,
-        // 最多保留 30 个本进程产生的滚动文件（不包括旧日期的 .gz）
-        limit: { count: 30 },
+        // 最多保留 logRolledCount 个本进程产生的滚动文件（不包括旧日期的 .gz）
+        limit: { count: logRolledCount },
       },
       level,
     },
@@ -82,10 +82,9 @@ export function getLogger(): pino.Logger {
 // 滚动后文件不再被写入，这里压缩成 app.yyyy-MM-dd.<n>.log.gz 并删除原文件。
 const ROLLED_FILE_RE = /^app\.\d{4}-\d{2}-\d{2}\.\d+\.log$/;
 const GZ_FILE_RE = /^app\.\d{4}-\d{2}-\d{2}\.\d+\.log\.gz$/;
-const MAX_GZ_FILES = 60;
 
 /** 压缩昨天（含更早）已滚动完成的日志，并清理过量的 .gz 文件 */
-export async function compressLogs(logDir: string) {
+export async function compressLogs(logDir: string, maxGzFiles = 60) {
   const today = fmtDate(new Date());
   let entries: string[];
   try {
@@ -113,7 +112,7 @@ export async function compressLogs(logDir: string) {
   // 清理超出保留数量的 .gz 文件（按文件名排序，保留最新的）
   const refreshed = (await readdir(logDir).catch(() => [] as string[]))
     .filter(n => GZ_FILE_RE.test(n)).sort();
-  for (let i = 0; i < refreshed.length - MAX_GZ_FILES; i++) {
+  for (let i = 0; i < refreshed.length - maxGzFiles; i++) {
     await safeUnlink(join(logDir, refreshed[i]));
   }
 }

@@ -32,6 +32,10 @@ sys:
   # 运行时数据保留天数（task_logs + files 自动清理）
   retention_days: 30
 
+  # 日志按天滚动 + gzip 压缩保留数量
+  log_rolled_count: 30     # 滚动 .log 文件保留数量（不含 .gz）
+  log_gz_count: 60         # 压缩 .log.gz 文件保留数量
+
 # ---- LLM 适配器配置（必填，指向 Anthropic 协议兼容网关） ----
 # 本服务通过网关调用 LLM，base_url 留空则启动时报错退出。
 llm:

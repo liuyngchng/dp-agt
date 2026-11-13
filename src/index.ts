@@ -42,7 +42,7 @@ ensureDirs(cfg);
 log.info({ data_dir: cfg.sys.data_dir }, 'data_dirs_ready');
 
 // 初始化正式 logger（此后 log 代理自动指向新实例）
-initLogger(cfg.sys.data_dir, cfg.server.debug);
+initLogger(cfg.sys.data_dir, cfg.server.debug, cfg.sys.log_rolled_count);
 
 // ---- 打印完整配置（敏感字段脱敏） ----
 function mask(s: string): string {
@@ -181,7 +181,7 @@ async function cleanupExpiredTasks() {
   try {
     // 压缩已滚动完成的日志文件（按天 rolling + gzip）
     try {
-      await compressLogs(join(cfg.sys.data_dir, 'logs'));
+      await compressLogs(join(cfg.sys.data_dir, 'logs'), cfg.sys.log_gz_count);
     } catch (err) {
       log.warn({ error: String(err) }, 'log_compress_error');
     }
