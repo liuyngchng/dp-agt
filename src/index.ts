@@ -5,7 +5,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { createHash } from 'node:crypto';
 import { loadConfig, ensureDirs } from './config.js';
-import { initLogger, getLogger } from './logger.js';
+import { initLogger, getLogger, compressLogs } from './logger.js';
 import { initStore, taskLogsStore, configStore, sessionsStore, syncInterfacesFromPrompts } from './store.js';
 import { nowReadable } from './time.js';
 import { initTaskQueue } from './services/task-queue.js';
@@ -179,6 +179,13 @@ log.info({ port, certFile: CERT_FILE }, 'binding_port');
 async function cleanupExpiredTasks() {
   const retentionDays = cfg.sys.retention_days;
   try {
+    // 压缩已滚动完成的日志文件（按天 rolling + gzip）
+    try {
+      await compressLogs(join(cfg.sys.data_dir, 'logs'));
+    } catch (err) {
+      log.warn({ error: String(err) }, 'log_compress_error');
+    }
+
     const deleted = taskLogsStore.deleteExpired(retentionDays);
 
     // 清理过期 session（超过 retentionDays 未见新提交）
