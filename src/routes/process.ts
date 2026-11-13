@@ -60,7 +60,7 @@ export function createProcessRouter(cfg: Config): Router {
     const interfacePath = req.params[0] || '';
     const fromIp = req.ip || '';
 
-    log.debug({ from_ip: fromIp, path: interfacePath, body: req.body }, 'request_received');
+    log.info({ from_ip: fromIp, path: interfacePath, body: req.body }, 'request_received');
 
     const result = submitTask(interfacePath, req.body as Record<string, unknown>, cfg);
 

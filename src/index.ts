@@ -132,7 +132,7 @@ app.use(createTasksRouter());
 
 // JSON 解析失败等中间件错误 → 先记录原始请求，再返回 400
 app.use((err: any, req: any, res: any, _next: any) => {
-  log.debug({
+  log.info({
     method: req.method,
     url: req.originalUrl,
     rawBody: req.rawBody ?? '(无原始请求体)',

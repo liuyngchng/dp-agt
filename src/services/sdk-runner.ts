@@ -394,7 +394,7 @@ export async function runAgent(
               if (cmd.includes('/tmp/callback_payload') || cmd.includes('callback')) {
                 const bid = typeof block.id === 'string' ? block.id as string : '';
                 if (bid) callbackToolIds.add(bid);
-                log.debug({ taskId, linkid, command: cmd }, 'callback_request');
+                log.info({ taskId, linkid, command: cmd }, 'callback_request');
               }
             }
           }
@@ -409,7 +409,7 @@ export async function runAgent(
           for (const block of blocks as Array<Record<string, unknown>>) {
             const tuid = typeof block.tool_use_id === 'string' ? block.tool_use_id as string : '';
             if (block.type === 'tool_result' && tuid && callbackToolIds.has(tuid)) {
-              log.debug({ taskId, linkid, callbackResponse: toolResultText(block.content) }, 'callback_response');
+              log.info({ taskId, linkid, callbackResponse: toolResultText(block.content) }, 'callback_response');
             }
           }
         }
