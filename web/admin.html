@@ -354,6 +354,7 @@
                         <button type="button" class="sub-tab active" data-subtab="settings" onclick="switchSysTab('settings')"><i class="fas fa-cog"></i> 系统设置</button>
                         <button type="button" class="sub-tab" data-subtab="trace" onclick="switchSysTab('trace')"><i class="fas fa-terminal"></i> SDK Trace</button>
                         <button type="button" class="sub-tab" data-subtab="data" onclick="switchSysTab('data')"><i class="fas fa-database"></i> 数据管理</button>
+                        <button type="button" class="sub-tab" data-subtab="cache" onclick="switchSysTab('cache')"><i class="fas fa-broom"></i> 缓存管理</button>
                     </div>
 
                     <!-- Tab 1：系统设置 -->
@@ -416,6 +417,18 @@
                         <div style="margin-top:24px;padding-top:20px;border-top:1px solid #e0e3e8;">
                             <button class="cfg-btn cfg-btn-warn" onclick="vacuumDatabase()"><i class="fas fa-compress-alt"></i> 压缩数据库</button>
                             <span style="font-size:0.82rem;color:#888;margin-left:12px;">清空表后数据库文件不会自动变小，压缩（VACUUM）可回收磁盘空间，耗时视库大小而定。</span>
+                        </div>
+                    </div>
+
+                    <!-- Tab 4：缓存管理 -->
+                    <div class="sub-panel" id="sub-sys-cache">
+                        <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">
+                            管理外部依赖服务的缓存。清空操作会使其在下次请求时重新处理，通常无需常规维护。
+                        </p>
+
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <button class="cfg-btn cfg-btn-warn" onclick="clearDocUtilCache()"><i class="fas fa-broom"></i> 清空 doc-util 缓存</button>
+                            <span style="font-size:0.82rem;color:#888;">清空 doc-util 文档解析服务的持久化缓存（基于上传文件内容哈希，接口地址取自 <code>doc.doc_util_url</code>）。</span>
                         </div>
                     </div>
                 </div>

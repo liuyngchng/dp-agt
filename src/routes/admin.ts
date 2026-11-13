@@ -4,6 +4,8 @@ import { Router, Request, Response } from 'express';
 import { readFileSync, existsSync, readdirSync, statSync, lstatSync, createReadStream, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { networkInterfaces } from 'node:os';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'node:crypto';
 import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
@@ -81,6 +83,7 @@ export function createAdminRouter(cfg: Config): Router {
   router.use('/admin/prompt-preview', adminOnlyMiddleware);
   router.use('/admin/memory', adminOnlyMiddleware);
   router.use('/admin/data-tables', adminOnlyMiddleware);
+  router.use('/admin/cache', adminOnlyMiddleware);
 
   // ---- Interfaces 列表 — 从 prompts/ 自动发现，DB 同步 ----
   router.get('/admin/interfaces', (_req: Request, res: Response) => {
@@ -1582,6 +1585,63 @@ export function createAdminRouter(cfg: Config): Router {
     const pct = beforeSize > 0 ? ((shrunk / beforeSize) * 100).toFixed(1) : '0';
     log.info({ beforeSize, afterSize, shrunk, pct }, 'vacuum_ok');
     res.json({ code: 0, message: `压缩完成：${fmtSize(beforeSize)} → ${fmtSize(afterSize)}，回收 ${fmtSize(Math.max(0, shrunk))}（${pct}%）` });
+  });
+
+  // ---- 缓存管理（仅管理员，前端 tab「缓存管理」） ----
+
+  // 清空 doc-util 文档解析服务缓存（后端代理转发，避免浏览器直连自签名 HTTPS 跨域）
+  router.delete('/admin/cache/doc-util-cache', (req: Request, res: Response) => {
+    const baseUrl = promptConfigStore.getPlain('doc.doc_util_url');
+    if (!baseUrl) {
+      res.status(400).json({ code: 1001, message: '未配置 doc.doc_util_url，无法清空缓存' });
+      return;
+    }
+
+    let target: URL;
+    try {
+      target = new URL('/cache/clear', baseUrl.replace(/\/+$/, ''));
+    } catch {
+      res.status(400).json({ code: 1001, message: 'doc.doc_util_url 配置非法: ' + baseUrl });
+      return;
+    }
+
+    // doc-util 使用自签名 HTTPS 证书，禁用证书校验（与 Agent 侧 curl -k 一致）
+    // Node 原生 http(s).request 默认直连、不读 HTTP_PROXY/HTTPS_PROXY，天然绕过代理
+    const doReq = target.protocol === 'https:' ? httpsRequest : httpRequest;
+    const fromIp = req.ip || '';
+
+    const proxyReq = doReq({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port || (target.protocol === 'https:' ? 443 : 80),
+      path: target.pathname + target.search,
+      method: 'DELETE',
+      timeout: 10000,
+      ...(target.protocol === 'https:' ? { rejectUnauthorized: false } : {}),
+      headers: { Accept: 'application/json' },
+    }, (proxyRes) => {
+      const chunks: Buffer[] = [];
+      proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+      proxyRes.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        if (proxyRes.statusCode === 200) {
+          log.info({ from_ip: fromIp, baseUrl, status: proxyRes.statusCode }, 'doc_util_cache_cleared');
+          res.json({ code: 0, message: '缓存已清空', upstream: safeParse(body) });
+        } else {
+          log.warn({ from_ip: fromIp, baseUrl, status: proxyRes.statusCode, body }, 'doc_util_cache_clear_failed');
+          res.status(502).json({ code: 1001, message: 'doc-util 返回错误: ' + (proxyRes.statusCode || '未知') });
+        }
+      });
+    });
+
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy(new Error('请求 doc-util 超时'));
+    });
+    proxyReq.on('error', (err) => {
+      log.warn({ from_ip: fromIp, baseUrl, error: err.message }, 'doc_util_cache_clear_error');
+      res.status(502).json({ code: 1001, message: '请求 doc-util 失败: ' + err.message });
+    });
+    proxyReq.end();
   });
 
   return router;

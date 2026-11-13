@@ -1089,6 +1089,8 @@ function switchSysTab(name) {
         loadLatestTraces();
     } else if (name === 'data') {
         loadDataTables();
+    } else if (name === 'cache') {
+        // 缓存管理无动态加载，按钮直接操作
     }
 }
 
@@ -1401,6 +1403,25 @@ async function vacuumDatabase() {
         toast('压缩失败: ' + err.message, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-compress-alt"></i> 压缩数据库'; }
+    }
+}
+
+async function clearDocUtilCache() {
+    if (!confirm('确定要清空文档解析服务（doc-util）的缓存吗？\n\n清空后已转换/提取过的文件将需要重新处理。')) return;
+    const btn = event && event.currentTarget;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 清空中...'; }
+    try {
+        const res = await fetch(API + '/cache/doc-util-cache', { method: 'DELETE' });
+        const json = await res.json();
+        if (json.code === 0) {
+            toast(json.message || '缓存已清空', 'success');
+        } else {
+            toast(json.message || '清空失败', 'error');
+        }
+    } catch (err) {
+        toast('清空失败: ' + err.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-broom"></i> 清空 doc-util 缓存'; }
     }
 }
 
