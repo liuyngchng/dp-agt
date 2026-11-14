@@ -37,6 +37,18 @@ interface CfgFile {
     attribution_header?: boolean;
     auto_mode_server?: boolean;
   };
+  runner?: {
+    token?: string;
+    port?: number;
+    heartbeat_ms?: number;
+    connect_timeout_ms?: number;
+    request_timeout_ms?: number;
+    addresses?: Array<{
+      name: string;
+      addr: string;
+      capacity?: number;
+    }>;
+  };
 }
 
 export interface Config {
@@ -69,6 +81,14 @@ export interface Config {
     disable_nonessential_traffic: boolean;
     attribution_header: boolean;
     auto_mode_server: boolean;
+  };
+  runner: {
+    token: string;
+    port: number;
+    heartbeat_ms: number;
+    connect_timeout_ms: number;
+    request_timeout_ms: number;
+    addresses: Array<{ name: string; addr: string; capacity: number }>;
   };
 }
 
@@ -117,6 +137,7 @@ export function loadConfig(): Config {
   const s = cfg.server ?? {};
   const y = cfg.sys ?? {};
   const l = cfg.llm ?? {};
+  const r = cfg.runner ?? {};
 
   const llmBaseUrl = env('ANTHROPIC_BASE_URL', l.base_url ?? '');
   if (!llmBaseUrl) {
@@ -162,6 +183,18 @@ export function loadConfig(): Config {
       disable_nonessential_traffic: envBool('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', l.disable_nonessential_traffic ?? true),
       attribution_header: envBool('CLAUDE_CODE_ATTRIBUTION_HEADER', l.attribution_header ?? false),
       auto_mode_server: envBool('CLAUDE_CODE_AUTO_MODE_SERVER', l.auto_mode_server ?? false),
+    },
+    runner: {
+      token: env('RUNNER_TOKEN', r.token ?? ''),
+      port: envInt('RUNNER_PORT', r.port ?? 20002),
+      heartbeat_ms: envInt('RUNNER_HEARTBEAT_MS', r.heartbeat_ms ?? 5000),
+      connect_timeout_ms: envInt('RUNNER_CONNECT_TIMEOUT_MS', r.connect_timeout_ms ?? 5000),
+      request_timeout_ms: envInt('RUNNER_REQUEST_TIMEOUT_MS', r.request_timeout_ms ?? 15000),
+      addresses: (r.addresses ?? []).map((a) => ({
+        name: a.name,
+        addr: a.addr,
+        capacity: a.capacity ?? 5,
+      })),
     },
   };
 }

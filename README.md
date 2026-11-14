@@ -24,12 +24,80 @@ openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
 npm start          # HTTPS 模式（读取 deploy/certs/cert.pem、key.pem）
 ```
 
-### Docker 部署
+本地开发 runner（集群联调用，无需证书/数据库）：
 
 ```bash
-./build/build.sh          # 构建镜像
-./build/run.sh start      # 启动容器
+npm run dev:runner   # 热更启动 runner，监听 RUNNER_PORT（默认 20002）
 ```
+
+构建产物（同镜像双入口）：
+
+| 产物 | 命令 | 入口 |
+|------|------|------|
+| 控制面 | `npm run build` | `dist/index.js` → `npm start` |
+| Runner | `npm run build:runner` | `dist/runner.js` → `npm start:runner` |
+| 全部 | `npm run build:all` | 两者一起产出 |
+
+集群设计文档：`doc/cluster-runner-design.md`。
+
+### Docker 部署（单实例）
+
+```bash
+./build/build.sh            # 构建镜像
+./build/deploy.sh start     # 启动单实例容器
+```
+
+### Docker 集群部署（横向扩展）
+
+单实例之外，可用 docker-compose 起「1 个控制面 + N 个 runner」：
+
+```bash
+export RUNNER_TOKEN=你的内网认证token
+docker compose -f build/compose.yml up -d                        # 控制面 + runner1
+docker compose -f build/compose.yml --profile scale up -d runner2  # 按需追加 runner2
+```
+
+- **控制面**：对外 API + 管理后台 + 队列调度 + 唯一 SQLite 写者（挂载 `data/`）
+- **runner**：无状态执行节点，只跑 Claude Agent SDK，不挂 `data/`、不读 SQLite、不读 `prompts/`
+
+控制面通过 `cfg.yml` 的 `runner.addresses` 静态列表认识 runner：
+
+```yaml
+runner:
+  addresses:
+    - name: runner-1
+      addr: http://runner1:20002   # 内网 http；https 需自签/内网 CA 证书
+      capacity: 5
+    - name: runner-2
+      addr: http://runner2:20002
+      capacity: 5
+```
+
+- `runner.addresses` 为空 → 退化为单实例本机执行（行为不变，可平滑回滚）
+- 修改 runner 列表需**重启控制面**生效（`runners` 表在启动时同步）
+- 详细设计见 `doc/cluster-runner-design.md`
+
+**控制面 runner 配置**（`cfg.yml`，均可被环境变量覆盖）：
+
+| 配置 | 环境变量 | 默认 | 说明 |
+|------|---------|------|------|
+| `runner.token` | `RUNNER_TOKEN` | 空 | 控制面↔runner 认证，只从环境变量读，不写死 |
+| `runner.port` | `RUNNER_PORT` | 20002 | runner 监听端口 |
+| `runner.heartbeat_ms` | `RUNNER_HEARTBEAT_MS` | 5000 | 心跳间隔 |
+| `runner.connect_timeout_ms` | `RUNNER_CONNECT_TIMEOUT_MS` | 5000 | 连接超时 |
+| `runner.request_timeout_ms` | `RUNNER_REQUEST_TIMEOUT_MS` | 15000 | 短请求超时 |
+
+**runner 侧环境变量**（不读 `cfg.yml`/SQLite）：
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `RUNTIME_DIR` | ./runtime | runner 本地工作目录（不挂载，重启丢弃） |
+| `RUNNER_PORT` | 20002 | 监听端口 |
+| `RUNNER_MAX_CONCURRENT` | 5 | 单 runner 最大并发 SDK 数 |
+| `RUNNER_TIMEOUT_MS` | 600000 | 看门狗滑动超时 |
+| `RUNNER_GRACE_MS` | 60000 | 看门狗宽限 |
+| `RUNNER_USE_HTTPS` | 1 | `0` 退化为 HTTP（内网 compose 用） |
+| `RUNNER_TOKEN` | 空 | 与控制面一致 |
 
 ## 工作原理
 
@@ -106,10 +174,18 @@ AI 数字员工/
 │   │   ├── tasks.ts          # 任务查询/取消
 │   │   ├── admin.ts          # 管理后台 API（接口/模板 CRUD）
 │   │   └── auth.ts           # 登录鉴权
+│   ├── runner/
+│   │   └── index.ts          # runner 入口（无状态 SDK 执行节点）
 │   └── services/
-│       ├── sdk-runner.ts     # Claude Agent SDK 封装
+│       ├── sdk-core.ts       # SDK 纯执行核心（控制面/runner 共用，无 store 依赖）
+│       ├── sdk-runner.ts     # SDK 封装（控制面侧：buildEnv/buildClaudeMd/本地回退）
 │       ├── prompt-engine.ts  # 模板查找 + 占位符渲染
 │       ├── task-queue.ts     # 异步任务队列（状态机核心）
+│       ├── dispatcher.ts     # runner 选路 + 心跳（集群）
+│       ├── runner-client.ts  # 控制面→runner HTTP 客户端
+│       ├── runner-executor.ts# runner 本地执行器 + 看门狗
+│       ├── runner-protocol.ts# 派发协议帧定义
+│       └── process-tree.ts   # SDK 子进程树定位/强杀（共用）
 ├── web/                      # 管理后台前端（内嵌 SPA）
 ├── prompts/                  # 提示词文件（无需重编译，热更新）
 │   ├── doc/                   # 业务提示词（目录结构即访问路径）
@@ -138,6 +214,9 @@ AI 数字员工/
 
 - `DATA_DIR` — 第 1 类持久化数据根目录（默认 `./data`，Docker 中为 `/app/data`）
 - `RUNTIME_DIR` — 第 3 类运行时工作目录（默认 `./runtime`，Docker 中为 `/app/runtime`）
+- `RUNNER_TOKEN` — 控制面 ↔ runner 认证（集群模式必填，单实例无需）
+- `RUNNER_PORT` — runner 监听端口（默认 20002）
+- 其余集群配置见上方「Docker 集群部署」节
 
 **关键点**：
 
@@ -321,3 +400,4 @@ curl -s -k --noproxy '*' -w'\n' -X GET '{{sys.org_api_url}}/dept/tree' \
 | 存储 | SQLite (better-sqlite3) |
 | 前端 | Vanilla JS SPA |
 | 部署 | Docker, 自签 HTTPS |
+| 横向扩展 | 控制面 + 无状态 runner（docker-compose 编排） |

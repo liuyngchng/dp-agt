@@ -9,6 +9,7 @@ import { initLogger, getLogger, compressLogs } from './logger.js';
 import { initStore, taskLogsStore, configStore, sessionsStore, syncInterfacesFromPrompts } from './store.js';
 import { nowReadable } from './time.js';
 import { initTaskQueue } from './services/task-queue.js';
+import { initDispatcher, runnerCount } from './services/dispatcher.js';
 import { createProcessRouter } from './routes/process.js';
 import { createHealthRouter } from './routes/health.js';
 import { createTasksRouter } from './routes/tasks.js';
@@ -79,6 +80,10 @@ log.info('store_ready');
 const promptFiles = rescanPromptsDir();
 syncInterfacesFromPrompts(promptFiles.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
 log.info({ count: promptFiles.length, paths: promptFiles.map(pf => pf.path) }, 'interfaces_synced_from_prompts');
+
+// 初始化 runner 调度器（无远端 runner 配置时退化为本进程执行）
+initDispatcher(cfg);
+log.info({ remoteRunners: runnerCount() }, 'dispatcher_ready');
 
 // 初始化任务队列
 initTaskQueue(cfg);

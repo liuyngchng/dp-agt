@@ -1,0 +1,136 @@
+# AI 数字员工 — 控制面 + runner 集群部署
+# 用法: RUNNER_TOKEN=xxx docker compose up -d
+
+services:
+  control:
+    image: dp-agt:0.2.0
+    container_name: dp-agt-control
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command: ["node", "dist/index.js"]
+    environment:
+      DATA_DIR: /app/data
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN 必须设置}
+      # runner 静态列表由 cfg.yml 的 runner.addresses 段驱动
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "${HOST_PORT:-20001}:20001"
+    networks:
+      - dp-agt-net
+    extra_hosts:
+      - "api.anthropic.com:127.0.0.1"
+      - "api-staging.anthropic.com:127.0.0.1"
+      - "anthropic.com:127.0.0.1"
+      - "www.anthropic.com:127.0.0.1"
+      - "claude.ai:127.0.0.1"
+      - "claude.com:127.0.0.1"
+      - "platform.claude.com:127.0.0.1"
+      - "code.claude.com:127.0.0.1"
+      - "downloads.claude.ai:127.0.0.1"
+      - "docs.anthropic.com:127.0.0.1"
+      - "status.anthropic.com:127.0.0.1"
+      - "status.claude.com:127.0.0.1"
+      - "support.anthropic.com:127.0.0.1"
+      - "support.claude.com:127.0.0.1"
+      - "mcp-proxy.anthropic.com:127.0.0.1"
+      - "microsoft365.mcp.claude.com:127.0.0.1"
+      - "slack.mcp.claude.com:127.0.0.1"
+      - "api.datadoghq.com:127.0.0.1"
+      - "browser-intake-us5-datadoghq.com:127.0.0.1"
+      - "http-intake.logs.us5.datadoghq.com:127.0.0.1"
+      - "mcp.amplitude.com:127.0.0.1"
+      - "mcp.intercom.com:127.0.0.1"
+      - "mcp.sentry.dev:127.0.0.1"
+      - "telemetry.googleapis.com:127.0.0.1"
+    restart: unless-stopped
+
+  runner1:
+    image: dp-agt:0.2.0
+    container_name: dp-agt-runner1
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command: ["node", "dist/runner.js"]
+    environment:
+      RUNTIME_DIR: /app/runtime
+      RUNNER_PORT: 20002
+      RUNNER_MAX_CONCURRENT: 5
+      RUNNER_TIMEOUT_MS: 600000
+      RUNNER_GRACE_MS: 60000
+      RUNNER_TOKEN: ${RUNNER_TOKEN}
+      # runner 不自建 HTTPS，内网通信用 HTTP（控制面用 rejectUnauthorized: false）
+      RUNNER_USE_HTTPS: "0"
+    networks:
+      - dp-agt-net
+    extra_hosts:
+      - "api.anthropic.com:127.0.0.1"
+      - "api-staging.anthropic.com:127.0.0.1"
+      - "anthropic.com:127.0.0.1"
+      - "www.anthropic.com:127.0.0.1"
+      - "claude.ai:127.0.0.1"
+      - "claude.com:127.0.0.1"
+      - "platform.claude.com:127.0.0.1"
+      - "code.claude.com:127.0.0.1"
+      - "downloads.claude.ai:127.0.0.1"
+      - "docs.anthropic.com:127.0.0.1"
+      - "status.anthropic.com:127.0.0.1"
+      - "status.claude.com:127.0.0.1"
+      - "support.anthropic.com:127.0.0.1"
+      - "support.claude.com:127.0.0.1"
+      - "mcp-proxy.anthropic.com:127.0.0.1"
+      - "microsoft365.mcp.claude.com:127.0.0.1"
+      - "slack.mcp.claude.com:127.0.0.1"
+      - "api.datadoghq.com:127.0.0.1"
+      - "browser-intake-us5-datadoghq.com:127.0.0.1"
+      - "http-intake.logs.us5.datadoghq.com:127.0.0.1"
+      - "mcp.amplitude.com:127.0.0.1"
+      - "mcp.intercom.com:127.0.0.1"
+      - "mcp.sentry.dev:127.0.0.1"
+      - "telemetry.googleapis.com:127.0.0.1"
+    restart: unless-stopped
+
+  runner2:
+    image: dp-agt:0.2.0
+    container_name: dp-agt-runner2
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command: ["node", "dist/runner.js"]
+    environment:
+      RUNTIME_DIR: /app/runtime
+      RUNNER_PORT: 20002
+      RUNNER_MAX_CONCURRENT: 5
+      RUNNER_TIMEOUT_MS: 600000
+      RUNNER_GRACE_MS: 60000
+      RUNNER_TOKEN: ${RUNNER_TOKEN}
+      RUNNER_USE_HTTPS: "0"
+    networks:
+      - dp-agt-net
+    extra_hosts:
+      - "api.anthropic.com:127.0.0.1"
+      - "api-staging.anthropic.com:127.0.0.1"
+      - "anthropic.com:127.0.0.1"
+      - "www.anthropic.com:127.0.0.1"
+      - "claude.ai:127.0.0.1"
+      - "claude.com:127.0.0.1"
+      - "platform.claude.com:127.0.0.1"
+      - "code.claude.com:127.0.0.1"
+      - "downloads.claude.ai:127.0.0.1"
+      - "docs.anthropic.com:127.0.0.1"
+      - "status.anthropic.com:127.0.0.1"
+      - "status.claude.com:127.0.0.1"
+      - "support.anthropic.com:127.0.0.1"
+      - "support.claude.com:127.0.0.1"
+      - "mcp-proxy.anthropic.com:127.0.0.1"
+      - "microsoft365.mcp.claude.com:127.0.0.1"
+      - "slack.mcp.claude.com:127.0.0.1"
+      - "api.datadoghq.com:127.0.0.1"
+      - "browser-intake-us5-datadoghq.com:127.0.0.1"
+      - "http-intake.logs.us5.datadoghq.com:127.0.0.1"
+      - "mcp.amplitude.com:127.0.0.1"
+      - "mcp.intercom.com:127.0.0.1"
+      - "mcp.sentry.dev:127.0.0.1"
+      - "telemetry.googleapis.com:127.0.0.1"
+    restart: unless-stopped
+    profiles:
+      - scale  # 按需启动：docker compose --profile scale up -d runner2
+
+networks:
+  dp-agt-net:
+    driver: bridge

@@ -12,6 +12,8 @@ import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore, getDb, sdkTracesStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { cancelTask, cancelByLinkidInQueue } from '../services/task-queue.js';
+import { getRunnerByName, getRunnerHttpConfig } from '../services/dispatcher.js';
+import { proxyGet, proxyDelete } from '../services/runner-client.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
@@ -34,6 +36,25 @@ const log = getLogger();
 /** 会话工作目录根路径（与下方各 session 路由保持一致） */
 function sessionWorkDir(cfg: Config, linkid: string): string {
   return join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
+}
+
+/** 若该 session 归属某个远端 runner，返回其 addr；否则返回 null（本机处理） */
+function resolveSessionRunnerAddr(session: { runner_id: string | null } | undefined): string | null {
+  if (!session?.runner_id) return null;
+  const runner = getRunnerByName(session.runner_id);
+  if (!runner || runner.status !== 'up') return null;
+  return runner.addr;
+}
+
+/** 把 runner addr 解析为可直连的 URL 目标（供流式代理下载用） */
+function buildRunnerProxyTarget(addr: string, path: string): { protocol: 'http:' | 'https:'; hostname: string; port: number; path: string } {
+  const url = new URL(addr + path);
+  return {
+    protocol: url.protocol as 'http:' | 'https:',
+    hostname: url.hostname,
+    port: url.port ? Number(url.port) : (url.protocol === 'https:' ? 443 : 80),
+    path: url.pathname + url.search,
+  };
 }
 
 export function createAdminRouter(cfg: Config): Router {
@@ -296,9 +317,26 @@ export function createAdminRouter(cfg: Config): Router {
 
     const session = sessionsStore.get(session_id);
     const linkid = session?.linkid || '';
+
+    // 远端 runner：代理转发
+    const runnerAddr = resolveSessionRunnerAddr(session);
+    if (runnerAddr) {
+      try {
+        const httpCfg = getRunnerHttpConfig();
+        const r = await proxyGet(runnerAddr, `/session/${encodeURIComponent(linkid)}/messages?session_id=${encodeURIComponent(session_id)}`, httpCfg);
+        log.info({ session_id, linkid, runnerAddr, proxied: true }, 'session_messages_proxied');
+        res.status(r.statusCode).json(r.body);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error({ session_id, linkid, runnerAddr, error: msg }, 'session_proxy_messages_error');
+        res.status(502).json({ code: 1001, message: '代理读取会话记录失败: ' + msg });
+      }
+      return;
+    }
+
+    // 本机读取
     const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
     log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir), sessionFound: !!session }, 'session_messages_request');
-
     try {
       const messages = await getSessionMessages(session_id, { dir: workDir, includeSystemMessages: false });
       log.info({ session_id, messageCount: messages.length }, 'session_messages_result');
@@ -310,7 +348,7 @@ export function createAdminRouter(cfg: Config): Router {
     }
   });
 
-  // SSE 实时推送（任务处理中时前端订阅）
+  // SSE 实时推送（任务处理中时前端订阅；远端 runner 下实时流由 sse-bus 承载，snapshot 从 runner 拉取）
   router.get('/admin/sessions/:session_id/stream', async (req: Request, res: Response) => {
     const { session_id } = req.params;
     if (!session_id) {
@@ -320,24 +358,38 @@ export function createAdminRouter(cfg: Config): Router {
 
     const session = sessionsStore.get(session_id);
     const linkid = session?.linkid || '';
-    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
+    const runnerAddr = resolveSessionRunnerAddr(session);
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no', // 禁用 nginx 缓冲
+      'X-Accel-Buffering': 'no',
     });
 
     // 先推全量快照，前端据此渲染已有历史
-    try {
-      const messages = await getSessionMessages(session_id, { dir: workDir, includeSystemMessages: false });
-      log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir), sessionFound: !!session, messageCount: messages.length }, 'session_stream_snapshot');
-      sendSSE(res, { type: 'snapshot', messages });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.error({ session_id, linkid, workDir, error: msg }, 'session_stream_snapshot_error');
-      sendSSE(res, { type: 'error', message: msg });
+    if (runnerAddr) {
+      // 远端 session：从 runner 代理拉取 snapshot
+      try {
+        const httpCfg = getRunnerHttpConfig();
+        const r = await proxyGet(runnerAddr, `/session/${encodeURIComponent(linkid)}/messages?session_id=${encodeURIComponent(session_id)}`, httpCfg);
+        const data = (r.body as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+        sendSSE(res, { type: 'snapshot', messages: data?.messages ?? [] });
+      } catch {
+        sendSSE(res, { type: 'snapshot', messages: [] });
+      }
+    } else {
+      // 本机
+      const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
+      try {
+        const messages = await getSessionMessages(session_id, { dir: workDir, includeSystemMessages: false });
+        log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir), sessionFound: !!session, messageCount: messages.length }, 'session_stream_snapshot');
+        sendSSE(res, { type: 'snapshot', messages });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error({ session_id, linkid, workDir, error: msg }, 'session_stream_snapshot_error');
+        sendSSE(res, { type: 'error', message: msg });
+      }
     }
 
     const onMessage = (msg: unknown) => {
@@ -366,39 +418,66 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({ code: 0, data: list });
   });
 
-  router.delete('/admin/sessions/:session_id', (req: Request, res: Response) => {
+  router.delete('/admin/sessions/:session_id', async (req: Request, res: Response) => {
     const { session_id } = req.params;
     const session = sessionsStore.get(session_id);
     if (!session) {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
-    // 先中断该 linkid 下还在队列中的任务（处理中 / 链上等待 / 排队），
-    // 再删工作目录，避免任务在已删除的目录中继续执行、或结束后覆盖取消状态。
+
+    // 先中断该 linkid 下还在队列中的任务（处理中 / 链上等待 / 排队）——控制面内存队列
     const aborted = cancelByLinkidInQueue(session.linkid);
 
-    const workDir = sessionWorkDir(cfg, session.linkid);
-    if (existsSync(workDir)) {
-      try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
+    // 远端 runner：委托其删 workdir + 中断该 linkid 的 SDK（runner 本地）
+    const runnerAddr = resolveSessionRunnerAddr(session);
+    if (runnerAddr) {
+      try {
+        const httpCfg = getRunnerHttpConfig();
+        await proxyDelete(runnerAddr, `/session/${encodeURIComponent(session.linkid)}`, httpCfg);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn({ session_id, linkid: session.linkid, runnerAddr, error: msg }, 'session_proxy_delete_error');
+        // runner 已 down 时，本地删不了远端 workdir，仍继续做逻辑删除
+      }
+    } else {
+      const workDir = sessionWorkDir(cfg, session.linkid);
+      if (existsSync(workDir)) {
+        try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
+      }
     }
-    // 逻辑删除：该 linkid 下未完成任务标记为 cancelled，session 标记为 closed，
-    // 使后续同一 linkid 重新提交时不再命中旧任务/旧会话。
+
+    // 逻辑删除：该 linkid 下未完成任务标记为 cancelled，session 标记为 closed
     const cancelled = taskLogsStore.cancelByLinkid(session.linkid);
     sessionsStore.close(session_id);
-    log.info({ session_id, linkid: session.linkid, workDir, abortedTasks: aborted, cancelledTasks: cancelled }, 'session_deleted');
+    log.info({ session_id, linkid: session.linkid, abortedTasks: aborted, cancelledTasks: cancelled }, 'session_deleted');
     res.json({ code: 0, message: '已删除' });
   });
 
   // ---- 会话工作目录文件浏览 ----
 
   /** 递归列出工作目录下的所有文件，返回扁平数组 */
-  router.get('/admin/sessions/:session_id/files', (req: Request, res: Response) => {
+  router.get('/admin/sessions/:session_id/files', async (req: Request, res: Response) => {
     const { session_id } = req.params;
     const session = sessionsStore.get(session_id);
     if (!session) {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
+
+    const runnerAddr = resolveSessionRunnerAddr(session);
+    if (runnerAddr) {
+      try {
+        const httpCfg = getRunnerHttpConfig();
+        const r = await proxyGet(runnerAddr, `/session/${encodeURIComponent(session.linkid)}/files`, httpCfg);
+        res.status(r.statusCode).json(r.body);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(502).json({ code: 1001, message: '代理浏览会话文件失败: ' + msg });
+      }
+      return;
+    }
+
     const workDir = sessionWorkDir(cfg, session.linkid);
     if (!existsSync(workDir)) {
       res.json({ code: 0, data: { workDir, files: [] } });
@@ -435,7 +514,7 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   /** 读取工作目录下的文件内容（仅 .md/.txt/.json/.yml/.yaml 等文本类文件返回 JSON 供预览） */
-  router.get('/admin/sessions/:session_id/file-content', (req: Request, res: Response) => {
+  router.get('/admin/sessions/:session_id/file-content', async (req: Request, res: Response) => {
     const { session_id } = req.params;
     const relPath = req.query.path as string | undefined;
     if (!relPath) {
@@ -446,6 +525,19 @@ export function createAdminRouter(cfg: Config): Router {
     const session = sessionsStore.get(session_id);
     if (!session) {
       res.status(404).json({ code: 1001, message: '会话不存在' });
+      return;
+    }
+
+    const runnerAddr = resolveSessionRunnerAddr(session);
+    if (runnerAddr) {
+      try {
+        const httpCfg = getRunnerHttpConfig();
+        const r = await proxyGet(runnerAddr, `/session/${encodeURIComponent(session.linkid)}/file-content?path=${encodeURIComponent(relPath)}`, httpCfg);
+        res.status(r.statusCode).json(r.body);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(502).json({ code: 1001, message: '代理读取会话文件失败: ' + msg });
+      }
       return;
     }
 
@@ -479,7 +571,7 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   /** 下载工作目录下的任意文件 */
-  router.get('/admin/sessions/:session_id/file-download', (req: Request, res: Response) => {
+  router.get('/admin/sessions/:session_id/file-download', async (req: Request, res: Response) => {
     const { session_id } = req.params;
     const relPath = req.query.path as string | undefined;
     if (!relPath) {
@@ -490,6 +582,37 @@ export function createAdminRouter(cfg: Config): Router {
     const session = sessionsStore.get(session_id);
     if (!session) {
       res.status(404).json({ code: 1001, message: '会话不存在' });
+      return;
+    }
+
+    const runnerAddr = resolveSessionRunnerAddr(session);
+    if (runnerAddr) {
+      // 代理下载：直接 pipe runner 的响应流到客户端
+      const { protocol, hostname, port, path } = buildRunnerProxyTarget(runnerAddr, `/session/${encodeURIComponent(session.linkid)}/file-download?path=${encodeURIComponent(relPath)}`);
+      const doReq = protocol === 'https:' ? httpsRequest : httpRequest;
+      const httpCfg = getRunnerHttpConfig();
+      const proxyReq = doReq({
+        protocol,
+        hostname,
+        port,
+        path,
+        method: 'GET',
+        headers: {
+          Accept: 'application/octet-stream',
+          ...(httpCfg.token ? { Authorization: 'Bearer ' + httpCfg.token } : {}),
+        },
+        ...(protocol === 'https:' ? { rejectUnauthorized: false } : {}),
+      }, (proxyRes) => {
+        res.status(proxyRes.statusCode || 200);
+        if (proxyRes.headers['content-type']) res.setHeader('Content-Type', proxyRes.headers['content-type']);
+        if (proxyRes.headers['content-length']) res.setHeader('Content-Length', proxyRes.headers['content-length']);
+        if (proxyRes.headers['content-disposition']) res.setHeader('Content-Disposition', proxyRes.headers['content-disposition']);
+        proxyRes.pipe(res);
+      });
+      proxyReq.on('error', (err) => {
+        if (!res.headersSent) res.status(502).json({ code: 1001, message: '代理下载会话文件失败: ' + err.message });
+      });
+      proxyReq.end();
       return;
     }
 

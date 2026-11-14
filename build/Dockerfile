@@ -33,7 +33,7 @@ COPY package.json tsconfig.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm install --no-audit --no-fund
 COPY src/ src/
-RUN npm run build
+RUN npm run build:all
 
 # ============================================================================
 # Stage 2 - final runtime image

@@ -9,7 +9,7 @@ import {
   decryptValue,
   initCrypto,
 } from './crypto.js';
-import type { AgentInterface, TaskLog, TaskStatus, User, Session, SdkTrace } from './types.js';
+import type { AgentInterface, TaskLog, TaskStatus, User, Session, SdkTrace, Runner, RunnerStatus } from './types.js';
 import type { EncryptedValue } from './crypto.js';
 
 let db: Database.Database;
@@ -97,6 +97,17 @@ export function initStore(dataDir: string): Database.Database {
       sdk_trace TEXT NOT NULL,
       UNIQUE(task_id)
     );
+
+    CREATE TABLE IF NOT EXISTS runners (
+      id                TEXT PRIMARY KEY,
+      name              TEXT NOT NULL UNIQUE,
+      addr              TEXT NOT NULL,
+      capacity          INTEGER NOT NULL DEFAULT 5,
+      status            TEXT NOT NULL DEFAULT 'up',
+      last_heartbeat_ts INTEGER,
+      created_at        TEXT,
+      updated_at        TEXT
+    );
   `);
 
   // ── migrations ──
@@ -136,6 +147,8 @@ export function initStore(dataDir: string): Database.Database {
   try { db.exec(`ALTER TABLE sessions ADD COLUMN updated_ts INTEGER`); } catch { /* */ }
   try { db.exec(`CREATE TABLE IF NOT EXISTS prompt_config (key TEXT PRIMARY KEY, value_enc TEXT NOT NULL DEFAULT '', iv TEXT NOT NULL DEFAULT '', tag TEXT NOT NULL DEFAULT '', is_secret INTEGER NOT NULL DEFAULT 0, updated_at TEXT)`); } catch { /* */ }
   try { db.exec(`ALTER TABLE prompt_config ADD COLUMN note TEXT DEFAULT ''`); } catch { /* */ }
+  try { db.exec(`ALTER TABLE sessions ADD COLUMN runner_id TEXT`); } catch { /* */ }
+  try { db.exec(`ALTER TABLE task_logs ADD COLUMN runner_id TEXT`); } catch { /* */ }
 
   backfillTsColumns(db);
   seedDefaults(db);
@@ -499,20 +512,21 @@ export const sdkTracesStore = {
 };
 
 export const sessionsStore = {
-  upsert(sessionId: string, linkid: string): Session {
+  upsert(sessionId: string, linkid: string, runnerId?: string): Session {
     const now = nowReadable();
     const ts = nowTs();
     // 以 linkid 为唯一键：同一 linkid 复用会话时，无论旧行是 active 还是 closed，
     // 都覆盖为当前新的 session_id，避免 UNIQUE(linkid) 冲突。
     db.prepare(
-      `INSERT INTO sessions (session_id, linkid, status, created_at, updated_at, created_ts, updated_ts)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (session_id, linkid, status, runner_id, created_at, updated_at, created_ts, updated_ts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(linkid) DO UPDATE SET
          session_id = excluded.session_id,
          status = 'active',
+         runner_id = COALESCE(excluded.runner_id, sessions.runner_id),
          updated_at = excluded.updated_at,
          updated_ts = excluded.updated_ts`
-    ).run(sessionId, linkid, 'active', now, now, ts, ts);
+    ).run(sessionId, linkid, 'active', runnerId ?? null, now, now, ts, ts);
     return this.get(sessionId)!;
   },
   get(sessionId: string): Session | undefined {
@@ -541,6 +555,12 @@ export const sessionsStore = {
       "UPDATE sessions SET status = 'active', updated_at = ?, updated_ts = ? WHERE session_id = ?"
     ).run(now, ts, sessionId).changes > 0;
   },
+  // 把 session 归属到某个 runner（新建 session 拿到 runner_id 时调用）
+  setRunnerId(sessionId: string, runnerId: string): boolean {
+    return db.prepare(
+      'UPDATE sessions SET runner_id = ? WHERE session_id = ?'
+    ).run(runnerId, sessionId).changes > 0;
+  },
   remove(sessionId: string): boolean {
     return db.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId).changes > 0;
   },
@@ -557,6 +577,69 @@ export const sessionsStore = {
   },
   clearAll(): number {
     return db.prepare('DELETE FROM sessions').run().changes;
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// Runners — 控制面维护的执行节点注册表
+// ═══════════════════════════════════════════════════════════════
+export const runnersStore = {
+  /** 控制面启动时按静态列表同步，返回同步后的 runner 列表 */
+  sync(addresses: Array<{ name: string; addr: string; capacity: number }>): Runner[] {
+    const now = nowReadable();
+    const ts = nowTs();
+
+    // 标记磁盘上不再存在的 runner 为 down（不删除，保留历史 task_logs.runner_id 可追溯）
+    const seen = new Set(addresses.map((a) => a.name));
+    const existing = db.prepare('SELECT name FROM runners').all() as Array<{ name: string }>;
+    for (const e of existing) {
+      if (!seen.has(e.name)) {
+        db.prepare("UPDATE runners SET status = 'down', updated_at = ? WHERE name = ?").run(now, e.name);
+      }
+    }
+
+    for (const a of addresses) {
+      db.prepare(
+        `INSERT INTO runners (id, name, addr, capacity, status, last_heartbeat_ts, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'up', NULL, ?, ?)
+         ON CONFLICT(name) DO UPDATE SET
+           addr = excluded.addr,
+           capacity = excluded.capacity,
+           status = 'up',
+           updated_at = excluded.updated_at`
+      ).run(uuid(), a.name, a.addr, a.capacity, now, now, now);
+    }
+
+    return this.list();
+  },
+
+  list(): Runner[] {
+    return db.prepare('SELECT * FROM runners ORDER BY name').all() as Runner[];
+  },
+
+  get(id: string): Runner | undefined {
+    return db.prepare('SELECT * FROM runners WHERE id = ?').get(id) as Runner | undefined;
+  },
+
+  getByName(name: string): Runner | undefined {
+    return db.prepare('SELECT * FROM runners WHERE name = ?').get(name) as Runner | undefined;
+  },
+
+  listUp(): Runner[] {
+    return db.prepare("SELECT * FROM runners WHERE status = 'up' ORDER BY name").all() as Runner[];
+  },
+
+  setStatus(id: string, status: RunnerStatus): void {
+    db.prepare('UPDATE runners SET status = ?, updated_at = ? WHERE id = ?').run(status, nowReadable(), id);
+  },
+
+  heartbeat(id: string): void {
+    db.prepare('UPDATE runners SET status = ?, last_heartbeat_ts = ?, updated_at = ? WHERE id = ?')
+      .run('up', nowTs(), nowReadable(), id);
+  },
+
+  markDown(id: string): void {
+    db.prepare('UPDATE runners SET status = ?, updated_at = ? WHERE id = ?').run('down', nowReadable(), id);
   },
 };
 

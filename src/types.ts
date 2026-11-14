@@ -37,6 +37,7 @@ export interface TaskLog {
   prompt: string;
   sdk_output: string | null;         // Agent 最终输出（业务产出）
   error_message: string | null;
+  runner_id: string | null;          // 任务被派到哪个 runner（观测用）
   created_at: string;           // YYYY-MM-DD HH:MM:ss.SSS 本地时间
   finished_at: string | null;
   created_ts: number | null;    // Unix 毫秒时间戳（检索用）
@@ -62,6 +63,7 @@ export interface Session {
   session_id: string;
   linkid: string;
   status: SessionStatus;
+  runner_id: string | null;   // 持有该 linkid session/workdir 的 runner
   created_at: string;
   updated_at: string;
   created_ts: number | null;
@@ -111,4 +113,52 @@ export interface User {
   user_version: number;  // 递增可使该用户所有旧 token 失效（改密/登出时 +1）
   created_at: string;
   created_ts: number | null; // Unix 毫秒时间戳（检索用）
+}
+
+// ============================================================
+// Runner（横向扩展：控制面注册表里的执行节点）
+// ============================================================
+export type RunnerStatus = 'up' | 'down';
+
+export interface Runner {
+  id: string;
+  name: string;
+  addr: string;              // 例：https://runner-1:20002
+  capacity: number;          // 最大并发 SDK 数
+  status: RunnerStatus;
+  last_heartbeat_ts: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================
+// 控制面 → runner 派发请求
+// ============================================================
+export interface RunSdkOptions {
+  model: string;
+  max_turns: number;
+  effort_level: string;
+  disable_nonessential_traffic: boolean;
+  attribution_header: boolean;
+  auto_mode_server: boolean;
+}
+
+export interface RunRequest {
+  task_id: string;
+  linkid: string;
+  mode: 'task' | 'chat';
+  prompt: string;
+  claude_md: string | null;      // resume 时可为 null（不覆盖既有 CLAUDE.md）
+  resume_session_id: string | null;
+  sdk_options: RunSdkOptions;
+  env: Record<string, string>;
+}
+
+// ============================================================
+// Runner 状态上报（GET /status）
+// ============================================================
+export interface RunnerStatusInfo {
+  capacity: number;
+  running_count: number;
+  uptime_ms: number;
 }
