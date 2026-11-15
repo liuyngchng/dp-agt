@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import { createHash } from 'node:crypto';
 import { loadConfig, ensureDirs } from './config.js';
 import { initLogger, getLogger, compressLogs } from './logger.js';
-import { initStore, taskLogsStore, configStore, sessionsStore, syncInterfacesFromPrompts } from './store.js';
+import { initStore, taskLogsStore, configStore, sessionsStore, sdkTracesStore, syncInterfacesFromPrompts } from './store.js';
 import { nowReadable } from './time.js';
 import { initTaskQueue } from './services/task-queue.js';
 import { initDispatcher, runnerCount } from './services/dispatcher.js';
@@ -193,6 +193,9 @@ async function cleanupExpiredTasks() {
 
     const deleted = taskLogsStore.deleteExpired(retentionDays);
 
+    // 回收 sdk_traces：task_logs 到期删除后，关联的 trace 一并清理（按 task_id 孤儿判定）
+    const orphanTraces = sdkTracesStore.deleteOrphans();
+
     // 清理过期 session（超过 retentionDays 未见新提交）
     const expiredSessions = sessionsStore.deleteExpired(retentionDays);
     if (expiredSessions.length > 0) {
@@ -219,7 +222,7 @@ async function cleanupExpiredTasks() {
         }
       }
     }
-    log.info({ retentionDays, deletedRows: deleted, expiredSessions: expiredSessions.length }, 'cleanup_done');
+    log.info({ retentionDays, deletedRows: deleted, orphanTraces, expiredSessions: expiredSessions.length }, 'cleanup_done');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error({ error: msg }, 'cleanup_error');

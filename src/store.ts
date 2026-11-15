@@ -150,6 +150,11 @@ export function initStore(dataDir: string): Database.Database {
   try { db.exec(`ALTER TABLE sessions ADD COLUMN runner_id TEXT`); } catch { /* */ }
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN runner_id TEXT`); } catch { /* */ }
 
+  // ── 性能索引 ──
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_task_logs_created_ts ON task_logs(created_ts DESC)`); } catch { /* */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_task_logs_linkid_created_ts ON task_logs(linkid, created_ts DESC)`); } catch { /* */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_updated_ts ON sessions(updated_ts DESC)`); } catch { /* */ }
+
   backfillTsColumns(db);
   seedDefaults(db);
   return db;
@@ -402,7 +407,7 @@ export const taskLogsStore = {
   },
   getLatestByLinkid(linkid: string): TaskLog | undefined {
     return db.prepare(
-      `SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_at DESC LIMIT 1`
+      `SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_ts DESC LIMIT 1`
     ).get(linkid) as TaskLog | undefined;
   },
   // ── 轻量精确查询（数据管理用） ──
@@ -415,21 +420,21 @@ export const taskLogsStore = {
   /** 按 linkid 精确查询列表（limit 50，不含大字段；同一 linkid 可有多轮任务） */
   listLightByLinkid(linkid: string, limit = 50): TaskLog[] {
     return db.prepare(
-      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_at DESC LIMIT ?`
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_ts DESC LIMIT ?`
     ).all(linkid, limit) as TaskLog[];
   },
   // ── 列表分页（轻量列） ──
   listPaged(offset: number, limit: number): { items: TaskLog[]; total: number } {
     const total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
     const items = db.prepare(
-      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_ts DESC LIMIT ? OFFSET ?`
     ).all(limit, offset) as TaskLog[];
     return { items, total };
   },
   // ── 最新 N 条（轻量列，SDK Trace 默认列表用） ──
   listLatest(limit: number): TaskLog[] {
     return db.prepare(
-      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_at DESC LIMIT ?`
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_ts DESC LIMIT ?`
     ).all(limit) as TaskLog[];
   },
   // ── 活跃任务（轻量列） ──
@@ -441,7 +446,7 @@ export const taskLogsStore = {
   },
   listActive(): TaskLog[] {
     return db.prepare(
-      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_ts ASC`
     ).all() as TaskLog[];
   },
   hasActiveByLinkid(linkid: string): boolean {
@@ -479,7 +484,7 @@ export const taskLogsStore = {
     return (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
   },
   listAll(): TaskLog[] {
-    return db.prepare(`SELECT ${TASK_LOG_FULL_COLS} FROM task_logs ORDER BY created_at ASC`).all() as TaskLog[];
+    return db.prepare(`SELECT ${TASK_LOG_FULL_COLS} FROM task_logs ORDER BY created_ts ASC`).all() as TaskLog[];
   },
   clearAll(): number {
     return db.prepare('DELETE FROM task_logs').run().changes;
@@ -502,6 +507,12 @@ export const sdkTracesStore = {
   },
   removeByTaskId(taskId: string): boolean {
     return db.prepare('DELETE FROM sdk_traces WHERE task_id = ?').run(taskId).changes > 0;
+  },
+  /** 删除 task_logs 中已不存在的孤儿 trace（task_logs 到期清理后同步回收） */
+  deleteOrphans(): number {
+    return db.prepare(
+      `DELETE FROM sdk_traces WHERE task_id NOT IN (SELECT task_id FROM task_logs)`
+    ).run().changes;
   },
   countAll(): number {
     return (db.prepare('SELECT COUNT(*) AS c FROM sdk_traces').get() as { c: number }).c;
@@ -539,6 +550,13 @@ export const sessionsStore = {
   },
   listAll(): Session[] {
     return db.prepare('SELECT * FROM sessions ORDER BY updated_ts DESC').all() as Session[];
+  },
+  listPaged(offset: number, limit: number): { items: Session[]; total: number } {
+    const total = (db.prepare('SELECT COUNT(*) AS c FROM sessions').get() as { c: number }).c;
+    const items = db.prepare(
+      'SELECT * FROM sessions ORDER BY updated_ts DESC LIMIT ? OFFSET ?'
+    ).all(limit, offset) as Session[];
+    return { items, total };
   },
   close(sessionId: string): boolean {
     const now = nowReadable();

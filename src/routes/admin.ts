@@ -413,9 +413,11 @@ export function createAdminRouter(cfg: Config): Router {
   // ---- 会话管理（管理员） ----
   router.use('/admin/sessions', adminOnlyMiddleware);
 
-  router.get('/admin/sessions', (_req: Request, res: Response) => {
-    const list = sessionsStore.listAll();
-    res.json({ code: 0, data: list });
+  router.get('/admin/sessions', (req: Request, res: Response) => {
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const pageSize = Math.min(parseInt(String(req.query.page_size), 10) || 10, 100);
+    const { items, total } = sessionsStore.listPaged((page - 1) * pageSize, pageSize);
+    res.json({ code: 0, data: { total, page, page_size: pageSize, items } });
   });
 
   router.delete('/admin/sessions/:session_id', async (req: Request, res: Response) => {
@@ -1533,7 +1535,13 @@ export function createAdminRouter(cfg: Config): Router {
       note: t.note,
       count: countOf(t.id),
     }));
-    res.json({ code: 0, data: { tables } });
+
+    // 数据库文件大小（含 WAL，VACUUM 前展示，供运维判断是否需要压缩）
+    const dbPath = join(cfg.sys.data_dir, 'app.db');
+    let dbSizeBytes = 0;
+    try { dbSizeBytes = statSync(dbPath).size; } catch { /* 文件不存在则保持 0 */ }
+
+    res.json({ code: 0, data: { tables, db_size_bytes: dbSizeBytes } });
   });
 
   // 获取最新 N 条任务（SDK Trace tab 默认展示，无需先检索）

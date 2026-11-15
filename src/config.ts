@@ -159,7 +159,7 @@ export function loadConfig(): Config {
     sys: {
       max_concurrent_tasks: envInt('MAX_CONCURRENT_TASKS', y.max_concurrent_tasks ?? 5),
       max_pending_tasks: envInt('MAX_PENDING_TASKS', y.max_pending_tasks ?? 10),
-      retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 30),
+      retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 180),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
       runtime_dir: env('RUNTIME_DIR', y.runtime_dir ?? RUNTIME_DIR),
       // SDK 硬超时后，再等这么久仍未结束，看门狗强制杀进程树并落库 failed

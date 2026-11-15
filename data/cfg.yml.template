@@ -29,8 +29,8 @@ sys:
   # 任务总数上限 (pending + processing)，超过后拒单返回 code=2002
   max_pending_tasks: 10
 
-  # 运行时数据保留天数（task_logs + files 自动清理）
-  retention_days: 30
+  # 运行时数据保留天数（task_logs + sdk_traces + sessions 自动清理）
+  retention_days: 180
 
   # 日志按天滚动 + gzip 压缩保留数量
   log_rolled_count: 30     # 滚动 .log 文件保留数量（不含 .gz）

@@ -320,6 +320,7 @@
                             <tbody id="sessionsTbody"><tr><td colspan="6" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                         </table>
                     </div>
+                    <div id="sessionsPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
                 </div>
 
                 <!-- 会话工作目录文件浏览弹窗 -->
@@ -415,7 +416,8 @@
                         <div id="dataTableActions" style="display:none;"></div>
 
                         <div style="margin-top:24px;padding-top:20px;border-top:1px solid #e0e3e8;">
-                            <button class="cfg-btn cfg-btn-warn" onclick="vacuumDatabase()"><i class="fas fa-compress-alt"></i> 压缩数据库</button>
+                            <span style="font-size:0.85rem;color:#555;"><i class="fas fa-database"></i> 数据库文件大小：<strong id="dbFileSize" style="color:#4b6cb7;">-</strong></span>
+                            <button class="cfg-btn cfg-btn-warn" onclick="vacuumDatabase()" style="margin-left:16px;"><i class="fas fa-compress-alt"></i> 压缩数据库</button>
                             <span style="font-size:0.82rem;color:#888;margin-left:12px;">清空表后数据库文件不会自动变小，压缩（VACUUM）可回收磁盘空间，耗时视库大小而定。</span>
                         </div>
                     </div>

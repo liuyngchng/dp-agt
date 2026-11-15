@@ -1104,6 +1104,12 @@ async function loadDataTables() {
         const json = await res.json();
         _dataTableMeta = (json.data && json.data.tables) || [];
 
+        // 数据库文件大小
+        const dbSizeEl = document.getElementById('dbFileSize');
+        if (dbSizeEl) {
+            dbSizeEl.textContent = fmtSize((json.data && json.data.db_size_bytes) || 0);
+        }
+
         let html = '';
         for (const t of _dataTableMeta) {
             html += '<div class="data-table-row" style="display:flex;align-items:center;gap:16px;padding:14px 18px;border:1px solid #e0e3e8;border-radius:8px;margin-bottom:12px;cursor:pointer;transition:all 0.15s;"'
@@ -1396,6 +1402,7 @@ async function vacuumDatabase() {
         const json = await res.json();
         if (json.code === 0) {
             toast(json.message || '压缩完成', 'success');
+            loadDataTables();  // 刷新数据库文件大小
         } else {
             toast(json.message || '压缩失败', 'error');
         }
@@ -1560,23 +1567,38 @@ function closeStreamModal() {
 // ==============================
 // 会话管理
 // ==============================
-async function loadSessions() {
+const SESSIONS_PAGE_SIZE = 10;
+let _sessionsPage = 1;
+let _sessionsTotal = 0;
+
+async function loadSessions(page = 1) {
+    _sessionsPage = page;
     const tbody = document.getElementById('sessionsTbody');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">加载中...</td></tr>';
-    let list = [];
     try {
-        const r = await fetch('/admin/sessions');
+        const r = await fetch(API + '/sessions?page=' + page + '&page_size=' + SESSIONS_PAGE_SIZE);
         const j = await r.json();
-        list = j.data || [];
+        const data = j.data || {};
+        const list = Array.isArray(data.items) ? data.items : [];
+        _sessionsTotal = data.total || 0;
+        renderSessionsPage(list);
     } catch (e) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#e53e3e;padding:24px;">加载失败</td></tr>';
-        return;
+        document.getElementById('sessionsPager').innerHTML = '';
     }
-    if (list.length === 0) {
+}
+
+function renderSessionsPage(list) {
+    const tbody = document.getElementById('sessionsTbody');
+    const total = _sessionsTotal;
+    const totalPages = Math.max(1, Math.ceil(total / SESSIONS_PAGE_SIZE));
+    if (total === 0) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无会话</td></tr>';
+        document.getElementById('sessionsPager').innerHTML = '';
         return;
     }
+    const start = (_sessionsPage - 1) * SESSIONS_PAGE_SIZE;
     tbody.innerHTML = list.map((s, i) => {
         const sid = s.session_id || '';
         const linkid = s.linkid || '';
@@ -1592,7 +1614,7 @@ async function loadSessions() {
             : `<button class="cfg-btn-danger-sm" disabled title="会话已关闭" style="opacity:0.45;cursor:not-allowed;"><i class="fas fa-trash-alt"></i></button>`;
         const filesBtn = `<button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="event.stopPropagation();openSessionFiles('${escHtml(sid)}', '${escHtml(linkid)}')" title="浏览工作目录文件" style="margin-right:4px;"><i class="fas fa-folder-open"></i></button>`;
         return `<tr id="${rowId}" style="cursor:pointer;" onclick="toggleSessionExpand('${rowId}', '${expandId}')">
-            <td class="col-seq">${i + 1}</td>
+            <td class="col-seq">${start + i + 1}</td>
             <td><span style="font-family:monospace;font-size:0.82rem;">${escHtml(linkid)}</span></td>
             <td>${isActive ? '<span class="badge badge-processing">活跃</span>' : '<span class="badge badge-cancelled">关闭</span>'}</td>
             <td class="col-date">${fmtTs(s.created_at)}</td>
@@ -1611,6 +1633,7 @@ async function loadSessions() {
             </td>
         </tr>`;
     }).join('');
+    document.getElementById('sessionsPager').innerHTML = pagerHtml(_sessionsPage, totalPages, 'loadSessions');
 }
 
 function toggleSessionExpand(rowId, expandId) {
@@ -1848,7 +1871,7 @@ async function deleteSession(sessionId, linkid) {
         const j = await r.json();
         if (j.code === 0) {
             toast('已删除', 'success');
-            loadSessions();
+            loadSessions(_sessionsPage);
         } else {
             toast(j.message || '删除失败', 'error');
         }
