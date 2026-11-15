@@ -20,6 +20,7 @@ data/logs/
 data/tasks/
 data/.claude/
 data/memory/
+data/.runner-env
 prompts.zip
 
 # doc_download_skill 配置（含 token，勿提交）

@@ -1,0 +1,219 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 810" font-family="system-ui, -apple-system, 'Noto Sans SC', sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#64748b"/>
+    </marker>
+    <marker id="arr-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#4b6cb7"/>
+    </marker>
+
+    <filter id="sh" x="-3%" y="-3%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#000" flood-opacity="0.06"/>
+    </filter>
+
+    <!-- FontAwesome 6.5.1 Solid Icons，定义为 symbol 以便 <use width/height> 正确缩放 -->
+
+    <symbol id="fa-server" viewBox="0 0 512 512"><path d="M64 32C28.7 32 0 60.7 0 96v64c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H64zm280 72a24 24 0 1 1 0 48 24 24 0 1 1 0-48zm48 24a24 24 0 1 1 48 0 24 24 0 1 1 -48 0zM64 288c-35.3 0-64 28.7-64 64v64c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V352c0-35.3-28.7-64-64-64H64zm280 72a24 24 0 1 1 0 48 24 24 0 1 1 0-48zm56 24a24 24 0 1 1 48 0 24 24 0 1 1 -48 0z"/></symbol>
+
+    <symbol id="fa-brain" viewBox="0 0 512 512"><path d="M184 0c30.9 0 56 25.1 56 56V456c0 30.9-25.1 56-56 56c-28.9 0-52.7-21.9-55.7-50.1c-5.2 1.4-10.7 2.1-16.3 2.1c-35.3 0-64-28.7-64-64c0-7.4 1.3-14.6 3.6-21.2C21.4 367.4 0 338.2 0 304c0-31.9 18.7-59.5 45.8-72.3C37.1 220.8 32 207 32 192c0-30.7 21.6-56.3 50.4-62.6C80.8 123.9 80 118 80 112c0-29.9 20.6-55.1 48.3-62.1C131.3 21.9 155.1 0 184 0zM328 0c28.9 0 52.6 21.9 55.7 49.9c27.8 7 48.3 32.1 48.3 62.1c0 6-.8 11.9-2.4 17.4c28.8 6.2 50.4 31.9 50.4 62.6c0 15-5.1 28.8-13.8 39.7C493.3 244.5 512 272.1 512 304c0 34.2-21.4 63.4-51.6 74.8c2.3 6.6 3.6 13.8 3.6 21.2c0 35.3-28.7 64-64 64c-5.6 0-11.1-.7-16.3-2.1c-3 28.2-26.8 50.1-55.7 50.1c-30.9 0-56-25.1-56-56V56c0-30.9 25.1-56 56-56z"/></symbol>
+
+    <symbol id="fa-file-lines" viewBox="0 0 384 512"><path d="M64 0C28.7 0 0 28.7 0 64V448c0 35.3 28.7 64 64 64H320c35.3 0 64-28.7 64-64V160H256c-17.7 0-32-14.3-32-32V0H64zM256 0V128H384L256 0zM112 256H272c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64H272c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64H272c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></symbol>
+
+    <symbol id="fa-magnifying-glass" viewBox="0 0 512 512"><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z"/></symbol>
+
+    <symbol id="fa-paper-plane" viewBox="0 0 512 512"><path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480V396.4c0-4 1.5-7.8 4.2-10.7L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z"/></symbol>
+
+    <symbol id="fa-shuffle" viewBox="0 0 512 512"><path d="M403.8 34.4c12-5 25.7-2.2 34.9 6.9l64 64c6 6 9.4 14.1 9.4 22.6s-3.4 16.6-9.4 22.6l-64 64c-9.2 9.2-22.9 11.9-34.9 6.9s-19.8-16.6-19.8-29.6V160H352c-10.1 0-19.6 4.7-25.6 12.8L284 229.3 244 176l31.2-41.6C293.3 110.2 321.8 96 352 96h32V64c0-12.9 7.8-24.6 19.8-29.6zM164 282.7L204 336l-31.2 41.6C154.7 401.8 126.2 416 96 416H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H96c10.1 0 19.6-4.7 25.6-12.8L164 282.7zm274.6 188c-9.2 9.2-22.9 11.9-34.9 6.9s-19.8-16.6-19.8-29.6V416H352c-30.2 0-58.7-14.2-76.8-38.4L121.6 172.8c-6-8.1-15.5-12.8-25.6-12.8H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H96c30.2 0 58.7 14.2 76.8 38.4L326.4 339.2c6 8.1 15.5 12.8 25.6 12.8h32V320c0-12.9 7.8-24.6 19.8-29.6s25.7-2.2 34.9 6.9l64 64c6 6 9.4 14.1 9.4 22.6s-3.4 16.6-9.4 22.6l-64 64z"/></symbol>
+
+    <symbol id="fa-download" viewBox="0 0 512 512"><path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V274.7l-73.4-73.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l128 128c12.5 12.5 32.8 12.5 45.3 0l128-128c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L288 274.7V32zM64 352c-35.3 0-64 28.7-64 64v32c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V416c0-35.3-28.7-64-64-64H346.5l-45.3 45.3c-25 25-65.5 25-90.5 0L165.5 352H64zm368 56a24 24 0 1 1 0 48 24 24 0 1 1 0-48z"/></symbol>
+
+    <symbol id="fa-diagram" viewBox="0 0 576 512"><path d="M0 80C0 53.5 21.5 32 48 32h96c26.5 0 48 21.5 48 48V96H384V80c0-26.5 21.5-48 48-48h96c26.5 0 48 21.5 48 48v96c0 26.5-21.5 48-48 48H432c-26.5 0-48-21.5-48-48V160H192v16c0 1.7-.1 3.4-.3 5L272 288h96c26.5 0 48 21.5 48 48v96c0 26.5-21.5 48-48 48H272c-26.5 0-48-21.5-48-48V336c0-1.7 .1-3.4 .3-5L144 224H48c-26.5 0-48-21.5-48-48V80z"/></symbol>
+
+    <symbol id="fa-desktop" viewBox="0 0 576 512"><path d="M64 0C28.7 0 0 28.7 0 64V352c0 35.3 28.7 64 64 64H240l-10.7 32H160c-17.7 0-32 14.3-32 32s14.3 32 32 32H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H346.7L336 416H512c35.3 0 64-28.7 64-64V64c0-35.3-28.7-64-64-64H64zM512 64V288H64V64H512z"/></symbol>
+
+    <symbol id="fa-database" viewBox="0 0 448 512"><path d="M448 80v48c0 44.2-100.3 80-224 80S0 172.2 0 128V80C0 35.8 100.3 0 224 0S448 35.8 448 80zM393.2 214.7c20.8-7.4 39.9-16.9 54.8-28.6V288c0 44.2-100.3 80-224 80S0 332.2 0 288V186.1c14.9 11.8 34 21.2 54.8 28.6C99.7 230.7 159.5 240 224 240s124.3-9.3 169.2-25.3zM0 346.1c14.9 11.8 34 21.2 54.8 28.6C99.7 390.7 159.5 400 224 400s124.3-9.3 169.2-25.3c20.8-7.4 39.9-16.9 54.8-28.6V432c0 44.2-100.3 80-224 80S0 476.2 0 432V346.1z"/></symbol>
+
+    <symbol id="fa-microchip" viewBox="0 0 512 512"><path d="M176 24c0-13.3-10.7-24-24-24s-24 10.7-24 24V64c-35.3 0-64 28.7-64 64H24c-13.3 0-24 10.7-24 24s10.7 24 24 24H64v56H24c-13.3 0-24 10.7-24 24s10.7 24 24 24H64v56H24c-13.3 0-24 10.7-24 24s10.7 24 24 24H64c0 35.3 28.7 64 64 64v40c0 13.3 10.7 24 24 24s24-10.7 24-24V448h56v40c0 13.3 10.7 24 24 24s24-10.7 24-24V448h56v40c0 13.3 10.7 24 24 24s24-10.7 24-24V448c35.3 0 64-28.7 64-64h40c13.3 0 24-10.7 24-24s-10.7-24-24-24H448V280h40c13.3 0 24-10.7 24-24s-10.7-24-24-24H448V176h40c13.3 0 24-10.7 24-24s-10.7-24-24-24H448c0-35.3-28.7-64-64-64V24c0-13.3-10.7-24-24-24s-24 10.7-24 24V64H280V24c0-13.3-10.7-24-24-24s-24 10.7-24 24V64H176V24zM160 128H352c17.7 0 32 14.3 32 32V352c0 17.7-14.3 32-32 32H160c-17.7 0-32-14.3-32-32V160c0-17.7 14.3-32 32-32zm192 32H160V352H352V160z"/></symbol>
+
+    <symbol id="fa-warn" viewBox="0 0 512 512"><path d="M256 32c14.2 0 27.3 7.5 34.5 19.8l216 368c7.3 12.4 7.3 27.7 .2 40.1S486.3 480 472 480H40c-14.3 0-27.6-7.7-34.7-20.1s-7-27.8 .2-40.1l216-368C228.7 39.5 241.8 32 256 32zm0 128c-13.3 0-24 10.7-24 24V296c0 13.3 10.7 24 24 24s24-10.7 24-24V184c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z"/></symbol>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1060" height="810" fill="#fafbfc"/>
+
+  <!-- ── 外部业务系统 ── -->
+  <g filter="url(#sh)">
+    <rect x="20" y="30" width="185" height="62" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+  </g>
+  <use href="#fa-desktop" x="32" y="40" width="16" height="16" fill="#4b6cb7"/>
+  <text x="56" y="52" fill="#1e293b" font-size="13" font-weight="600">外部业务系统</text>
+  <text x="112" y="72" text-anchor="middle" fill="#64748b" font-size="11">提交任务 / 接收回调</text>
+
+  <!-- ── 管理员终端 ── -->
+  <g filter="url(#sh)">
+    <rect x="20" y="118" width="185" height="62" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+  </g>
+  <use href="#fa-desktop" x="32" y="128" width="16" height="16" fill="#4b6cb7"/>
+  <text x="56" y="140" fill="#1e293b" font-size="13" font-weight="600">管理员终端</text>
+  <text x="112" y="160" text-anchor="middle" fill="#64748b" font-size="11">Web 管理后台</text>
+
+  <!-- ── 外部 → 控制面 ── -->
+  <line x1="205" y1="61" x2="295" y2="130" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="212" y="80" width="76" height="16" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="250" y="92" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:20001 HTTPS</text>
+
+  <line x1="205" y1="149" x2="295" y2="160" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="212" y="140" width="76" height="16" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="250" y="152" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:20001 HTTPS</text>
+
+  <!-- ── 控制面 ── -->
+  <g filter="url(#sh)">
+    <rect x="295" y="30" width="265" height="190" rx="8" fill="#fff" stroke="#4b6cb7" stroke-width="1.5"/>
+  </g>
+  <use href="#fa-server" x="309" y="40" width="18" height="18" fill="#4b6cb7"/>
+  <text x="332" y="54" fill="#1e293b" font-size="14" font-weight="700">控制面 (control)</text>
+  <line x1="309" y1="63" x2="546" y2="63" stroke="#e2e8f0" stroke-width="0.8"/>
+
+  <use href="#fa-desktop" x="309" y="74" width="13" height="13" fill="#4b6cb7" opacity="0.7"/>
+  <text x="328" y="84" fill="#334155" font-size="11">管理后台 / API</text>
+
+  <use href="#fa-database" x="309" y="96" width="13" height="13" fill="#4b6cb7" opacity="0.7"/>
+  <text x="328" y="106" fill="#334155" font-size="11">文件 DB</text>
+
+  <use href="#fa-diagram" x="309" y="118" width="13" height="13" fill="#4b6cb7" opacity="0.7"/>
+  <text x="328" y="128" fill="#334155" font-size="11">任务队列 / 调度</text>
+
+  <use href="#fa-shuffle" x="309" y="140" width="13" height="13" fill="#4b6cb7" opacity="0.7"/>
+  <text x="328" y="150" fill="#334155" font-size="11">runner 选路 / 心跳</text>
+
+  <text x="309" y="170" fill="#64748b" font-size="10">持久化存储</text>
+
+  <!-- ── runner-1 ── -->
+  <g filter="url(#sh)">
+    <rect x="630" y="30" width="210" height="118" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+  </g>
+  <use href="#fa-server" x="642" y="38" width="15" height="15" fill="#4b6cb7"/>
+  <text x="663" y="50" fill="#1e293b" font-size="12.5" font-weight="600">runner-1 · :20002</text>
+  <line x1="642" y1="58" x2="826" y2="58" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <use href="#fa-microchip" x="642" y="68" width="12" height="12" fill="#4b6cb7" opacity="0.7"/>
+  <text x="660" y="78" fill="#334155" font-size="10.5">任务执行</text>
+
+  <use href="#fa-file-lines" x="642" y="88" width="12" height="12" fill="#4b6cb7" opacity="0.7"/>
+  <text x="660" y="98" fill="#334155" font-size="10.5">会话 / 工作目录</text>
+
+  <text x="642" y="118" fill="#64748b" font-size="10">无状态</text>
+
+  <!-- ── runner-2 ── -->
+  <g filter="url(#sh)">
+    <rect x="630" y="175" width="210" height="118" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+  </g>
+  <use href="#fa-server" x="642" y="183" width="15" height="15" fill="#4b6cb7"/>
+  <text x="663" y="195" fill="#1e293b" font-size="12.5" font-weight="600">runner-2 · :20002</text>
+  <line x1="642" y1="203" x2="826" y2="203" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <use href="#fa-microchip" x="642" y="213" width="12" height="12" fill="#4b6cb7" opacity="0.7"/>
+  <text x="660" y="223" fill="#334155" font-size="10.5">任务执行</text>
+
+  <use href="#fa-file-lines" x="642" y="233" width="12" height="12" fill="#4b6cb7" opacity="0.7"/>
+  <text x="660" y="243" fill="#334155" font-size="10.5">会话 / 工作目录</text>
+
+  <text x="642" y="263" fill="#64748b" font-size="10">无状态</text>
+
+  <!-- ── 控制面 → runner ── -->
+  <line x1="516" y1="110" x2="630" y2="100" stroke="#4b6cb7" stroke-width="1.8" marker-end="url(#arr-b)"/>
+  <rect x="525" y="90" width="94" height="22" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+  <text x="572" y="100" text-anchor="middle" fill="#4b6cb7" font-size="9" font-weight="600">:20002 HTTPS / Bearer</text>
+  <text x="572" y="110" text-anchor="middle" fill="#94a3b8" font-size="8">任务派发 / 心跳</text>
+
+  <line x1="516" y1="170" x2="630" y2="220" stroke="#4b6cb7" stroke-width="1.8" marker-end="url(#arr-b)"/>
+  <rect x="526" y="183" width="94" height="22" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+  <text x="573" y="193" text-anchor="middle" fill="#4b6cb7" font-size="9" font-weight="600">:20002 HTTPS / Bearer</text>
+  <text x="573" y="203" text-anchor="middle" fill="#94a3b8" font-size="8">任务派发 / 心跳</text>
+
+  <!-- ── 分隔线 ── -->
+  <line x1="20" y1="330" x2="1040" y2="330" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="452" y="320" width="106" height="20" rx="4" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="505" y="335" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">runner 出站依赖</text>
+
+  <!-- ── runner 出站汇聚线 ── -->
+  <line x1="840" y1="90" x2="870" y2="90" stroke="#94a3b8" stroke-width="1.2"/>
+  <line x1="870" y1="90" x2="870" y2="345" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="840" y1="234" x2="870" y2="234" stroke="#94a3b8" stroke-width="1.2"/>
+  <line x1="870" y1="234" x2="870" y2="345" stroke="#94a3b8" stroke-width="1.5"/>
+
+  <rect x="858" y="348" width="36" height="18" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+  <text x="876" y="361" text-anchor="middle" fill="#4b6cb7" font-size="9" font-weight="600">出站</text>
+
+  <!-- ── 扇出线 ── -->
+  <line x1="870" y1="370" x2="145" y2="418" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <line x1="870" y1="370" x2="400" y2="418" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <line x1="870" y1="370" x2="655" y2="418" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <line x1="870" y1="370" x2="145" y2="548" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <line x1="870" y1="370" x2="400" y2="548" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <line x1="870" y1="370" x2="655" y2="548" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+
+  <!-- ── 外部服务卡片（2×3） ── -->
+
+  <g filter="url(#sh)">
+    <rect x="20" y="355" width="220" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-brain" x="32" y="364" width="16" height="16" fill="#4b6cb7"/>
+    <text x="56" y="376" fill="#1e293b" font-size="12.5" font-weight="600">LLM 网关</text>
+    <text x="130" y="398" text-anchor="middle" fill="#475569" font-size="10.5">模型调用</text>
+    <text x="130" y="416" text-anchor="middle" fill="#94a3b8" font-size="10">任务执行依赖</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="270" y="355" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-file-lines" x="282" y="364" width="16" height="16" fill="#4b6cb7"/>
+    <text x="306" y="376" fill="#1e293b" font-size="12.5" font-weight="600">文件服务</text>
+    <text x="385" y="398" text-anchor="middle" fill="#475569" font-size="10.5">文件下载链接续期</text>
+    <text x="385" y="416" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="530" y="355" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-magnifying-glass" x="542" y="364" width="16" height="16" fill="#4b6cb7"/>
+    <text x="566" y="376" fill="#1e293b" font-size="12.5" font-weight="600">审稿服务</text>
+    <text x="645" y="398" text-anchor="middle" fill="#475569" font-size="10.5">文档校对（异步）</text>
+    <text x="645" y="416" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="20" y="460" width="220" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-paper-plane" x="32" y="469" width="16" height="16" fill="#4b6cb7"/>
+    <text x="56" y="481" fill="#1e293b" font-size="12.5" font-weight="600">业务回调</text>
+    <text x="130" y="503" text-anchor="middle" fill="#475569" font-size="10.5">结果回传</text>
+    <text x="130" y="521" text-anchor="middle" fill="#94a3b8" font-size="10">任务完成后调用</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="270" y="460" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-shuffle" x="282" y="469" width="16" height="16" fill="#4b6cb7"/>
+    <text x="306" y="481" fill="#1e293b" font-size="12.5" font-weight="600">工作流服务</text>
+    <text x="385" y="503" text-anchor="middle" fill="#475569" font-size="10.5">流转信息查询</text>
+    <text x="385" y="521" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="530" y="460" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-download" x="542" y="469" width="16" height="16" fill="#4b6cb7"/>
+    <text x="566" y="481" fill="#1e293b" font-size="12.5" font-weight="600">文件下载</text>
+    <text x="645" y="503" text-anchor="middle" fill="#475569" font-size="10.5">获取待处理文件</text>
+    <text x="645" y="521" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
+  </g>
+
+  <!-- ── 网络策略提示 ── -->
+  <rect x="20" y="570" width="1020" height="50" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <use href="#fa-warn" x="32" y="578" width="14" height="14" fill="#4b6cb7"/>
+  <text x="52" y="591" fill="#334155" font-size="11">
+    <tspan font-weight="600">关键网络策略</tspan>
+    <tspan>: </tspan>
+    <tspan>① 外部 → 控制面 :20001</tspan>
+    <tspan xml:space="preserve">  ｜  </tspan>
+    <tspan>② 控制面 → runner :20002</tspan>
+    <tspan xml:space="preserve">  ｜  </tspan>
+    <tspan>③ runner 出站 → 任务执行所需的外部服务</tspan>
+  </text>
+  <text x="52" y="610" fill="#94a3b8" font-size="10">访问凭据通过配置加密下发，不落在运行节点</text>
+</svg>

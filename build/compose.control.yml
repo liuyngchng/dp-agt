@@ -1,0 +1,54 @@
+# AI 数字员工 — 控制面部署（单机，独立 compose 文件）
+#
+# 用法（在控制面服务器上）:
+#   docker-compose -f build/compose.control.yml up -d
+#
+# 环境变量:
+#   IMAGE_TAG    镜像版本（默认 0.1.0）
+#   RUNNER_TOKEN 控制面↔runner 认证 token（必填）
+#   HOST_UID     宿主机用户 UID（默认 1000）
+#   HOST_GID     宿主机用户 GID（默认 1000）
+#   HOST_PORT    对外端口（默认 20001）
+
+# ── 公有云/遥测域名屏蔽（私有部署，全部指向 127.0.0.1） ──
+x-extra-hosts: &extra-hosts
+  - "api.anthropic.com:127.0.0.1"
+  - "api-staging.anthropic.com:127.0.0.1"
+  - "anthropic.com:127.0.0.1"
+  - "www.anthropic.com:127.0.0.1"
+  - "claude.ai:127.0.0.1"
+  - "claude.com:127.0.0.1"
+  - "platform.claude.com:127.0.0.1"
+  - "code.claude.com:127.0.0.1"
+  - "downloads.claude.ai:127.0.0.1"
+  - "docs.anthropic.com:127.0.0.1"
+  - "status.anthropic.com:127.0.0.1"
+  - "status.claude.com:127.0.0.1"
+  - "support.anthropic.com:127.0.0.1"
+  - "support.claude.com:127.0.0.1"
+  - "mcp-proxy.anthropic.com:127.0.0.1"
+  - "microsoft365.mcp.claude.com:127.0.0.1"
+  - "slack.mcp.claude.com:127.0.0.1"
+  - "api.datadoghq.com:127.0.0.1"
+  - "browser-intake-us5-datadoghq.com:127.0.0.1"
+  - "http-intake.logs.us5.datadoghq.com:127.0.0.1"
+  - "mcp.amplitude.com:127.0.0.1"
+  - "mcp.intercom.com:127.0.0.1"
+  - "mcp.sentry.dev:127.0.0.1"
+  - "telemetry.googleapis.com:127.0.0.1"
+
+services:
+  control:
+    image: dp-agt:${IMAGE_TAG:-latest}
+    container_name: dp-agt-control
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command: ["node", "dist/index.js"]
+    environment:
+      DATA_DIR: /app/data
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN 必须设置，请先 export RUNNER_TOKEN=xxx}
+    volumes:
+      - ../data:/app/data
+    ports:
+      - "${HOST_PORT:-20001}:20001"
+    extra_hosts: *extra-hosts
+    restart: unless-stopped

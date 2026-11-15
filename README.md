@@ -40,21 +40,15 @@ npm run dev:runner   # 热更启动 runner，监听 RUNNER_PORT（默认 20002�
 
 集群设计文档：`doc/cluster-runner-design.md`。
 
-### Docker 部署（单实例）
+### Docker 集群部署（微服务，每服务一台服务器）
+
+当前分支只支持集群模式。控制面与 runner 分离部署，runner 可水平扩容。
 
 ```bash
-./build/build.sh            # 构建镜像
-./build/deploy.sh start     # 启动单实例容器
-```
-
-### Docker 集群部署（横向扩展）
-
-单实例之外，可用 docker-compose 起「1 个控制面 + N 个 runner」：
-
-```bash
-export RUNNER_TOKEN=你的内网认证token
-docker compose -f build/compose.yml up -d                        # 控制面 + runner1
-docker compose -f build/compose.yml --profile scale up -d runner2  # 按需追加 runner2
+./build/build.sh            # 构建镜像（产出 dp-agt:<version> 与 dp-agt:latest）
+./build/deploy.sh gen-token # 生成控制面↔runner 认证 token（写入 data/.runner-env）
+./build/deploy.sh up runner # 在 runner 服务器上启动 runner
+./build/deploy.sh up control# 在控制面服务器上启动控制面
 ```
 
 - **控制面**：对外 API + 管理后台 + 队列调度 + 唯一 SQLite 写者（挂载 `data/`）
@@ -66,22 +60,22 @@ docker compose -f build/compose.yml --profile scale up -d runner2  # 按需追�
 runner:
   addresses:
     - name: runner-1
-      addr: http://runner1:20002   # 内网 http；https 需自签/内网 CA 证书
+      addr: https://192.168.1.11:20002   # runner 服务器内网 IP（默认 HTTPS，自签证书）
       capacity: 5
     - name: runner-2
-      addr: http://runner2:20002
+      addr: https://192.168.1.12:20002
       capacity: 5
 ```
 
-- `runner.addresses` 为空 → 退化为单实例本机执行（行为不变，可平滑回滚）
 - 修改 runner 列表需**重启控制面**生效（`runners` 表在启动时同步）
+- 跨机器部署的完整步骤见 `build/README.md`
 - 详细设计见 `doc/cluster-runner-design.md`
 
 **控制面 runner 配置**（`cfg.yml`，均可被环境变量覆盖）：
 
 | 配置 | 环境变量 | 默认 | 说明 |
 |------|---------|------|------|
-| `runner.token` | `RUNNER_TOKEN` | 空 | 控制面↔runner 认证，只从环境变量读，不写死 |
+| `runner.token` | `RUNNER_TOKEN` | 空 | 控制面↔runner 认证，从环境变量读 |
 | `runner.port` | `RUNNER_PORT` | 20002 | runner 监听端口 |
 | `runner.heartbeat_ms` | `RUNNER_HEARTBEAT_MS` | 5000 | 心跳间隔 |
 | `runner.connect_timeout_ms` | `RUNNER_CONNECT_TIMEOUT_MS` | 5000 | 连接超时 |
@@ -96,7 +90,7 @@ runner:
 | `RUNNER_MAX_CONCURRENT` | 5 | 单 runner 最大并发 SDK 数 |
 | `RUNNER_TIMEOUT_MS` | 600000 | 看门狗滑动超时 |
 | `RUNNER_GRACE_MS` | 60000 | 看门狗宽限 |
-| `RUNNER_USE_HTTPS` | 1 | `0` 退化为 HTTP（内网 compose 用） |
+| `RUNNER_USE_HTTPS` | 1 | `0` 退化为 HTTP（需与控制面 `cfg.yml` 的 `addr` 协议一致） |
 | `RUNNER_TOKEN` | 空 | 与控制面一致 |
 
 ## 工作原理
@@ -400,4 +394,4 @@ curl -s -k --noproxy '*' -w'\n' -X GET '{{sys.org_api_url}}/dept/tree' \
 | 存储 | SQLite (better-sqlite3) |
 | 前端 | Vanilla JS SPA |
 | 部署 | Docker, 自签 HTTPS |
-| 横向扩展 | 控制面 + 无状态 runner（docker-compose 编排） |
+| 横向扩展 | 控制面 + 无状态 runner（微服务，每服务一台机器） |

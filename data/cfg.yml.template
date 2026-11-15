@@ -69,5 +69,34 @@ llm:
   # 解决私有部署环境下 classifier unavailable 的问题，通常保持 false
   auto_mode_server: false
 
+# ---- Runner 集群配置 ----
+runner:
+  # 控制面 ↔ runner 认证 token，从环境变量 RUNNER_TOKEN 读取，不写死
+  # token: "${RUNNER_TOKEN}"
+
+  # runner 监听端口
+  port: 20002
+
+  # 心跳间隔（毫秒）
+  heartbeat_ms: 5000
+
+  # 连接超时（毫秒）
+  connect_timeout_ms: 5000
+
+  # 短请求超时（毫秒，心跳/会话代理等）
+  request_timeout_ms: 15000
+
+  # runner 静态列表（控制面启动时同步到 runners 表）
+  # 跨机器部署时，addr 填 runner 服务器的内网 IP 或主机名
+  # runner 默认 HTTPS（自签证书，控制面客户端不校验）；如需 HTTP 设 RUNNER_USE_HTTPS=0
+  # 修改此列表后需重启控制面生效
+  addresses:
+    - name: runner-1
+      addr: https://192.168.1.11:20002     # 示例：runner 服务器 A
+      capacity: 5
+    - name: runner-2
+      addr: https://192.168.1.12:20002     # 示例：runner 服务器 B
+      capacity: 5
+
 # ---- 数据目录（可选，默认程序运行目录下的 data/） ----
 # data_dir: "/app/data"
