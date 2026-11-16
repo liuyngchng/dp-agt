@@ -1,8 +1,13 @@
-# AI 数字员工横向扩展设计（方案 A 阶段 1：控制面 + 无状态 runner 拆分）
+# AI 数字员工横向扩展设计（方案 A：runner 拆分 + 控制面 HA）
 
-> 状态：设计草案，待评审。
-> 范围：只做「控制面（调度/管理）+ 无状态 runner（执行）」的拆分，**不上** Postgres / Redis / 共享文件系统（那是后续阶段 2 的事）。
-> 目标：让「跑 Claude Agent SDK」这个重活可以水平扩容，控制面保持单实例（轻量、单 SQLite 写者）。
+> 本文档覆盖两个阶段：
+> - **阶段 1**（`cluster` 分支，已完成）：控制面单实例 + 无状态 runner 拆分。控制面负责调度/管理，runner 负责执行 SDK。
+> - **阶段 2**（`cluster` 分支，进行中）：控制面多实例 HA（MySQL + Redis）。消除控制面单点，支持前挂 LB 水平扩展。
+>
+> 阶段 2 的独立设计文档见 `doc/control-plane-ha-design.md`。本文档 §3 的「数据模型改动」和 §7 的「文件级改动清单」在阶段 2 中已有演进（SQLite → MySQL），其余 runner 协议、选路逻辑、部署模式保持不变。
+
+> 范围：阶段 1 只做「控制面（调度/管理）+ 无状态 runner（执行）」的拆分；阶段 2 将控制面从单实例升级为多实例，引入 MySQL（持久层）和 Redis（协调层）。
+> 目标：让「跑 Claude Agent SDK」这个重活可以水平扩容；同时让控制面（调度/队列/管理）也能水平扩容。
 
 ---
 
@@ -426,12 +431,12 @@ services:
 
 | # | 风险 / 未决 | 影响 | 建议 | 我的看法 |
 |---|-------------|------|------|------|
-| 1 | 控制面仍是单点（调度 + 唯一 SQLite 写者） | 控制面挂了全体不可用（但 runner 上的在跑任务会被连接断开中止） | 阶段 1 接受；控制面很轻，短中期不是瓶颈。需要控制面 HA 再进阶段 2 | 控制面单点，没问题，暂时不考虑控制面的扩展，因为任务中的是runner |
-| 2 | 机密随 `RunRequest` 下发到 runner | 内网明文传输的 token 泄露面增大 | 内网 + Bearer + 建议 mTLS/HTTPS；runner 不打日志不落盘 | 没问题，目前https传输，而且是内网 |
-| 3 | 静态 runner 列表不够弹性 | 扩容要改 compose + cfg | 阶段 1 接受；预留 `/register` 动态注册扩展位 | 没关系，手动改compose，手动加节点，这个没问题 |
-| 4 | 会话读/删走代理，多一跳 | 大文件下载时控制面成为转发瓶颈 | 文件不大（文档类），阶段 1 接受；必要时让控制面返回 runner 直连 URL | 会话文件浏览/下载是低频排查操作，删除会话是低频生产运维动作（清会话 + 取消在跑任务 + 关 session），都非高频，走代理多一跳可接受 |
+| 1 | 控制面仍是单点（调度 + 唯一 SQLite 写者） | 控制面挂了全体不可用 | **已进入阶段 2**：控制面多实例 HA 改造中（MySQL + Redis）。详见 `doc/control-plane-ha-design.md`。 | 控制面单点 —— 正在解决 |
+| 2 | 机密随 `RunRequest` 下发到 runner | 内网明文传输的 token 泄露面增大 | 内网 + Bearer + 建议 mTLS/HTTPS；runner 不打日志不落盘 | 没问题，目前 HTTPS 传输，而且内网 |
+| 3 | 静态 runner 列表不够弹性 | 扩容要改 compose + cfg.yml | 阶段 1 接受；预留 `/register` 动态注册扩展位 | 手动改 compose，手动加节点，可接受 |
+| 4 | 会话读/删走代理，多一跳 | 大文件下载时控制面成为转发瓶颈 | 文件不大（文档类），阶段 1 接受；必要时让控制面返回 runner 直连 URL | 低频操作，走代理多一跳可接受 |
 | 5 | 连接断开=取消的时序竞争 | 控制面恰好在 runner 回传 `result` 前断开，可能丢终态 | runner 收到 `result` 时若连接已断则仅打日志丢弃；控制面已有终态标记路径兜底 | 没问题 |
-| 6 | runner 崩溃导致该机所有 session/workdir 丢失 | 该 linkid 下次提交退化为新建 session | 复用现有 `resume_session_gone_creating_new` 兜底（`sdk-runner.ts:300-316`），可接受 | 没问题 |
+| 6 | runner 崩溃导致该机所有 session/workdir 丢失 | 该 linkid 下次提交退化为新建 session | 复用 `resume_session_gone_creating_new` 兜底，可接受 | 没问题 |
 
 ---
 
