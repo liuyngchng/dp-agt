@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 560" font-family="system-ui, -apple-system, 'Noto Sans SC', sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#94a3b8"/>
+    </marker>
+
+    <filter id="sh" x="-3%" y="-3%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#000" flood-opacity="0.06"/>
+    </filter>
+
+    <symbol id="fa-desktop" viewBox="0 0 576 512"><path d="M64 0C28.7 0 0 28.7 0 64V352c0 35.3 28.7 64 64 64H240l-10.7 32H160c-17.7 0-32 14.3-32 32s14.3 32 32 32H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H346.7L336 416H512c35.3 0 64-28.7 64-64V64c0-35.3-28.7-64-64-64H64zM512 64V288H64V64H512z"/></symbol>
+    <symbol id="fa-brain" viewBox="0 0 512 512"><path d="M184 0c30.9 0 56 25.1 56 56V456c0 30.9-25.1 56-56 56c-28.9 0-52.7-21.9-55.7-50.1c-5.2 1.4-10.7 2.1-16.3 2.1c-35.3 0-64-28.7-64-64c0-7.4 1.3-14.6 3.6-21.2C21.4 367.4 0 338.2 0 304c0-31.9 18.7-59.5 45.8-72.3C37.1 220.8 32 207 32 192c0-30.7 21.6-56.3 50.4-62.6C80.8 123.9 80 118 80 112c0-29.9 20.6-55.1 48.3-62.1C131.3 21.9 155.1 0 184 0zM328 0c28.9 0 52.6 21.9 55.7 49.9c27.8 7 48.3 32.1 48.3 62.1c0 6-.8 11.9-2.4 17.4c28.8 6.2 50.4 31.9 50.4 62.6c0 15-5.1 28.8-13.8 39.7C493.3 244.5 512 272.1 512 304c0 34.2-21.4 63.4-51.6 74.8c2.3 6.6 3.6 13.8 3.6 21.2c0 35.3-28.7 64-64 64c-5.6 0-11.1-.7-16.3-2.1c-3 28.2-26.8 50.1-55.7 50.1c-30.9 0-56-25.1-56-56V56c0-30.9 25.1-56 56-56z"/></symbol>
+    <symbol id="fa-server" viewBox="0 0 512 512"><path d="M64 32C28.7 32 0 60.7 0 96v64c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H64zm280 72a24 24 0 1 1 0 48 24 24 0 1 1 0-48zm48 24a24 24 0 1 1 48 0 24 24 0 1 1 -48 0zM64 288c-35.3 0-64 28.7-64 64v64c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V352c0-35.3-28.7-64-64-64H64zm280 72a24 24 0 1 1 0 48 24 24 0 1 1 0-48zm56 24a24 24 0 1 1 48 0 24 24 0 1 1 -48 0z"/></symbol>
+    <symbol id="fa-database" viewBox="0 0 448 512"><path d="M448 80v48c0 44.2-100.3 80-224 80S0 172.2 0 128V80C0 35.8 100.3 0 224 0S448 35.8 448 80zM393.2 214.7c20.8-7.4 39.9-16.9 54.8-28.6V288c0 44.2-100.3 80-224 80S0 332.2 0 288V186.1c14.9 11.8 34 21.2 54.8 28.6C99.7 230.7 159.5 240 224 240s124.3-9.3 169.2-25.3zM0 346.1c14.9 11.8 34 21.2 54.8 28.6C99.7 390.7 159.5 400 224 400s124.3-9.3 169.2-25.3c20.8-7.4 39.9-16.9 54.8-28.6V432c0 44.2-100.3 80-224 80S0 476.2 0 432V346.1z"/></symbol>
+    <symbol id="fa-diagram" viewBox="0 0 576 512"><path d="M0 80C0 53.5 21.5 32 48 32h96c26.5 0 48 21.5 48 48V96H384V80c0-26.5 21.5-48 48-48h96c26.5 0 48 21.5 48 48v96c0 26.5-21.5 48-48 48H432c-26.5 0-48-21.5-48-48V160H192v16c0 1.7-.1 3.4-.3 5L272 288h96c26.5 0 48 21.5 48 48v96c0 26.5-21.5 48-48 48H272c-26.5 0-48-21.5-48-48V336c0-1.7 .1-3.4 .3-5L144 224H48c-26.5 0-48-21.5-48-48V80z"/></symbol>
+    <symbol id="fa-shuffle" viewBox="0 0 512 512"><path d="M403.8 34.4c12-5 25.7-2.2 34.9 6.9l64 64c6 6 9.4 14.1 9.4 22.6s-3.4 16.6-9.4 22.6l-64 64c-9.2 9.2-22.9 11.9-34.9 6.9s-19.8-16.6-19.8-29.6V160H352c-10.1 0-19.6 4.7-25.6 12.8L284 229.3 244 176l31.2-41.6C293.3 110.2 321.8 96 352 96h32V64c0-12.9 7.8-24.6 19.8-29.6zM164 282.7L204 336l-31.2 41.6C154.7 401.8 126.2 416 96 416H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H96c10.1 0 19.6-4.7 25.6-12.8L164 282.7zm274.6 188c-9.2 9.2-22.9 11.9-34.9 6.9s-19.8-16.6-19.8-29.6V416H352c-30.2 0-58.7-14.2-76.8-38.4L121.6 172.8c-6-8.1-15.5-12.8-25.6-12.8H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H96c30.2 0 58.7 14.2 76.8 38.4L326.4 339.2c6 8.1 15.5 12.8 25.6 12.8h32V320c0-12.9 7.8-24.6 19.8-29.6s25.7-2.2 34.9 6.9l64 64c6 6 9.4 14.1 9.4 22.6s-3.4 16.6-9.4 22.6l-64 64z"/></symbol>
+    <symbol id="fa-file-lines" viewBox="0 0 384 512"><path d="M64 0C28.7 0 0 28.7 0 64V448c0 35.3 28.7 64 64 64H320c35.3 0 64-28.7 64-64V160H256c-17.7 0-32-14.3-32-32V0H64zM256 0V128H384L256 0zM112 256H272c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64H272c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64H272c8.8 0 16 7.2 16 16s-7.2 16-16 16H112c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></symbol>
+    <symbol id="fa-magnifying-glass" viewBox="0 0 512 512"><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z"/></symbol>
+    <symbol id="fa-paper-plane" viewBox="0 0 512 512"><path d="M498.1 5.6c10.1 7 15.4 19.1 13.5 31.2l-64 416c-1.5 9.7-7.4 18.2-16 23s-18.9 5.4-28 1.6L284 427.7l-68.5 74.1c-8.9 9.7-22.9 12.9-35.2 8.1S160 493.2 160 480V396.4c0-4 1.5-7.8 4.2-10.7L331.8 202.8c5.8-6.3 5.6-16-.4-22s-15.7-6.4-22-.7L106 360.8 17.7 316.6C7.1 311.3 .3 300.7 0 288.9s5.9-22.8 16.1-28.7l448-256c10.7-6.1 23.9-5.5 34 1.4z"/></symbol>
+    <symbol id="fa-microchip" viewBox="0 0 512 512"><path d="M176 24c0-13.3-10.7-24-24-24s-24 10.7-24 24V64c-35.3 0-64 28.7-64 64H24c-13.3 0-24 10.7-24 24s10.7 24 24 24H64v56H24c-13.3 0-24 10.7-24 24s10.7 24 24 24H64v56H24c-13.3 0-24 10.7-24 24s10.7 24 24 24H64c0 35.3 28.7 64 64 64v40c0 13.3 10.7 24 24 24s24-10.7 24-24V448h56v40c0 13.3 10.7 24 24 24s24-10.7 24-24V448h56v40c0 13.3 10.7 24 24 24s24-10.7 24-24V448c35.3 0 64-28.7 64-64h40c13.3 0 24-10.7 24-24s-10.7-24-24-24H448V280h40c13.3 0 24-10.7 24-24s-10.7-24-24-24H448V176h40c13.3 0 24-10.7 24-24s-10.7-24-24-24H448c0-35.3-28.7-64-64-64V24c0-13.3-10.7-24-24-24s-24 10.7-24 24V64H280V24c0-13.3-10.7-24-24-24s-24 10.7-24 24V64H176V24zM160 128H352c17.7 0 32 14.3 32 32V352c0 17.7-14.3 32-32 32H160c-17.7 0-32-14.3-32-32V160c0-17.7 14.3-32 32-32zm192 32H160V352H352V160z"/></symbol>
+    <symbol id="fa-key" viewBox="0 0 512 512"><path d="M336 352c97.2 0 176-78.8 176-176S433.2 0 336 0S160 78.8 160 176c0 18.7 2.9 36.8 8.3 53.7L7 391c-4.5 4.5-7 10.6-7 17v80c0 13.3 10.7 24 24 24h80c13.3 0 24-10.7 24-24V448h40c13.3 0 24-10.7 24-24V384h40c6.4 0 12.5-2.5 17-7l33.3-33.3c16.9 5.4 35 8.3 53.7 8.3zM376 96a40 40 0 1 1 0 80 40 40 0 1 1 0-80z"/></symbol>
+    <symbol id="fa-list-check" viewBox="0 0 576 512"><path d="M184.1 38.2c9.9 8.9 10.7 24 1.8 33.9l-72 80c-4.4 4.9-10.6 7.8-17.2 7.9s-12.9-2.4-17.6-7L7 113C-2.3 103.6-2.3 88.4 7 79s24.6-9.4 33.9 0l55.1 55.1 71.1-79c8.9-9.9 24-10.7 33.9-1.8zm0 160c9.9 8.9 10.7 24 1.8 33.9l-72 80c-4.4 4.9-10.6 7.8-17.2 7.9s-12.9-2.4-17.6-7L7 273c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l55.1 55.1 71.1-79c8.9-9.9 24-10.7 33.9-1.8zM288 80c0 17.7 14.3 32 32 32h224c17.7 0 32-14.3 32-32s-14.3-32-32-32H320c-17.7 0-32 14.3-32 32zm0 160c0 17.7 14.3 32 32 32h224c17.7 0 32-14.3 32-32s-14.3-32-32-32H320c-17.7 0-32 14.3-32 32z"/></symbol>
+    <symbol id="fa-clock" viewBox="0 0 512 512"><path d="M256 0a256 256 0 1 1 0 512A256 256 0 1 1 256 0zM232 120V256c0 8 4 15.5 10.7 20l96 64c11 7.4 25.9 4.4 33.3-6.7s4.4-25.9-6.7-33.3L280 243.2V120c0-13.3-10.7-24-24-24s-24 10.7-24 24z"/></symbol>
+    <symbol id="fa-bolt" viewBox="0 0 448 512"><path d="M349.4 44.6c5.9-13.7 1.5-29.7-10.6-38.5s-28.6-8-39.9 1.8l-256 224c-10 8.8-13.6 22.9-8.9 34.9S50.7 288 64 288H175.5L98.6 467.4c-5.9 13.7-1.5 29.7 10.6 38.5s28.6 8 39.9-1.8l256-224c10-8.8 13.6-22.9 8.9-34.9s-16.6-16.6-29.9-17H336.5L349.4 44.6z"/></symbol>
+    <symbol id="fa-folder-open" viewBox="0 0 576 512"><path d="M88.7 223.8L0 375.8V96C0 60.7 28.7 32 64 32H181.5c17 0 33.3 6.7 45.3 18.7l26.5 26.5c12 12 28.3 18.7 45.3 18.7H416c35.3 0 64 28.7 64 64v32H144c-22.8 0-43.8 12.1-55.3 31.8zm27.6 16.1C122.1 230 132.6 224 144 224H544c11.5 0 22 6.1 27.7 16.1s5.7 22.2-.1 32.1l-112 192C453.9 474 443.4 480 432 480H32c-11.5 0-22-6.1-27.7-16.1s-5.7-22.2 .1-32.1l112-192z"/></symbol>
+    <symbol id="fa-route" viewBox="0 0 512 512"><path d="M320 256l96 96c4.6 4.6 5.9 11.5 3.5 17.4s-8.3 9.9-14.8 9.9l-32 0 0-96c0-17.7-14.3-32-32-32l-96 0c-8.8 0-16 7.2-16 16s7.2 16 16 16l80 0 0 64-32 0c-9.7 0-18.8 4.4-25 11.9s-8.5 16.7-6.5 25.9l32 96c2.5 7.5 9.4 12.4 17.2 12.4s14.7-4.9 17.2-12.4l32-96c2-9.2 1.1-18.7-6.5-25.9s-15.3-11.9-25-11.9zM416 416c0-17.7-14.3-32-32-32l-32 0 0-32 32 0c35.3 0 64 28.7 64 64l0 64c0 35.3-28.7 64-64 64l-32 0 0 32 32 0c17.7 0 32-14.3 32-32l0-128zM64 288c35.3 0 64-28.7 64-64l0-64c0-35.3 28.7-64 64-64l32 0 0 32-32 0c-17.7 0-32 14.3-32 32l0 64c0 35.3-28.7 64-64 64l-32 0 0 32 32 0c17.7 0 32-14.3 32-32l0-128z"/></symbol>
+    <symbol id="fa-warn" viewBox="0 0 512 512"><path d="M256 32c14.2 0 27.3 7.5 34.5 19.8l216 368c7.3 12.4 7.3 27.7 .2 40.1S486.3 480 472 480H40c-14.3 0-27.6-7.7-34.7-20.1s-7-27.8 .2-40.1l216-368C228.7 39.5 241.8 32 256 32zm0 128c-13.3 0-24 10.7-24 24V296c0 13.3 10.7 24 24 24s24-10.7 24-24V184c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z"/></symbol>
+  </defs>
+
+  <rect width="1060" height="560" fill="#fafbfc"/>
+
+  <!-- 标题 -->
+  <text x="530" y="28" text-anchor="middle" fill="#1e293b" font-size="18" font-weight="700">功能结构框图</text>
+
+  <!-- ══ 连接线（先画，叶子框白色填充覆盖中间部分） ══ -->
+  <g stroke="#94a3b8" stroke-width="1.2" fill="none">
+    <!-- 根 → 三分支 -->
+    <line x1="530" y1="104" x2="530" y2="120"/>
+    <line x1="175" y1="120" x2="880" y2="120"/>
+    <line x1="175" y1="120" x2="175" y2="136"/>
+    <line x1="530" y1="120" x2="530" y2="136"/>
+    <line x1="880" y1="120" x2="880" y2="136"/>
+
+    <!-- 分支 → 叶子 -->
+    <line x1="175" y1="178" x2="175" y2="326"/>
+    <line x1="880" y1="178" x2="880" y2="380"/>
+    <!-- 控制面：总线 + 两列脊柱 -->
+    <line x1="530" y1="178" x2="530" y2="184"/>
+    <line x1="462.5" y1="184" x2="722.5" y2="184"/>
+    <line x1="462.5" y1="184" x2="462.5" y2="380"/>
+    <line x1="722.5" y1="184" x2="722.5" y2="380"/>
+  </g>
+
+  <!-- ══ 根节点 ══ -->
+  <g filter="url(#sh)">
+    <rect x="430" y="56" width="200" height="48" rx="8" fill="#fff" stroke="#4b6cb7" stroke-width="1.5"/>
+  </g>
+  <use href="#fa-brain" x="444" y="70" width="18" height="18" fill="#4b6cb7"/>
+  <text x="530" y="80" text-anchor="middle" fill="#1e293b" font-size="14" font-weight="700">AI 数字员工</text>
+  <text x="530" y="96" text-anchor="middle" fill="#94a3b8" font-size="9">自主任务执行平台</text>
+
+  <!-- ══ 二级分支 ══ -->
+  <g filter="url(#sh)">
+    <rect x="60" y="136" width="230" height="42" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+  </g>
+  <use href="#fa-desktop" x="72" y="146" width="14" height="14" fill="#4b6cb7"/>
+  <text x="92" y="158" fill="#1e293b" font-size="12.5" font-weight="600">对外接入层</text>
+  <text x="92" y="172" fill="#94a3b8" font-size="9">提交 · 查询 · 回调</text>
+
+  <g filter="url(#sh)">
+    <rect x="380" y="136" width="300" height="42" rx="6" fill="#fff" stroke="#4b6cb7" stroke-width="1.5"/>
+  </g>
+  <use href="#fa-server" x="392" y="146" width="14" height="14" fill="#4b6cb7"/>
+  <text x="412" y="158" fill="#1e293b" font-size="12.5" font-weight="600">控制面 (control)</text>
+  <text x="412" y="172" fill="#94a3b8" font-size="9">调度 · 渲染 · 管理 · 存储</text>
+
+  <g filter="url(#sh)">
+    <rect x="760" y="136" width="240" height="42" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+  </g>
+  <use href="#fa-microchip" x="772" y="146" width="14" height="14" fill="#4b6cb7"/>
+  <text x="792" y="158" fill="#1e293b" font-size="12.5" font-weight="600">Runner 执行层</text>
+  <text x="792" y="172" fill="#94a3b8" font-size="9">执行引擎 · 出站</text>
+
+  <!-- ══ 接入层叶子 ══ -->
+  <g filter="url(#sh)"><rect x="60" y="196" width="230" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-paper-plane" x="72" y="206" width="13" height="13" fill="#4b6cb7"/>
+  <text x="92" y="216" fill="#334155" font-size="11" font-weight="600">任务提交</text>
+  <text x="72" y="232" fill="#94a3b8" font-size="9">提交任务请求</text>
+
+  <g filter="url(#sh)"><rect x="60" y="250" width="230" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-magnifying-glass" x="72" y="260" width="13" height="13" fill="#4b6cb7"/>
+  <text x="92" y="270" fill="#334155" font-size="11" font-weight="600">任务查询 / 取消</text>
+  <text x="72" y="286" fill="#94a3b8" font-size="9">查询 / 取消任务请求</text>
+
+  <g filter="url(#sh)"><rect x="60" y="304" width="230" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-route" x="72" y="314" width="13" height="13" fill="#4b6cb7"/>
+  <text x="92" y="324" fill="#334155" font-size="11" font-weight="600">结果回调</text>
+  <text x="72" y="340" fill="#94a3b8" font-size="9">执行引擎自行回传</text>
+
+  <!-- ══ 控制面叶子（左列） ══ -->
+  <g filter="url(#sh)"><rect x="340" y="196" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-key" x="352" y="206" width="13" height="13" fill="#4b6cb7"/>
+  <text x="372" y="216" fill="#334155" font-size="11" font-weight="600">鉴权认证</text>
+  <text x="352" y="232" fill="#94a3b8" font-size="9">不同鉴权方式</text>
+
+  <g filter="url(#sh)"><rect x="340" y="250" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-list-check" x="352" y="260" width="13" height="13" fill="#4b6cb7"/>
+  <text x="372" y="270" fill="#334155" font-size="11" font-weight="600">任务队列 / 状态机</text>
+  <text x="352" y="286" fill="#94a3b8" font-size="9">排队 → 处理中 → 完成</text>
+
+  <g filter="url(#sh)"><rect x="340" y="304" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-diagram" x="352" y="314" width="13" height="13" fill="#4b6cb7"/>
+  <text x="372" y="324" fill="#334155" font-size="11" font-weight="600">提示词渲染 / 占位符</text>
+  <text x="352" y="340" fill="#94a3b8" font-size="9">请求变量 · 配置变量 · 条件片段</text>
+
+  <g filter="url(#sh)"><rect x="340" y="358" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-shuffle" x="352" y="368" width="13" height="13" fill="#4b6cb7"/>
+  <text x="372" y="378" fill="#334155" font-size="11" font-weight="600">runner 选路 / 心跳</text>
+  <text x="352" y="394" fill="#94a3b8" font-size="9">session 亲和 · 负载均衡</text>
+
+  <!-- ══ 控制面叶子（右列） ══ -->
+  <g filter="url(#sh)"><rect x="600" y="196" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-desktop" x="612" y="206" width="13" height="13" fill="#4b6cb7"/>
+  <text x="632" y="216" fill="#334155" font-size="11" font-weight="600">管理后台</text>
+  <text x="612" y="232" fill="#94a3b8" font-size="9">Web 后台 · 模板 / 配置 / 会话</text>
+
+  <g filter="url(#sh)"><rect x="600" y="250" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-folder-open" x="612" y="260" width="13" height="13" fill="#4b6cb7"/>
+  <text x="632" y="270" fill="#334155" font-size="11" font-weight="600">会话 / 文件代理</text>
+  <text x="612" y="286" fill="#94a3b8" font-size="9">按 runner 转发读 / 删</text>
+
+  <g filter="url(#sh)"><rect x="600" y="304" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-file-lines" x="612" y="314" width="13" height="13" fill="#4b6cb7"/>
+  <text x="632" y="324" fill="#334155" font-size="11" font-weight="600">配置 / 记忆管理</text>
+  <text x="612" y="340" fill="#94a3b8" font-size="9">结构化配置加密 · 记忆库注入</text>
+
+  <g filter="url(#sh)"><rect x="600" y="358" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-database" x="612" y="368" width="13" height="13" fill="#4b6cb7"/>
+  <text x="632" y="378" fill="#334155" font-size="11" font-weight="600">持久化存储</text>
+  <text x="612" y="394" fill="#94a3b8" font-size="9">数据存储 · 唯一写入方</text>
+
+  <!-- ══ Runner 叶子 ══ -->
+  <g filter="url(#sh)"><rect x="760" y="196" width="240" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-brain" x="772" y="206" width="13" height="13" fill="#4b6cb7"/>
+  <text x="792" y="216" fill="#334155" font-size="11" font-weight="600">执行引擎</text>
+  <text x="772" y="232" fill="#94a3b8" font-size="9">Agent SDK</text>
+
+  <g filter="url(#sh)"><rect x="760" y="250" width="240" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-clock" x="772" y="260" width="13" height="13" fill="#4b6cb7"/>
+  <text x="792" y="270" fill="#334155" font-size="11" font-weight="600">看门狗 / 进程树</text>
+  <text x="772" y="286" fill="#94a3b8" font-size="9">滑动超时 · 强杀</text>
+
+  <g filter="url(#sh)"><rect x="760" y="304" width="240" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-folder-open" x="772" y="314" width="13" height="13" fill="#4b6cb7"/>
+  <text x="792" y="324" fill="#334155" font-size="11" font-weight="600">会话读取 / 文件浏览</text>
+  <text x="772" y="340" fill="#94a3b8" font-size="9">本地工作目录 · 会话</text>
+
+  <g filter="url(#sh)"><rect x="760" y="358" width="240" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-bolt" x="772" y="368" width="13" height="13" fill="#4b6cb7"/>
+  <text x="792" y="378" fill="#334155" font-size="11" font-weight="600">出站调用</text>
+  <text x="772" y="394" fill="#94a3b8" font-size="9">LLM · 文件服务 · 审稿</text>
+
+  <!-- ══ 底部说明 ══ -->
+  <rect x="20" y="428" width="1020" height="106" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <use href="#fa-warn" x="32" y="438" width="14" height="14" fill="#4b6cb7"/>
+  <text x="52" y="451" fill="#334155" font-size="11" font-weight="600">设计原则</text>
+  <text x="40" y="474" fill="#475569" font-size="10.5">
+    <tspan x="40" dy="0">① 无业务逻辑：系统只是 Agent SDK 执行引擎的网关壳，不下载文件、不解析文档，所有"智能"行为由 Agent SDK 自主完成</tspan>
+    <tspan x="40" dy="17">② Path 即接口：提示词模板目录结构即对外访问路径，新增入口只需上传模板，无需改代码、无需重启</tspan>
+    <tspan x="40" dy="17">③ 控制面有状态（唯一数据写入方 + 队列 + 提示词渲染）；runner 无状态（执行态 + 本地临时工作目录），可水平扩容</tspan>
+  </text>
+</svg>
