@@ -13,6 +13,17 @@ let key: Buffer | null = null;
 
 /** 初始化加密密钥（幂等）。返回当前密钥。 */
 export function initCrypto(dataDir: string): Buffer {
+  // 多实例共享 MySQL 时，所有实例必须用同一把密钥才能解密 prompt_config。
+  // 优先读环境变量 SECRETS_KEY（hex，32 字节）；未设置则回退本机 data/secrets.key（单机兼容）。
+  const envKey = process.env.SECRETS_KEY;
+  if (envKey) {
+    key = Buffer.from(envKey.trim(), 'hex');
+    if (key.length !== 32) {
+      throw new Error('SECRETS_KEY 必须是 32 字节（64 位 hex）的 AES-256 密钥');
+    }
+    return key;
+  }
+
   const keyFile = join(dataDir, 'secrets.key');
   if (existsSync(keyFile)) {
     key = Buffer.from(readFileSync(keyFile, 'utf8').trim(), 'hex');

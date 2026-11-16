@@ -79,7 +79,7 @@ function keyToEnvName(key: string): string {
 }
 
 /** 根据 LLM 配置 + prompt_config 构建 Claude Code 子进程环境变量 */
-export function buildEnv(cfg: Config, skipClaudeConfigDir?: boolean): Record<string, string | undefined> {
+export async function buildEnv(cfg: Config, skipClaudeConfigDir?: boolean): Promise<Record<string, string | undefined>> {
   // SDK 的 env 会整体替换子进程环境（不自动合并 process.env），
   // 因此先继承父进程环境，再用 adapter 配置覆盖。
   const env: Record<string, string | undefined> = { ...process.env };
@@ -110,20 +110,20 @@ export function buildEnv(cfg: Config, skipClaudeConfigDir?: boolean): Record<str
   delete env.ANTHROPIC_API_KEY;
 
   // 注入 prompt_config 中的所有 key-value 作为 DP_ 前缀环境变量
-  const allConfigValues = promptConfigStore.getAllPlain();
+  const allConfigValues = await promptConfigStore.getAllPlain();
   for (const [key, plain] of allConfigValues.entries()) {
     env[keyToEnvName(key)] = plain;
   }
 
   // 兼容旧名称
-  const fileUrlToken = promptConfigStore.getPlain('doc.file_url_token')
-    || promptConfigStore.getPlain('sys.file_url_token');
+  const fileUrlToken = await promptConfigStore.getPlain('doc.file_url_token')
+    || await promptConfigStore.getPlain('sys.file_url_token');
   if (fileUrlToken) env.FILE_URL_TOKEN = fileUrlToken; else delete env.FILE_URL_TOKEN;
 
-  const docAuditToken = promptConfigStore.getPlain('doc_audit.token');
+  const docAuditToken = await promptConfigStore.getPlain('doc_audit.token');
   if (docAuditToken) env.DOC_AUDIT_TOKEN = docAuditToken; else delete env.DOC_AUDIT_TOKEN;
 
-  const callbackToken = promptConfigStore.getPlain('callback.token');
+  const callbackToken = await promptConfigStore.getPlain('callback.token');
   if (callbackToken) env.CALLBACK_TOKEN = callbackToken; else delete env.CALLBACK_TOKEN;
 
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = l.disable_nonessential_traffic ? '1' : '0';
@@ -151,7 +151,7 @@ export async function buildClaudeMd(dataDir?: string): Promise<string> {
   }
 
   // 从 prompt_config（CSV）+ cfg.yml 系统级收集所有值，仅用于判断 {{section:...}} 是否触发
-  const cfgVals = promptConfigStore.getAllPlain();
+  const cfgVals = await promptConfigStore.getAllPlain();
   const { getRawConfig } = await import('../config.js');
   const raw = getRawConfig() as Record<string, unknown>;
   const server = (raw.server as Record<string, unknown>) || {};
@@ -188,7 +188,7 @@ export async function buildClaudeMd(dataDir?: string): Promise<string> {
   }
 
   // 注入可用环境变量清单（值不写入提示词，仅列出变量名 + 说明）
-  const configRows = promptConfigStore.list();
+  const configRows = await promptConfigStore.list();
   if (configRows.length > 0) {
     let envBlock = '\n## 可用环境变量\n\n';
     envBlock += '以下变量已注入到当前 shell 环境，可在 Bash 中按需读取（如 `echo $变量名`）。';
@@ -238,7 +238,7 @@ export async function runAgent(
       claudeMd: await buildClaudeMd(cfg.sys.data_dir),
       resumeSessionId,
       sdkOptions,
-      env: buildEnv(cfg) as Record<string, string>,
+      env: await buildEnv(cfg) as Record<string, string>,
     },
     abortSignal,
     {
@@ -253,7 +253,7 @@ export async function runAgent(
       },
       onActivity,
       onResumeGone: (oldSessionId) => {
-        sessionsStore.close(oldSessionId);
+        void sessionsStore.close(oldSessionId);
       },
     },
   );

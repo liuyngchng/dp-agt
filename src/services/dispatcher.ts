@@ -23,7 +23,7 @@ const assigned = new Map<string, number>();
 /** runnerId → 最近一次 /status 上报的 running_count */
 const runningCount = new Map<string, number>();
 
-export function initDispatcher(c: Config): void {
+export async function initDispatcher(c: Config): Promise<void> {
   cfg = c;
   httpCfg = {
     token: c.runner.token,
@@ -32,7 +32,7 @@ export function initDispatcher(c: Config): void {
   };
 
   // 静态列表同步进 runners 表
-  const runners = runnersStore.sync(c.runner.addresses);
+  const runners = await runnersStore.sync(c.runner.addresses);
   for (const r of runners) {
     assigned.set(r.id, 0);
     runningCount.set(r.id, 0);
@@ -48,14 +48,15 @@ export function initDispatcher(c: Config): void {
 function startHeartbeat(): void {
   if (heartbeatTimer) return;
   heartbeatTimer = setInterval(async () => {
-    for (const r of runnersStore.list()) {
+    const runners = await runnersStore.list();
+    for (const r of runners) {
       try {
         const st = await getRunnerStatus(r.addr, httpCfg);
         runningCount.set(r.id, st.running_count);
-        runnersStore.heartbeat(r.id);
+        await runnersStore.heartbeat(r.id);
       } catch (err) {
         log.warn({ runner: r.name, error: String(err) }, 'runner_heartbeat_failed');
-        runnersStore.markDown(r.id);
+        await runnersStore.markDown(r.id);
       }
     }
   }, cfg.runner.heartbeat_ms);
@@ -63,13 +64,13 @@ function startHeartbeat(): void {
 }
 
 /** 当前有多少 runner（含 down） */
-export function runnerCount(): number {
-  return runnersStore.list().length;
+export async function runnerCount(): Promise<number> {
+  return (await runnersStore.list()).length;
 }
 
 /** 是否有可用的远端 runner（无则回退本进程执行） */
-export function hasRemoteRunners(): boolean {
-  return runnersStore.listUp().length > 0;
+export async function hasRemoteRunners(): Promise<boolean> {
+  return (await runnersStore.listUp()).length > 0;
 }
 
 /** 内存占用计数 */
@@ -89,8 +90,8 @@ function availableSlots(r: Runner): number {
  * @param linkid 用于 session 亲和：同 linkid 已有 session 时优先路由回原 runner。
  * @param preferredRunnerId 期望的 runner（session 亲和，可能已 down/满，返回 null 表示需重选）
  */
-export function selectRunner(linkid: string, preferredRunnerId?: string): Runner | null {
-  const up = runnersStore.listUp();
+export async function selectRunner(linkid: string, preferredRunnerId?: string): Promise<Runner | null> {
+  const up = await runnersStore.listUp();
 
   // 1) 亲和：优先回原 runner（只要它还 up 且有槽）
   if (preferredRunnerId) {
@@ -126,7 +127,7 @@ export function markFinished(runnerId: string): void {
 }
 
 /** 通过 runner name 找 runner（供 admin 会话代理用） */
-export function getRunnerByName(name: string): Runner | undefined {
+export async function getRunnerByName(name: string): Promise<Runner | undefined> {
   return runnersStore.getByName(name);
 }
 

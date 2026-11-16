@@ -9,15 +9,15 @@ import type { Config } from '../config.js';
 const log = getLogger();
 
 /** 通用任务提交逻辑：校验接口、队列上限，然后入队。模拟操作和对外接口都走这一套。 */
-export function submitTask(interfacePath: string, body: Record<string, unknown>, cfg: Config): {
+export async function submitTask(interfacePath: string, body: Record<string, unknown>, cfg: Config): Promise<{
   status: number;
   body: Record<string, unknown>;
-} {
+}> {
   if (!interfacePath) {
     return { status: 404, body: buildResponse(1001, '缺少访问路径', '', '') };
   }
 
-  const iface = interfacesStore.getByPath(interfacePath);
+  const iface = await interfacesStore.getByPath(interfacePath);
   if (!iface) {
     return { status: 404, body: buildResponse(1001, '访问路径不存在: ' + interfacePath, '', '') };
   }
@@ -32,13 +32,13 @@ export function submitTask(interfacePath: string, body: Record<string, unknown>,
   }
 
   // 同一 linkid 有未完成的任务时拒绝，防止重复投递
-  if (taskLogsStore.hasActiveByLinkid(linkid)) {
+  if (await taskLogsStore.hasActiveByLinkid(linkid)) {
     return { status: 409, body: buildResponse(2003, '该公文尚有任务正在处理中，请等待完成后再次提交', '', linkid) };
   }
 
   // 检查队列上限
   const maxPending = cfg.sys.max_pending_tasks;
-  const activeCount = getRunningCount() + getPendingCount();
+  const activeCount = getRunningCount() + (await getPendingCount());
   if (activeCount >= maxPending) {
     const msg = '任务队列已满，当前处理中任务数 ' + activeCount + '/' + maxPending +
       '（最大并发 ' + cfg.sys.max_concurrent_tasks + '，最大排队 ' + maxPending + '），请稍后重试';
@@ -46,9 +46,9 @@ export function submitTask(interfacePath: string, body: Record<string, unknown>,
   }
 
   // 入队
-  const { task_id } = enqueue(iface, body as ProcessRequest);
+  const { task_id } = await enqueue(iface, body as ProcessRequest);
   const resp = buildResponse(0, 'success', task_id, linkid);
-  taskLogsStore.updateResult(task_id, { request_response: JSON.stringify(resp) });
+  await taskLogsStore.updateResult(task_id, { request_response: JSON.stringify(resp) });
   return { status: 200, body: resp };
 }
 
@@ -56,13 +56,13 @@ export function createProcessRouter(cfg: Config): Router {
   const router = Router();
 
   // POST /api/v1/:path — 通配路由，path 可以是 document/classify 等任意路径
-  router.post('/api/v1/*', (req: Request, res: Response) => {
+  router.post('/api/v1/*', async (req: Request, res: Response) => {
     const interfacePath = req.params[0] || '';
     const fromIp = req.ip || '';
 
     log.info({ from_ip: fromIp, path: interfacePath, body: req.body }, 'request_received');
 
-    const result = submitTask(interfacePath, req.body as Record<string, unknown>, cfg);
+    const result = await submitTask(interfacePath, req.body as Record<string, unknown>, cfg);
 
     if (result.status >= 400) {
       log.warn({ from_ip: fromIp, path: interfacePath, request: req.body, response: result.body }, 'request_rejected');

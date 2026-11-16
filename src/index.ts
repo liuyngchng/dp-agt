@@ -6,7 +6,9 @@ import cookieParser from 'cookie-parser';
 import { createHash } from 'node:crypto';
 import { loadConfig, ensureDirs } from './config.js';
 import { initLogger, getLogger, compressLogs } from './logger.js';
-import { initStore, taskLogsStore, configStore, sessionsStore, sdkTracesStore, syncInterfacesFromPrompts } from './store.js';
+import { initStore, taskLogsStore, configStore, sessionsStore, sdkTracesStore, syncInterfacesFromPrompts, seedDefaults } from './store.js';
+import { initDb, queryAll } from './db.js';
+import { initRedis } from './services/redis.js';
 import { nowReadable } from './time.js';
 import { initTaskQueue } from './services/task-queue.js';
 import { initDispatcher, runnerCount } from './services/dispatcher.js';
@@ -61,24 +63,29 @@ log.info({
   },
 }, 'config_loaded');
 
-// 初始化存储
+// 初始化存储（加密密钥）
 initStore(cfg.sys.data_dir);
+
+// 初始化 MySQL（多实例共享持久层）+ Redis（协调层）
+await initDb(cfg.mysql);
+await initRedis(cfg.redis);
+await seedDefaults();
 log.info('store_ready');
 
 // 迁移：将旧版明文 api_auth_token 哈希化（一次性）
-(function migrateApiTokenToHash() {
-  const raw = configStore.get('api_auth_token');
+(async function migrateApiTokenToHash() {
+  const raw = await configStore.get('api_auth_token');
   if (!raw) return;
   // 已经是十六进制 64 位（SHA-256 哈希）则跳过
   if (/^[a-f0-9]{64}$/.test(raw)) return;
   const hash = createHash('sha256').update(raw, 'utf8').digest('hex');
-  configStore.set('api_auth_token', hash, '对外 API 认证 Token（SHA-256 哈希）');
+  await configStore.set('api_auth_token', hash, '对外 API 认证 Token（SHA-256 哈希）');
   log.info({}, 'api_token_migrated_to_hash');
 })();
 
 // 扫描 prompts/ 目录，同步 agent_interfaces 到 DB
 const promptFiles = rescanPromptsDir();
-syncInterfacesFromPrompts(promptFiles.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
+await syncInterfacesFromPrompts(promptFiles.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
 log.info({ count: promptFiles.length, paths: promptFiles.map(pf => pf.path) }, 'interfaces_synced_from_prompts');
 
 // 初始化 runner 调度器（无远端 runner 配置时退化为本进程执行）
@@ -120,8 +127,8 @@ app.get('/login', (_req, res) => {
 });
 
 // 公开系统信息（登录页用，无需认证）
-app.get('/api/info', (_req, res) => {
-  const name = configStore.get('sys.name') || 'AI 数字员工';
+app.get('/api/info', async (_req, res) => {
+  const name = (await configStore.get('sys.name')) || 'AI 数字员工';
   res.json({ code: 0, data: { sys_name: name } });
 });
 
@@ -191,13 +198,13 @@ async function cleanupExpiredTasks() {
       log.warn({ error: String(err) }, 'log_compress_error');
     }
 
-    const deleted = taskLogsStore.deleteExpired(retentionDays);
+    const deleted = await taskLogsStore.deleteExpired(retentionDays);
 
     // 回收 sdk_traces：task_logs 到期删除后，关联的 trace 一并清理（按 task_id 孤儿判定）
-    const orphanTraces = sdkTracesStore.deleteOrphans();
+    const orphanTraces = await sdkTracesStore.deleteOrphans();
 
     // 清理过期 session（超过 retentionDays 未见新提交）
-    const expiredSessions = sessionsStore.deleteExpired(retentionDays);
+    const expiredSessions = await sessionsStore.deleteExpired(retentionDays);
     if (expiredSessions.length > 0) {
       log.info({ expiredCount: expiredSessions.length, retentionDays }, 'session_cleanup_start');
       const { deleteSession } = await import('@anthropic-ai/claude-agent-sdk');
@@ -213,8 +220,7 @@ async function cleanupExpiredTasks() {
     // 清理过期 session 对应的磁盘工作目录
     const tasksDir = join(cfg.sys.runtime_dir, 'tasks');
     if (existsSync(tasksDir)) {
-      const { getDb } = await import('./store.js');
-      const activeSessions = getDb().prepare('SELECT linkid FROM sessions').all() as Array<{ linkid: string }>;
+      const activeSessions = await queryAll<{ linkid: string }>('SELECT linkid FROM sessions');
       const activeSet = new Set(activeSessions.map(r => r.linkid.replace(/[/\\:*?"<>|]/g, '_')));
       for (const dir of readdirSync(tasksDir)) {
         if (!activeSet.has(dir)) {

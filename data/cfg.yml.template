@@ -98,5 +98,28 @@ runner:
       addr: https://192.168.1.12:20002     # 示例：runner 服务器 B
       capacity: 5
 
+# ---- MySQL 配置（控制面多实例共享持久层） ----
+# 均可被环境变量覆盖：MYSQL_HOST / MYSQL_PORT / MYSQL_USER /
+#   MYSQL_PASSWORD / MYSQL_DATABASE / MYSQL_CONNECTION_LIMIT
+mysql:
+  host: "mysql"                    # Docker compose 内为服务名，跨机部署填内网 IP/域名
+  port: 3306
+  user: "dp_agt"
+  password: ""                     # 建议用 MYSQL_PASSWORD 环境变量注入，不写死
+  database: "dp_agt"
+  connection_limit: 10
+
+# ---- Redis 配置（控制面多实例共享协调层） ----
+# 均可被环境变量覆盖：REDIS_URL / REDIS_KEY_PREFIX
+redis:
+  url: "redis://redis:6379"        # Docker compose 内为服务名，跨机部署填内网 IP
+  key_prefix: "dp:"
+
+# ---- 加密密钥（可选，多实例必须一致） ----
+# 多实例共享同一 MySQL 时，所有实例必须用同一把密钥才能解密 prompt_config。
+# 优先读环境变量 SECRETS_KEY（hex，32 字节）；未设置则回退本机 data/secrets.key。
+# 建议通过环境变量注入，不写进 cfg.yml：
+#   SECRETS_KEY=<64位hex>
+
 # ---- 数据目录（可选，默认程序运行目录下的 data/） ----
 # data_dir: "/app/data"

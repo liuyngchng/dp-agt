@@ -16,10 +16,10 @@ let _cachedSecret: { secret: Buffer; temporary: boolean } | null = null;
 // ============================================================
 // Token 签名密钥管理
 // ============================================================
-function getOrCreateSecret(): { secret: Buffer; temporary: boolean } {
+async function getOrCreateSecret(): Promise<{ secret: Buffer; temporary: boolean }> {
   if (_cachedSecret) return _cachedSecret;
 
-  const persisted = configStore.get('token_secret');
+  const persisted = await configStore.get('token_secret');
   if (persisted) {
     _cachedSecret = { secret: Buffer.from(persisted, 'hex'), temporary: false };
     return _cachedSecret;
@@ -31,10 +31,10 @@ function getOrCreateSecret(): { secret: Buffer; temporary: boolean } {
   return _cachedSecret;
 }
 
-export function persistSecret() {
-  const { secret, temporary } = getOrCreateSecret();
+export async function persistSecret(): Promise<void> {
+  const { secret, temporary } = await getOrCreateSecret();
   if (temporary) {
-    configStore.set('token_secret', secret.toString('hex'), 'admin 改密后持久化的 token 签名密钥');
+    await configStore.set('token_secret', secret.toString('hex'), 'admin 改密后持久化的 token 签名密钥');
     // 更新缓存，后续请求用持久化的密钥
     _cachedSecret = { secret, temporary: false };
     log.info({}, 'auth_key_persisted — admin 修改密码后，临时密钥已持久化到数据库');
@@ -69,7 +69,7 @@ function signToken(userId: number, username: string, role: number, userVersion: 
   return data + '.' + mac;
 }
 
-function verifyToken(token: string, secret: Buffer): TokenPayload | null {
+async function verifyToken(token: string, secret: Buffer): Promise<TokenPayload | null> {
   const idx = token.lastIndexOf('.');
   if (idx <= 0) return null;
   const data = token.slice(0, idx);
@@ -91,7 +91,7 @@ function verifyToken(token: string, secret: Buffer): TokenPayload | null {
   if (Date.now() / 1000 > payload.exp) return null;
 
   // 校验 user_version：与 DB 当前值比对，不匹配则 token 已被改密/登出作废
-  const user = usersStore.get(payload.uname);
+  const user = await usersStore.get(payload.uname);
   if (!user || user.user_version !== payload.uv) return null;
 
   return payload;
@@ -112,18 +112,18 @@ export function validatePasswordStrength(password: string): string | null {
 // ============================================================
 // 从 Cookie / Authorization 中提取并验证用户
 // ============================================================
-function getUserFromCookie(req: Request): TokenPayload | null {
+async function getUserFromCookie(req: Request): Promise<TokenPayload | null> {
   const token = req.cookies?.auth_token;
   if (!token) return null;
-  const { secret } = getOrCreateSecret();
+  const { secret } = await getOrCreateSecret();
   return verifyToken(token, secret);
 }
 
-function getUserFromBearer(req: Request): TokenPayload | null {
+async function getUserFromBearer(req: Request): Promise<TokenPayload | null> {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) return null;
   const token = header.slice(7);
-  const { secret } = getOrCreateSecret();
+  const { secret } = await getOrCreateSecret();
   return verifyToken(token, secret);
 }
 
@@ -133,30 +133,33 @@ function getUserFromBearer(req: Request): TokenPayload | null {
 
 /** Web 页面认证中间件（Cookie，未登录跳转 /login） */
 export function authWebMiddleware(req: Request, res: Response, next: () => void) {
-  const user = getUserFromCookie(req);
-  if (!user) {
-    // API 请求返回 JSON，页面请求重定向
-    if (req.path.startsWith('/admin/') || req.path.startsWith('/api/inner/')) {
-      res.status(401).json({ error: '请先登录' });
-    } else {
-      res.redirect('/login');
+  void (async () => {
+    const user = await getUserFromCookie(req);
+    if (!user) {
+      if (req.path.startsWith('/admin/') || req.path.startsWith('/api/inner/')) {
+        res.status(401).json({ error: '请先登录' });
+      } else {
+        res.redirect('/login');
+      }
+      return;
     }
-    return;
-  }
-  (req as unknown as Record<string, unknown>).user = user;
-  next();
+    (req as unknown as Record<string, unknown>).user = user;
+    next();
+  })();
 }
 
 /** API 认证中间件（Cookie 或 Bearer，返回 JSON） */
 export function authApiMiddleware(req: Request, res: Response, next: () => void) {
-  let user = getUserFromCookie(req);
-  if (!user) user = getUserFromBearer(req);
-  if (!user) {
-    res.status(401).json({ error: '请先登录' });
-    return;
-  }
-  (req as unknown as Record<string, unknown>).user = user;
-  next();
+  void (async () => {
+    let user = await getUserFromCookie(req);
+    if (!user) user = await getUserFromBearer(req);
+    if (!user) {
+      res.status(401).json({ error: '请先登录' });
+      return;
+    }
+    (req as unknown as Record<string, unknown>).user = user;
+    next();
+  })();
 }
 
 /** Admin 权限中间件 */
@@ -194,52 +197,49 @@ function hashApiToken(token: string): string {
  */
 export function apiTokenMiddleware() {
   return (req: Request, res: Response, next: () => void) => {
-    const dbEnabled = configStore.get('api_auth_enabled');
-    const dbTokenHash = configStore.get('api_auth_token');
+    void (async () => {
+      const dbEnabled = await configStore.get('api_auth_enabled');
+      const dbTokenHash = await configStore.get('api_auth_token');
 
-    const respondUnauthorized = (reason: string) => {
-      const resp = {
-        code: 1003,
-        message: 'Unauthorized: 无效或缺失的 X-Api-Key / Authorization Bearer Token',
-        task_id: '',
-        linkid: '',
+      const respondUnauthorized = (reason: string) => {
+        const resp = {
+          code: 1003,
+          message: 'Unauthorized: 无效或缺失的 X-Api-Key / Authorization Bearer Token',
+          task_id: '',
+          linkid: '',
+        };
+        log.warn({
+          path: req.path,
+          ip: req.ip || req.socket?.remoteAddress || '-',
+          reason,
+          has_token: !!extractToken(req),
+        }, 'api_auth_failed');
+        res.status(401).json(resp);
       };
-      // 记录校验失败日志：含来源 IP、路径、原因，但不记录 token 明文/哈希
-      log.warn({
-        path: req.path,
-        ip: req.ip || req.socket?.remoteAddress || '-',
-        reason,
-        has_token: !!extractToken(req),
-      }, 'api_auth_failed');
-      res.status(401).json(resp);
-    };
 
-    // DB 启用 → 校验 token
-    if (dbEnabled === '1' && dbTokenHash) {
-      const token = extractToken(req);
-      if (!token) {
-        respondUnauthorized('missing_token');
-        return;
+      // DB 启用 → 校验 token
+      if (dbEnabled === '1' && dbTokenHash) {
+        const token = extractToken(req);
+        if (!token) {
+          respondUnauthorized('missing_token');
+          return;
+        }
+        const providedHash = hashApiToken(token);
+        let ok = false;
+        try {
+          ok = timingSafeEqual(Buffer.from(providedHash, 'hex'), Buffer.from(dbTokenHash, 'hex'));
+        } catch {
+          ok = false;
+        }
+        if (!ok) {
+          respondUnauthorized('token_mismatch');
+          return;
+        }
       }
-      const providedHash = hashApiToken(token);
-      // timingSafeEqual 要求两 buffer 等长；哈希长度固定为 64，安全
-      let ok = false;
-      try {
-        ok = timingSafeEqual(
-          Buffer.from(providedHash, 'hex'),
-          Buffer.from(dbTokenHash, 'hex'),
-        );
-      } catch {
-        ok = false;
-      }
-      if (!ok) {
-        respondUnauthorized('token_mismatch');
-        return;
-      }
-    }
 
-    // 未启用或未配置 → 放行
-    next();
+      // 未启用或未配置 → 放行
+      next();
+    })();
   };
 }
 
@@ -264,14 +264,14 @@ export function createAuthRouter(): Router {
   const router = Router();
 
   // POST /api/login
-  router.post('/api/login', (req: Request, res: Response) => {
+  router.post('/api/login', async (req: Request, res: Response) => {
     const { user_name, user_pwd } = (req.body ?? {}) as Record<string, string>;
     if (!user_name || !user_pwd) {
       res.status(400).json({ error: '用户名和密码不能为空' });
       return;
     }
 
-    const user = usersStore.get(user_name);
+    const user = await usersStore.get(user_name);
     if (!user) {
       log.warn({ username: user_name }, 'auth_login_user_not_found');
       res.status(401).json({ error: '用户名或密码错误' });
@@ -286,7 +286,6 @@ export function createAuthRouter(): Router {
 
     // admin 首次登录：2h 内未修改则初始密码失效
     if (user.must_change_pwd) {
-      // 优先用 created_ts（Unix 毫秒），否则回退解析 created_at
       const createdSec = user.created_ts
         ? user.created_ts / 1000
         : new Date(user.created_at).getTime() / 1000;
@@ -297,33 +296,27 @@ export function createAuthRouter(): Router {
       }
     }
 
-    const { secret, temporary } = getOrCreateSecret();
+    const { secret, temporary } = await getOrCreateSecret();
     const token = signToken(user.id, user.username, user.role, user.user_version, secret, temporary);
 
-    // Set httpOnly cookie
     const ttl = temporary ? SHORT_TTL : LONG_TTL;
     res.cookie('auth_token', token, {
-      httpOnly: true,
-      maxAge: ttl * 1000,
-      path: '/',
-      sameSite: 'lax',
+      httpOnly: true, maxAge: ttl * 1000, path: '/', sameSite: 'lax',
     });
 
     log.info({ user: user.username }, 'user_login');
 
     res.json({
-      status: 'ok',
-      token,
-      must_change_pwd: !!user.must_change_pwd,
+      status: 'ok', token, must_change_pwd: !!user.must_change_pwd,
       user: { id: user.id, username: user.username, role: user.role },
     });
   });
 
   // POST /api/logout — 递增 user_version 使所有旧 token 失效
-  router.post('/api/logout', (req: Request, res: Response) => {
-    const tokenPayload = getUserFromCookie(req) || getUserFromBearer(req);
+  router.post('/api/logout', async (req: Request, res: Response) => {
+    const tokenPayload = await getUserFromCookie(req) || await getUserFromBearer(req);
     if (tokenPayload) {
-      usersStore.incrementUserVersion(tokenPayload.uname);
+      await usersStore.incrementUserVersion(tokenPayload.uname);
       log.info({ user: tokenPayload.uname }, 'user_logout_and_tokens_invalidated');
     }
     res.clearCookie('auth_token', { path: '/' });
@@ -337,7 +330,7 @@ export function createAuthRouter(): Router {
   });
 
   // PUT /api/inner/user/password — 修改密码
-  router.put('/api/inner/user/password', authApiMiddleware, (req: Request, res: Response) => {
+  router.put('/api/inner/user/password', authApiMiddleware, async (req: Request, res: Response) => {
     const { old_pwd, new_pwd } = (req.body ?? {}) as Record<string, string>;
     if (!new_pwd) {
       res.status(400).json({ error: '参数错误' });
@@ -356,13 +349,12 @@ export function createAuthRouter(): Router {
       return;
     }
 
-    const user = usersStore.get(cu.uname);
+    const user = await usersStore.get(cu.uname);
     if (!user) {
       res.status(404).json({ error: '用户不存在' });
       return;
     }
 
-    // 验证旧密码（跳过 admin 首次修改的场景）
     if (old_pwd) {
       if (!comparePasswordSync(old_pwd, user.password_hash)) {
         res.status(400).json({ error: '旧密码错误' });
@@ -371,11 +363,10 @@ export function createAuthRouter(): Router {
     }
 
     const hash = hashPasswordSync(new_pwd);
-    usersStore.updatePassword(cu.uname, hash);
-    usersStore.clearMustChangePwd(cu.uname);
+    await usersStore.updatePassword(cu.uname, hash);
+    await usersStore.clearMustChangePwd(cu.uname);
 
-    // admin 改密后持久化密钥
-    persistSecret();
+    await persistSecret();
 
     log.info({ user: cu.uname }, 'user_password_changed');
     res.json({ status: 'ok' });

@@ -1,6 +1,3 @@
-import Database from 'better-sqlite3';
-import { join } from 'node:path';
-import { readdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { v4 as uuid } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { nowReadable, nowTs, fmtLocalTs } from './time.js';
@@ -9,260 +6,58 @@ import {
   decryptValue,
   initCrypto,
 } from './crypto.js';
+import { queryAll, queryOne, exec, execInsert } from './db.js';
 import type { AgentInterface, TaskLog, TaskStatus, User, Session, SdkTrace, Runner, RunnerStatus } from './types.js';
 import type { EncryptedValue } from './crypto.js';
 
-let db: Database.Database;
-
-export function initStore(dataDir: string): Database.Database {
-  db = new Database(join(dataDir, 'app.db'));
-  db.pragma('journal_mode = WAL');
-
-  // ── crypto ──
+export function initStore(dataDir: string): void {
   initCrypto(dataDir);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS agent_interfaces (
-      id          TEXT PRIMARY KEY,
-      name        TEXT NOT NULL,
-      path        TEXT NOT NULL UNIQUE,
-      prompt      TEXT NOT NULL DEFAULT '',
-      created_at  TEXT,
-      updated_at  TEXT,
-      created_ts  INTEGER,
-      updated_ts  INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS prompt_config (
-      key         TEXT PRIMARY KEY,
-      value_enc   TEXT NOT NULL DEFAULT '',
-      iv          TEXT NOT NULL DEFAULT '',
-      tag         TEXT NOT NULL DEFAULT '',
-      is_secret   INTEGER NOT NULL DEFAULT 0,
-      note        TEXT DEFAULT '',
-      updated_at  TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS task_logs (
-      task_id       TEXT PRIMARY KEY,
-      linkid        TEXT,
-      session_id    TEXT,
-      path          TEXT,
-      interface_id  TEXT,
-      status        TEXT,
-      request_body  TEXT,
-      request_response TEXT,
-      prompt        TEXT,
-      sdk_output    TEXT,
-      callback_body TEXT,
-      callback_response TEXT,
-      callback_url  TEXT,
-      error_message TEXT,
-      created_at    TEXT,
-      finished_at   TEXT,
-      created_ts    INTEGER,
-      finished_ts   INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS sessions (
-      session_id  TEXT PRIMARY KEY,
-      linkid      TEXT NOT NULL UNIQUE,
-      status      TEXT NOT NULL DEFAULT 'active',
-      created_at  TEXT,
-      updated_at  TEXT,
-      created_ts  INTEGER,
-      updated_ts  INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS users (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      username        TEXT UNIQUE NOT NULL,
-      password_hash   TEXT NOT NULL,
-      role            INTEGER DEFAULT 0,
-      note            TEXT DEFAULT '',
-      must_change_pwd INTEGER DEFAULT 0,
-      created_at      TEXT,
-      created_ts      INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS config (
-      key   TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      note  TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS sdk_traces (
-      id        INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id   TEXT NOT NULL,
-      sdk_trace TEXT NOT NULL,
-      UNIQUE(task_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS runners (
-      id                TEXT PRIMARY KEY,
-      name              TEXT NOT NULL UNIQUE,
-      addr              TEXT NOT NULL,
-      capacity          INTEGER NOT NULL DEFAULT 5,
-      status            TEXT NOT NULL DEFAULT 'up',
-      last_heartbeat_ts INTEGER,
-      created_at        TEXT,
-      updated_at        TEXT
-    );
-  `);
-
-  // ── migrations ──
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN session_id TEXT`); } catch { /* */ }
-  // 迁移：将 task_logs 中已有的 sdk_trace 数据搬到独立表
-  try {
-    const sdkTraceRows = db.prepare(
-      `SELECT task_id, sdk_trace FROM task_logs WHERE sdk_trace IS NOT NULL AND sdk_trace != ''`
-    ).all() as Array<{ task_id: string; sdk_trace: string }>;
-    if (sdkTraceRows.length > 0) {
-      const insert = db.prepare(
-        `INSERT OR IGNORE INTO sdk_traces (task_id, sdk_trace) VALUES (?, ?)`
-      );
-      for (const row of sdkTraceRows) {
-        try { insert.run(row.task_id, row.sdk_trace); } catch { /* 已存在则跳过 */ }
-      }
-      // 迁移完成（数据量 = sdkTraceRows.length）
-    }
-  } catch { /* sdk_trace 列可能不存在 */ }
-  try { db.exec(`ALTER TABLE task_logs DROP COLUMN sdk_trace`); } catch { /* 旧列已删除 */ }
-  try { db.exec(`ALTER TABLE task_logs DROP COLUMN sdk_stream`); } catch { /* 旧列已删除 */ }
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN request_response TEXT`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN callback_response TEXT`); } catch { /* */ }
-  try { db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role INTEGER DEFAULT 0, note TEXT DEFAULT '', must_change_pwd INTEGER DEFAULT 0, created_at TEXT)`); } catch { /* */ }
-  try { db.exec(`CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL, note TEXT)`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE users ADD COLUMN must_change_pwd INTEGER DEFAULT 0`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE users ADD COLUMN user_version INTEGER DEFAULT 1`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE agent_interfaces ADD COLUMN created_ts INTEGER`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE agent_interfaces ADD COLUMN updated_ts INTEGER`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN created_ts INTEGER`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN finished_ts INTEGER`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN started_ts INTEGER`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE users ADD COLUMN created_ts INTEGER`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE sessions ADD COLUMN created_at TEXT`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE sessions ADD COLUMN updated_at TEXT`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE sessions ADD COLUMN created_ts INTEGER`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE sessions ADD COLUMN updated_ts INTEGER`); } catch { /* */ }
-  try { db.exec(`CREATE TABLE IF NOT EXISTS prompt_config (key TEXT PRIMARY KEY, value_enc TEXT NOT NULL DEFAULT '', iv TEXT NOT NULL DEFAULT '', tag TEXT NOT NULL DEFAULT '', is_secret INTEGER NOT NULL DEFAULT 0, updated_at TEXT)`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE prompt_config ADD COLUMN note TEXT DEFAULT ''`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE sessions ADD COLUMN runner_id TEXT`); } catch { /* */ }
-  try { db.exec(`ALTER TABLE task_logs ADD COLUMN runner_id TEXT`); } catch { /* */ }
-
-  // ── 性能索引 ──
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_task_logs_created_ts ON task_logs(created_ts DESC)`); } catch { /* */ }
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_task_logs_linkid_created_ts ON task_logs(linkid, created_ts DESC)`); } catch { /* */ }
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_updated_ts ON sessions(updated_ts DESC)`); } catch { /* */ }
-
-  backfillTsColumns(db);
-  seedDefaults(db);
-  return db;
 }
 
-function backfillTsColumns(db: Database.Database): void {
-  const rows = [
-    { table: 'agent_interfaces', ts: 'created_ts', at: 'created_at' },
-    { table: 'agent_interfaces', ts: 'updated_ts', at: 'updated_at' },
-    { table: 'task_logs', ts: 'created_ts', at: 'created_at' },
-    { table: 'task_logs', ts: 'finished_ts', at: 'finished_at' },
-    { table: 'users', ts: 'created_ts', at: 'created_at' },
-  ];
-  for (const { table, ts, at } of rows) {
-    const stale = db.prepare(
-      `SELECT rowid, ${at} AS at_val FROM ${table} WHERE ${ts} IS NULL AND ${at} IS NOT NULL`
-    ).all() as Array<{ rowid: number; at_val: string }>;
-    const update = db.prepare(`UPDATE ${table} SET ${ts} = ?, ${at} = ? WHERE rowid = ?`);
-    for (const r of stale) {
-      const ms = Date.parse(r.at_val);
-      if (Number.isNaN(ms)) continue;
-      update.run(ms, fmtLocalTs(ms), r.rowid);
-    }
-  }
-}
-
-export function getDb(): Database.Database {
-  return db;
-}
-
-// ── seed: 从 prompts/ 目录自动发现 agent_interfaces ──
-export function syncInterfacesFromPrompts(promptFiles: Array<{ filename: string; path: string; name: string }>): void {
-  const existingPaths = new Set(
-    (db.prepare('SELECT path FROM agent_interfaces').all() as Array<{ path: string }>).map(r => r.path)
-  );
-  const now = nowReadable();
-  const ts = nowTs();
-
-  for (const pf of promptFiles) {
-    if (existingPaths.has(pf.path)) {
-      // 已有则更新 name
-      db.prepare('UPDATE agent_interfaces SET name = ?, updated_at = ?, updated_ts = ? WHERE path = ?')
-        .run(pf.name, now, ts, pf.path);
-    } else {
-      db.prepare(
-        'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(uuid(), pf.name, pf.path, '', now, now, ts, ts);
-    }
-  }
-
-  // 删除磁盘上已经不存在的路径
-  const diskPaths = new Set(promptFiles.map(pf => pf.path));
-  for (const ep of existingPaths) {
-    if (!diskPaths.has(ep)) {
-      db.prepare('DELETE FROM agent_interfaces WHERE path = ?').run(ep);
-    }
-  }
-}
-
-// ── seed: 初始 admin 用户 ──
-function seedDefaults(db: Database.Database) {
-  const userCount = (db.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c;
-  if (userCount === 0) {
-    db.prepare(
-      'INSERT INTO users (username, password_hash, role, note, must_change_pwd, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run('admin', hashPasswordSync('admin'), 1, '默认管理员', 1, nowReadable(), nowTs());
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // Prompt Config — 加密 KV（上传 CSV 落盘）
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 
 export const promptConfigStore = {
   /** 批量导入 CSV 行。key 以 .token/.key/.secret/.password 或 _token/_key/_secret/_password 结尾的视为敏感。 */
-  importRows(rows: Array<{ key: string; value: string; is_secret: boolean; note?: string }>): number {
+  async importRows(rows: Array<{ key: string; value: string; is_secret: boolean; note?: string }>): Promise<number> {
     let count = 0;
-    const stmt = db.prepare(
-      'INSERT INTO prompt_config (key, value_enc, iv, tag, is_secret, note, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_enc = excluded.value_enc, iv = excluded.iv, tag = excluded.tag, is_secret = excluded.is_secret, note = excluded.note, updated_at = excluded.updated_at'
-    );
     const now = nowReadable();
     for (const row of rows) {
       let enc: EncryptedValue;
       try {
         enc = encryptValue(row.value);
       } catch { continue; }
-      stmt.run(row.key, enc.enc, enc.iv, enc.tag, row.is_secret ? 1 : 0, row.note ?? '', now);
+      await exec(
+        `INSERT INTO prompt_config (key, value_enc, iv, tag, is_secret, note, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE value_enc = VALUES(value_enc), iv = VALUES(iv),
+           tag = VALUES(tag), is_secret = VALUES(is_secret),
+           note = VALUES(note), updated_at = VALUES(updated_at)`,
+        [row.key, enc.enc, enc.iv, enc.tag, row.is_secret ? 1 : 0, row.note ?? '', now]
+      );
       count++;
     }
     return count;
   },
 
   /** 获取单个 key 的明文 */
-  getPlain(key: string): string | null {
-    const row = db.prepare('SELECT value_enc, iv, tag FROM prompt_config WHERE key = ?').get(key) as { value_enc: string; iv: string; tag: string } | undefined;
+  async getPlain(key: string): Promise<string | null> {
+    const row = await queryOne<{ value_enc: string; iv: string; tag: string }>(
+      'SELECT value_enc, iv, tag FROM prompt_config WHERE key = ?', [key]
+    );
     if (!row || !row.value_enc) return null;
     return decryptValue(row.value_enc, row.iv, row.tag);
   },
 
   /** 列出所有 key。敏感项默认脱敏，公开项直接明文；reveal=true 时敏感项也明文 */
-  list(reveal = false): Array<{ key: string; value: string; is_secret: boolean; note: string; updated_at: string }> {
-    const rows = db.prepare('SELECT key, value_enc, iv, tag, is_secret, note, updated_at FROM prompt_config ORDER BY key').all() as Array<{
-      key: string; value_enc: string; iv: string; tag: string; is_secret: number; note: string; updated_at: string;
-    }>;
+  async list(reveal = false): Promise<Array<{ key: string; value: string; is_secret: boolean; note: string; updated_at: string }>> {
+    const rows = await queryAll<{ key: string; value_enc: string; iv: string; tag: string; is_secret: number; note: string; updated_at: string }>(
+      'SELECT key, value_enc, iv, tag, is_secret, note, updated_at FROM prompt_config ORDER BY key'
+    );
     return rows.map((r) => {
       const plain = r.value_enc ? decryptValue(r.value_enc, r.iv, r.tag) : '';
       const isSecret = r.is_secret === 1;
-      // 公开项直接返回明文；敏感项默认脱敏，reveal 时返回明文
       const value = isSecret
         ? (reveal ? (plain ?? '<解密失败>') : maskValue(plain))
         : (plain ?? '');
@@ -277,9 +72,11 @@ export const promptConfigStore = {
   },
 
   /** 获取所有 key→明文映射（内部渲染用） */
-  getAllPlain(): Map<string, string> {
+  async getAllPlain(): Promise<Map<string, string>> {
     const m = new Map<string, string>();
-    const rows = db.prepare('SELECT key, value_enc, iv, tag FROM prompt_config').all() as Array<{ key: string; value_enc: string; iv: string; tag: string }>;
+    const rows = await queryAll<{ key: string; value_enc: string; iv: string; tag: string }>(
+      'SELECT key, value_enc, iv, tag FROM prompt_config'
+    );
     for (const r of rows) {
       if (!r.value_enc) continue;
       const plain = decryptValue(r.value_enc, r.iv, r.tag);
@@ -289,7 +86,7 @@ export const promptConfigStore = {
   },
 
   /** 单条 upsert。key 以 .token/.key/.secret/.password 或 _token/_key/_secret/_password 结尾的视为敏感。 */
-  upsertItem(key: string, value: string, note?: string): void {
+  async upsertItem(key: string, value: string, note?: string): Promise<void> {
     const isSecret = /[._](token|secret|password|key)$/i.test(key);
     let enc: EncryptedValue;
     try {
@@ -297,30 +94,36 @@ export const promptConfigStore = {
     } catch {
       return;
     }
-    db.prepare(
-      'INSERT INTO prompt_config (key, value_enc, iv, tag, is_secret, note, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_enc = excluded.value_enc, iv = excluded.iv, tag = excluded.tag, is_secret = excluded.is_secret, note = excluded.note, updated_at = excluded.updated_at'
-    ).run(key, enc.enc, enc.iv, enc.tag, isSecret ? 1 : 0, note ?? '', nowReadable());
+    await exec(
+      `INSERT INTO prompt_config (key, value_enc, iv, tag, is_secret, note, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE value_enc = VALUES(value_enc), iv = VALUES(iv),
+         tag = VALUES(tag), is_secret = VALUES(is_secret),
+         note = VALUES(note), updated_at = VALUES(updated_at)`,
+      [key, enc.enc, enc.iv, enc.tag, isSecret ? 1 : 0, note ?? '', nowReadable()]
+    );
   },
 
   /** 删除单个 key */
-  deleteItem(key: string): boolean {
-    const info = db.prepare('DELETE FROM prompt_config WHERE key = ?').run(key);
-    return info.changes > 0;
+  async deleteItem(key: string): Promise<boolean> {
+    return (await exec('DELETE FROM prompt_config WHERE key = ?', [key])) > 0;
   },
 
   /** 清空所有配置（重新上传 CSV 前用） */
-  clearAll(): void {
-    db.prepare('DELETE FROM prompt_config').run();
+  async clearAll(): Promise<void> {
+    await exec('DELETE FROM prompt_config');
   },
 
   /** key 数量 */
-  count(): number {
-    return (db.prepare('SELECT COUNT(*) AS c FROM prompt_config').get() as { c: number }).c;
+  async count(): Promise<number> {
+    const row = await queryOne<{ c: number }>('SELECT COUNT(*) AS c FROM prompt_config');
+    return row?.c ?? 0;
   },
 
   /** 获取所有 key 名，用于模板中的系统变量引用校验 */
-  listKeys(): string[] {
-    return (db.prepare('SELECT key FROM prompt_config ORDER BY key').all() as Array<{ key: string }>).map(r => r.key);
+  async listKeys(): Promise<string[]> {
+    const rows = await queryAll<{ key: string }>('SELECT key FROM prompt_config ORDER BY key');
+    return rows.map(r => r.key);
   },
 };
 
@@ -330,63 +133,68 @@ function maskValue(plain: string | null): string {
   return plain.substring(0, 2) + '****' + plain.substring(plain.length - 2);
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // Agent Interfaces — 保留路径映射，prompt 列废弃（改走磁盘文件）
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 
 export const interfacesStore = {
-  list(): AgentInterface[] {
-    return db.prepare('SELECT * FROM agent_interfaces ORDER BY created_at DESC').all() as AgentInterface[];
+  async list(): Promise<AgentInterface[]> {
+    return queryAll<AgentInterface>('SELECT * FROM agent_interfaces ORDER BY created_at DESC');
   },
-  get(id: string): AgentInterface | undefined {
-    return db.prepare('SELECT * FROM agent_interfaces WHERE id = ?').get(id) as AgentInterface | undefined;
+  async get(id: string): Promise<AgentInterface | undefined> {
+    return queryOne<AgentInterface>('SELECT * FROM agent_interfaces WHERE id = ?', [id]);
   },
-  getByPath(path: string): AgentInterface | undefined {
-    return db.prepare('SELECT * FROM agent_interfaces WHERE path = ?').get(path) as AgentInterface | undefined;
+  async getByPath(path: string): Promise<AgentInterface | undefined> {
+    return queryOne<AgentInterface>('SELECT * FROM agent_interfaces WHERE path = ?', [path]);
   },
-  create(name: string, path: string, prompt: string): AgentInterface {
+  async create(name: string, path: string, prompt: string): Promise<AgentInterface> {
     const id = uuid();
     const now = nowReadable();
     const ts = nowTs();
-    db.prepare(
-      'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, name, path, prompt, now, now, ts, ts);
-    return this.get(id)!;
+    await exec(
+      'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, name, path, prompt, now, now, ts, ts]
+    );
+    return (await this.get(id))!;
   },
-  update(id: string, name: string, path: string, prompt: string): AgentInterface | undefined {
+  async update(id: string, name: string, path: string, prompt: string): Promise<AgentInterface | undefined> {
     const now = nowReadable();
     const ts = nowTs();
-    db.prepare(
-      'UPDATE agent_interfaces SET name = ?, path = ?, prompt = ?, updated_at = ?, updated_ts = ? WHERE id = ?'
-    ).run(name, path, prompt, now, ts, id);
+    await exec(
+      'UPDATE agent_interfaces SET name = ?, path = ?, prompt = ?, updated_at = ?, updated_ts = ? WHERE id = ?',
+      [name, path, prompt, now, ts, id]
+    );
     return this.get(id);
   },
-  remove(id: string): boolean {
-    return db.prepare('DELETE FROM agent_interfaces WHERE id = ?').run(id).changes > 0;
+  async remove(id: string): Promise<boolean> {
+    return (await exec('DELETE FROM agent_interfaces WHERE id = ?', [id])) > 0;
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// Task logs / sessions / users / config — unchanged below
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// Task logs / sessions / users / config — 全量异步
+// ═══════════════════════════════════════════════════════════════
 
 // 列表查询专用列：不包含 sdk_output / prompt / request_body 等大字段（sdk_trace 已独立存储）
-const TASK_LOG_LIGHT_COLS = `task_id, linkid, session_id, path, interface_id, status, request_body, request_response, error_message, created_at, finished_at, created_ts, finished_ts, started_ts`;
+const TASK_LOG_LIGHT_COLS = `task_id, linkid, session_id, path, interface_id, status, request_body, request_response, error_message, created_at, finished_at, created_ts, finished_ts, started_ts, runner_id`;
 // 单条详情用列：全量（timeline 需通过 sdkTracesStore 单独取 sdk_trace）
 const TASK_LOG_FULL_COLS = `*`;
 
 export const taskLogsStore = {
-  create(log: TaskLog): void {
-    db.prepare(
+  async create(log: TaskLog): Promise<void> {
+    await exec(
       `INSERT INTO task_logs
-       (task_id, linkid, session_id, path, interface_id, status, request_body, request_response, prompt, sdk_output, error_message, created_at, finished_at, created_ts, finished_ts)
-       VALUES (@task_id, @linkid, @session_id, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @error_message, @created_at, @finished_at, @created_ts, @finished_ts)`
-    ).run(log);
+       (task_id, linkid, session_id, path, interface_id, status, request_body, request_response, prompt, sdk_output, error_message, runner_id, created_at, finished_at, created_ts, finished_ts, started_ts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [log.task_id, log.linkid, log.session_id, log.path, log.interface_id, log.status,
+       log.request_body, log.request_response, log.prompt, log.sdk_output, log.error_message,
+       log.runner_id ?? null, log.created_at, log.finished_at, log.created_ts, log.finished_ts, log.started_ts ?? null]
+    );
   },
-  updateStatus(taskId: string, status: TaskStatus): void {
-    db.prepare('UPDATE task_logs SET status = ? WHERE task_id = ?').run(status, taskId);
+  async updateStatus(taskId: string, status: TaskStatus): Promise<void> {
+    await exec('UPDATE task_logs SET status = ? WHERE task_id = ?', [status, taskId]);
   },
-  updateResult(taskId: string, fields: Partial<TaskLog>): void {
+  async updateResult(taskId: string, fields: Partial<TaskLog>): Promise<void> {
     const sets: string[] = [];
     const vals: unknown[] = [];
     if (fields.finished_at !== undefined && fields.finished_ts === undefined) {
@@ -399,202 +207,189 @@ export const taskLogsStore = {
     }
     if (sets.length === 0) return;
     vals.push(taskId);
-    db.prepare(`UPDATE task_logs SET ${sets.join(', ')} WHERE task_id = ?`).run(...vals);
+    await exec(`UPDATE task_logs SET ${sets.join(', ')} WHERE task_id = ?`, vals);
   },
   // ── 单条详情（全量列） ──
-  get(taskId: string): TaskLog | undefined {
-    return db.prepare(`SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE task_id = ?`).get(taskId) as TaskLog | undefined;
+  async get(taskId: string): Promise<TaskLog | undefined> {
+    return queryOne<TaskLog>(`SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE task_id = ?`, [taskId]);
   },
-  getLatestByLinkid(linkid: string): TaskLog | undefined {
-    return db.prepare(
-      `SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_ts DESC LIMIT 1`
-    ).get(linkid) as TaskLog | undefined;
+  async getLatestByLinkid(linkid: string): Promise<TaskLog | undefined> {
+    return queryOne<TaskLog>(
+      `SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_ts DESC LIMIT 1`, [linkid]
+    );
   },
   // ── 轻量精确查询（数据管理用） ──
-  /** 按 task_id 精确查询（limit 1，不含大字段） */
-  getLightByTaskId(taskId: string): TaskLog | undefined {
-    return db.prepare(
-      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE task_id = ? LIMIT 1`
-    ).get(taskId) as TaskLog | undefined;
+  async getLightByTaskId(taskId: string): Promise<TaskLog | undefined> {
+    return queryOne<TaskLog>(
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE task_id = ? LIMIT 1`, [taskId]
+    );
   },
-  /** 按 linkid 精确查询列表（limit 50，不含大字段；同一 linkid 可有多轮任务） */
-  listLightByLinkid(linkid: string, limit = 50): TaskLog[] {
-    return db.prepare(
-      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_ts DESC LIMIT ?`
-    ).all(linkid, limit) as TaskLog[];
+  async listLightByLinkid(linkid: string, limit = 50): Promise<TaskLog[]> {
+    return queryAll<TaskLog>(
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE linkid = ? ORDER BY created_ts DESC LIMIT ?`, [linkid, limit]
+    );
   },
   // ── 列表分页（轻量列） ──
-  listPaged(offset: number, limit: number): { items: TaskLog[]; total: number } {
-    const total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
-    const items = db.prepare(
-      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_ts DESC LIMIT ? OFFSET ?`
-    ).all(limit, offset) as TaskLog[];
-    return { items, total };
+  async listPaged(offset: number, limit: number): Promise<{ items: TaskLog[]; total: number }> {
+    const totalRow = await queryOne<{ c: number }>('SELECT COUNT(*) AS c FROM task_logs');
+    const items = await queryAll<TaskLog>(
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_ts DESC LIMIT ? OFFSET ?`, [limit, offset]
+    );
+    return { items, total: totalRow?.c ?? 0 };
   },
-  // ── 最新 N 条（轻量列，SDK Trace 默认列表用） ──
-  listLatest(limit: number): TaskLog[] {
-    return db.prepare(
-      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_ts DESC LIMIT ?`
-    ).all(limit) as TaskLog[];
+  // ── 最新 N 条（轻量列） ──
+  async listLatest(limit: number): Promise<TaskLog[]> {
+    return queryAll<TaskLog>(
+      `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs ORDER BY created_ts DESC LIMIT ?`, [limit]
+    );
   },
-  // ── 活跃任务（轻量列） ──
-  countActive(): number {
-    const row = db.prepare(
+  // ── 活跃任务 ──
+  async countActive(): Promise<number> {
+    const row = await queryOne<{ c: number }>(
       `SELECT COUNT(*) AS c FROM task_logs WHERE status IN ('pending', 'processing')`
-    ).get() as { c: number };
-    return row.c;
+    );
+    return row?.c ?? 0;
   },
-  listActive(): TaskLog[] {
-    return db.prepare(
+  async listActive(): Promise<TaskLog[]> {
+    return queryAll<TaskLog>(
       `SELECT ${TASK_LOG_LIGHT_COLS} FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_ts ASC`
-    ).all() as TaskLog[];
+    );
   },
-  hasActiveByLinkid(linkid: string): boolean {
-    const row = db.prepare(
-      `SELECT 1 AS c FROM task_logs WHERE linkid = ? AND status IN ('pending', 'processing') LIMIT 1`
-    ).get(linkid);
+  async hasActiveByLinkid(linkid: string): Promise<boolean> {
+    const row = await queryOne<{ c: number }>(
+      `SELECT 1 AS c FROM task_logs WHERE linkid = ? AND status IN ('pending', 'processing') LIMIT 1`, [linkid]
+    );
     return !!row;
   },
-  cancelByLinkid(linkid: string): number {
+  async cancelByLinkid(linkid: string): Promise<number> {
     const now = nowReadable();
     const ts = nowTs();
-    return db.prepare(
-      `UPDATE task_logs
-       SET status = 'cancelled', finished_at = ?, finished_ts = ?
-       WHERE linkid = ? AND status IN ('pending', 'processing')`
-    ).run(now, ts, linkid).changes;
+    return exec(
+      `UPDATE task_logs SET status = 'cancelled', finished_at = ?, finished_ts = ?
+       WHERE linkid = ? AND status IN ('pending', 'processing')`, [now, ts, linkid]
+    );
   },
   // ── 按 linkid 列表（全量列，timeline 需要 sdk_output/prompt） ──
-  listByLinkid(linkid: string, limit = 50): TaskLog[] {
-    return db.prepare(
-      `SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE linkid = ? ORDER BY finished_ts DESC LIMIT ?`
-    ).all(linkid, limit) as TaskLog[];
+  async listByLinkid(linkid: string, limit = 50): Promise<TaskLog[]> {
+    return queryAll<TaskLog>(
+      `SELECT ${TASK_LOG_FULL_COLS} FROM task_logs WHERE linkid = ? ORDER BY finished_ts DESC LIMIT ?`, [linkid, limit]
+    );
   },
-  deleteExpired(retentionDays: number): number {
+  async deleteExpired(retentionDays: number): Promise<number> {
     const cutoffMs = nowTs() - retentionDays * 24 * 3600 * 1000;
-    const result = db.prepare(
-      `DELETE FROM task_logs
-       WHERE created_ts < ?
-         AND status NOT IN ('pending', 'processing')`
-    ).run(cutoffMs);
-    return result.changes;
+    return exec(
+      `DELETE FROM task_logs WHERE created_ts < ? AND status NOT IN ('pending', 'processing')`, [cutoffMs]
+    );
   },
   // ── 数据管理（全量，仅导出/清空用） ──
-  countAll(): number {
-    return (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
+  async countAll(): Promise<number> {
+    const row = await queryOne<{ c: number }>('SELECT COUNT(*) AS c FROM task_logs');
+    return row?.c ?? 0;
   },
-  listAll(): TaskLog[] {
-    return db.prepare(`SELECT ${TASK_LOG_FULL_COLS} FROM task_logs ORDER BY created_ts ASC`).all() as TaskLog[];
+  async listAll(): Promise<TaskLog[]> {
+    return queryAll<TaskLog>(`SELECT ${TASK_LOG_FULL_COLS} FROM task_logs ORDER BY created_ts ASC`);
   },
-  clearAll(): number {
-    return db.prepare('DELETE FROM task_logs').run().changes;
+  async clearAll(): Promise<number> {
+    return exec('DELETE FROM task_logs');
   },
 };
 
 export const sdkTracesStore = {
-  upsert(taskId: string, sdkTrace: string): void {
-    db.prepare(
+  async upsert(taskId: string, sdkTrace: string): Promise<void> {
+    await exec(
       `INSERT INTO sdk_traces (task_id, sdk_trace) VALUES (?, ?)
-       ON CONFLICT(task_id) DO UPDATE SET sdk_trace = excluded.sdk_trace`
-    ).run(taskId, sdkTrace);
+       ON DUPLICATE KEY UPDATE sdk_trace = VALUES(sdk_trace)`, [taskId, sdkTrace]
+    );
   },
-  get(taskId: string): SdkTrace | undefined {
-    return db.prepare('SELECT * FROM sdk_traces WHERE task_id = ?').get(taskId) as SdkTrace | undefined;
+  async get(taskId: string): Promise<SdkTrace | undefined> {
+    return queryOne<SdkTrace>('SELECT * FROM sdk_traces WHERE task_id = ?', [taskId]);
   },
-  getTraceByTaskId(taskId: string): string | null {
-    const row = db.prepare('SELECT sdk_trace FROM sdk_traces WHERE task_id = ?').get(taskId) as { sdk_trace: string } | undefined;
+  async getTraceByTaskId(taskId: string): Promise<string | null> {
+    const row = await queryOne<{ sdk_trace: string }>('SELECT sdk_trace FROM sdk_traces WHERE task_id = ?', [taskId]);
     return row?.sdk_trace ?? null;
   },
-  removeByTaskId(taskId: string): boolean {
-    return db.prepare('DELETE FROM sdk_traces WHERE task_id = ?').run(taskId).changes > 0;
+  async removeByTaskId(taskId: string): Promise<boolean> {
+    return (await exec('DELETE FROM sdk_traces WHERE task_id = ?', [taskId])) > 0;
   },
-  /** 删除 task_logs 中已不存在的孤儿 trace（task_logs 到期清理后同步回收） */
-  deleteOrphans(): number {
-    return db.prepare(
-      `DELETE FROM sdk_traces WHERE task_id NOT IN (SELECT task_id FROM task_logs)`
-    ).run().changes;
+  async deleteOrphans(): Promise<number> {
+    return exec('DELETE FROM sdk_traces WHERE task_id NOT IN (SELECT task_id FROM task_logs)');
   },
-  countAll(): number {
-    return (db.prepare('SELECT COUNT(*) AS c FROM sdk_traces').get() as { c: number }).c;
+  async countAll(): Promise<number> {
+    const row = await queryOne<{ c: number }>('SELECT COUNT(*) AS c FROM sdk_traces');
+    return row?.c ?? 0;
   },
-  clearAll(): number {
-    return db.prepare('DELETE FROM sdk_traces').run().changes;
+  async clearAll(): Promise<number> {
+    return exec('DELETE FROM sdk_traces');
   },
 };
 
 export const sessionsStore = {
-  upsert(sessionId: string, linkid: string, runnerId?: string): Session {
+  async upsert(sessionId: string, linkid: string, runnerId?: string): Promise<Session> {
     const now = nowReadable();
     const ts = nowTs();
-    // 以 linkid 为唯一键：同一 linkid 复用会话时，无论旧行是 active 还是 closed，
-    // 都覆盖为当前新的 session_id，避免 UNIQUE(linkid) 冲突。
-    db.prepare(
+    await exec(
       `INSERT INTO sessions (session_id, linkid, status, runner_id, created_at, updated_at, created_ts, updated_ts)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(linkid) DO UPDATE SET
-         session_id = excluded.session_id,
+       VALUES (?, ?, 'active', ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         session_id = VALUES(session_id),
          status = 'active',
-         runner_id = COALESCE(excluded.runner_id, sessions.runner_id),
-         updated_at = excluded.updated_at,
-         updated_ts = excluded.updated_ts`
-    ).run(sessionId, linkid, 'active', runnerId ?? null, now, now, ts, ts);
-    return this.get(sessionId)!;
+         runner_id = COALESCE(VALUES(runner_id), sessions.runner_id),
+         updated_at = VALUES(updated_at),
+         updated_ts = VALUES(updated_ts)`,
+      [sessionId, linkid, runnerId ?? null, now, now, ts, ts]
+    );
+    return (await this.get(sessionId))!;
   },
-  get(sessionId: string): Session | undefined {
-    return db.prepare('SELECT * FROM sessions WHERE session_id = ?').get(sessionId) as Session | undefined;
+  async get(sessionId: string): Promise<Session | undefined> {
+    return queryOne<Session>('SELECT * FROM sessions WHERE session_id = ?', [sessionId]);
   },
-  getByLinkid(linkid: string): Session | undefined {
-    return db.prepare(
-      'SELECT * FROM sessions WHERE linkid = ? AND status = ?'
-    ).get(linkid, 'active') as Session | undefined;
+  async getByLinkid(linkid: string): Promise<Session | undefined> {
+    return queryOne<Session>('SELECT * FROM sessions WHERE linkid = ? AND status = ?', [linkid, 'active']);
   },
-  listAll(): Session[] {
-    return db.prepare('SELECT * FROM sessions ORDER BY updated_ts DESC').all() as Session[];
+  async listAll(): Promise<Session[]> {
+    return queryAll<Session>('SELECT * FROM sessions ORDER BY updated_ts DESC');
   },
-  listPaged(offset: number, limit: number): { items: Session[]; total: number } {
-    const total = (db.prepare('SELECT COUNT(*) AS c FROM sessions').get() as { c: number }).c;
-    const items = db.prepare(
-      'SELECT * FROM sessions ORDER BY updated_ts DESC LIMIT ? OFFSET ?'
-    ).all(limit, offset) as Session[];
-    return { items, total };
+  async listPaged(offset: number, limit: number): Promise<{ items: Session[]; total: number }> {
+    const totalRow = await queryOne<{ c: number }>('SELECT COUNT(*) AS c FROM sessions');
+    const items = await queryAll<Session>(
+      'SELECT * FROM sessions ORDER BY updated_ts DESC LIMIT ? OFFSET ?', [limit, offset]
+    );
+    return { items, total: totalRow?.c ?? 0 };
   },
-  close(sessionId: string): boolean {
+  async close(sessionId: string): Promise<boolean> {
     const now = nowReadable();
     const ts = nowTs();
-    return db.prepare(
-      "UPDATE sessions SET status = 'closed', updated_at = ?, updated_ts = ? WHERE session_id = ?"
-    ).run(now, ts, sessionId).changes > 0;
+    return (await exec(
+      "UPDATE sessions SET status = 'closed', updated_at = ?, updated_ts = ? WHERE session_id = ?",
+      [now, ts, sessionId]
+    )) > 0;
   },
-  // 有新任务命中该 session 时刷新「更新时间」（保持 status 为 active）
-  touch(sessionId: string): boolean {
+  async touch(sessionId: string): Promise<boolean> {
     const now = nowReadable();
     const ts = nowTs();
-    return db.prepare(
-      "UPDATE sessions SET status = 'active', updated_at = ?, updated_ts = ? WHERE session_id = ?"
-    ).run(now, ts, sessionId).changes > 0;
+    return (await exec(
+      "UPDATE sessions SET status = 'active', updated_at = ?, updated_ts = ? WHERE session_id = ?",
+      [now, ts, sessionId]
+    )) > 0;
   },
-  // 把 session 归属到某个 runner（新建 session 拿到 runner_id 时调用）
-  setRunnerId(sessionId: string, runnerId: string): boolean {
-    return db.prepare(
-      'UPDATE sessions SET runner_id = ? WHERE session_id = ?'
-    ).run(runnerId, sessionId).changes > 0;
+  async setRunnerId(sessionId: string, runnerId: string): Promise<boolean> {
+    return (await exec('UPDATE sessions SET runner_id = ? WHERE session_id = ?', [runnerId, sessionId])) > 0;
   },
-  remove(sessionId: string): boolean {
-    return db.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId).changes > 0;
+  async remove(sessionId: string): Promise<boolean> {
+    return (await exec('DELETE FROM sessions WHERE session_id = ?', [sessionId])) > 0;
   },
-  deleteExpired(retentionDays: number): Session[] {
+  async deleteExpired(retentionDays: number): Promise<Session[]> {
     const cutoffMs = nowTs() - retentionDays * 24 * 3600 * 1000;
-    const expired = db.prepare(
-      'SELECT * FROM sessions WHERE updated_ts < ?'
-    ).all(cutoffMs) as Session[];
-    db.prepare('DELETE FROM sessions WHERE updated_ts < ?').run(cutoffMs);
+    const expired = await queryAll<Session>('SELECT * FROM sessions WHERE updated_ts < ?', [cutoffMs]);
+    await exec('DELETE FROM sessions WHERE updated_ts < ?', [cutoffMs]);
     return expired;
   },
-  countAll(): number {
-    return (db.prepare('SELECT COUNT(*) AS c FROM sessions').get() as { c: number }).c;
+  async countAll(): Promise<number> {
+    const row = await queryOne<{ c: number }>('SELECT COUNT(*) AS c FROM sessions');
+    return row?.c ?? 0;
   },
-  clearAll(): number {
-    return db.prepare('DELETE FROM sessions').run().changes;
+  async clearAll(): Promise<number> {
+    return exec('DELETE FROM sessions');
   },
 };
 
@@ -602,62 +397,55 @@ export const sessionsStore = {
 // Runners — 控制面维护的执行节点注册表
 // ═══════════════════════════════════════════════════════════════
 export const runnersStore = {
-  /** 控制面启动时按静态列表同步，返回同步后的 runner 列表 */
-  sync(addresses: Array<{ name: string; addr: string; capacity: number }>): Runner[] {
+  async sync(addresses: Array<{ name: string; addr: string; capacity: number }>): Promise<Runner[]> {
     const now = nowReadable();
     const ts = nowTs();
 
-    // 标记磁盘上不再存在的 runner 为 down（不删除，保留历史 task_logs.runner_id 可追溯）
     const seen = new Set(addresses.map((a) => a.name));
-    const existing = db.prepare('SELECT name FROM runners').all() as Array<{ name: string }>;
+    const existing = await queryAll<{ name: string }>('SELECT name FROM runners');
     for (const e of existing) {
       if (!seen.has(e.name)) {
-        db.prepare("UPDATE runners SET status = 'down', updated_at = ? WHERE name = ?").run(now, e.name);
+        await exec("UPDATE runners SET status = 'down', updated_at = ? WHERE name = ?", [now, e.name]);
       }
     }
 
     for (const a of addresses) {
-      db.prepare(
+      await exec(
         `INSERT INTO runners (id, name, addr, capacity, status, last_heartbeat_ts, created_at, updated_at)
          VALUES (?, ?, ?, ?, 'up', NULL, ?, ?)
-         ON CONFLICT(name) DO UPDATE SET
-           addr = excluded.addr,
-           capacity = excluded.capacity,
+         ON DUPLICATE KEY UPDATE
+           addr = VALUES(addr),
+           capacity = VALUES(capacity),
            status = 'up',
-           updated_at = excluded.updated_at`
-      ).run(uuid(), a.name, a.addr, a.capacity, now, now, now);
+           updated_at = VALUES(updated_at)`,
+        [uuid(), a.name, a.addr, a.capacity, now, now]
+      );
     }
 
     return this.list();
   },
 
-  list(): Runner[] {
-    return db.prepare('SELECT * FROM runners ORDER BY name').all() as Runner[];
+  async list(): Promise<Runner[]> {
+    return queryAll<Runner>('SELECT * FROM runners ORDER BY name');
   },
-
-  get(id: string): Runner | undefined {
-    return db.prepare('SELECT * FROM runners WHERE id = ?').get(id) as Runner | undefined;
+  async get(id: string): Promise<Runner | undefined> {
+    return queryOne<Runner>('SELECT * FROM runners WHERE id = ?', [id]);
   },
-
-  getByName(name: string): Runner | undefined {
-    return db.prepare('SELECT * FROM runners WHERE name = ?').get(name) as Runner | undefined;
+  async getByName(name: string): Promise<Runner | undefined> {
+    return queryOne<Runner>('SELECT * FROM runners WHERE name = ?', [name]);
   },
-
-  listUp(): Runner[] {
-    return db.prepare("SELECT * FROM runners WHERE status = 'up' ORDER BY name").all() as Runner[];
+  async listUp(): Promise<Runner[]> {
+    return queryAll<Runner>("SELECT * FROM runners WHERE status = 'up' ORDER BY name");
   },
-
-  setStatus(id: string, status: RunnerStatus): void {
-    db.prepare('UPDATE runners SET status = ?, updated_at = ? WHERE id = ?').run(status, nowReadable(), id);
+  async setStatus(id: string, status: RunnerStatus): Promise<void> {
+    await exec('UPDATE runners SET status = ?, updated_at = ? WHERE id = ?', [status, nowReadable(), id]);
   },
-
-  heartbeat(id: string): void {
-    db.prepare('UPDATE runners SET status = ?, last_heartbeat_ts = ?, updated_at = ? WHERE id = ?')
-      .run('up', nowTs(), nowReadable(), id);
+  async heartbeat(id: string): Promise<void> {
+    await exec('UPDATE runners SET status = ?, last_heartbeat_ts = ?, updated_at = ? WHERE id = ?',
+      ['up', nowTs(), nowReadable(), id]);
   },
-
-  markDown(id: string): void {
-    db.prepare('UPDATE runners SET status = ?, updated_at = ? WHERE id = ?').run('down', nowReadable(), id);
+  async markDown(id: string): Promise<void> {
+    await exec('UPDATE runners SET status = ?, updated_at = ? WHERE id = ?', ['down', nowReadable(), id]);
   },
 };
 
@@ -670,55 +458,107 @@ export function comparePasswordSync(password: string, hash: string): boolean {
 }
 
 export const usersStore = {
-  get(username: string): User | undefined {
-    return db.prepare(
-      'SELECT id, username, password_hash, role, note, COALESCE(must_change_pwd,0) AS must_change_pwd, COALESCE(user_version,1) AS user_version, COALESCE(created_at,\'\') AS created_at, created_ts FROM users WHERE username = ?'
-    ).get(username) as User | undefined;
+  async get(username: string): Promise<User | undefined> {
+    return queryOne<User>(
+      `SELECT id, username, password_hash, role, note,
+        COALESCE(must_change_pwd,0) AS must_change_pwd,
+        COALESCE(user_version,1) AS user_version,
+        COALESCE(created_at,'') AS created_at, created_ts
+       FROM users WHERE username = ?`, [username]
+    );
   },
-  list(): User[] {
-    return db.prepare(
-      'SELECT id, username, password_hash, role, note, COALESCE(must_change_pwd,0) AS must_change_pwd, COALESCE(user_version,1) AS user_version, COALESCE(created_at,\'\') AS created_at, created_ts FROM users ORDER BY id'
-    ).all() as User[];
+  async list(): Promise<User[]> {
+    return queryAll<User>(
+      `SELECT id, username, password_hash, role, note,
+        COALESCE(must_change_pwd,0) AS must_change_pwd,
+        COALESCE(user_version,1) AS user_version,
+        COALESCE(created_at,'') AS created_at, created_ts
+       FROM users ORDER BY id`
+    );
   },
-  updatePassword(username: string, hash: string): boolean {
-    return db.prepare('UPDATE users SET password_hash = ?, user_version = user_version + 1 WHERE username = ?').run(hash, username).changes > 0;
+  async updatePassword(username: string, hash: string): Promise<boolean> {
+    return (await exec('UPDATE users SET password_hash = ?, user_version = user_version + 1 WHERE username = ?', [hash, username])) > 0;
   },
-  clearMustChangePwd(username: string): boolean {
-    return db.prepare('UPDATE users SET must_change_pwd = 0 WHERE username = ?').run(username).changes > 0;
+  async clearMustChangePwd(username: string): Promise<boolean> {
+    return (await exec('UPDATE users SET must_change_pwd = 0 WHERE username = ?', [username])) > 0;
   },
-  incrementUserVersion(username: string): void {
-    db.prepare('UPDATE users SET user_version = user_version + 1 WHERE username = ?').run(username);
+  async incrementUserVersion(username: string): Promise<void> {
+    await exec('UPDATE users SET user_version = user_version + 1 WHERE username = ?', [username]);
   },
-  getAllVersions(): Map<string, number> {
-    const rows = db.prepare('SELECT username, COALESCE(user_version,1) AS user_version FROM users').all() as Array<{ username: string; user_version: number }>;
+  async getAllVersions(): Promise<Map<string, number>> {
+    const rows = await queryAll<{ username: string; user_version: number }>(
+      'SELECT username, COALESCE(user_version,1) AS user_version FROM users'
+    );
     const m = new Map<string, number>();
     for (const r of rows) m.set(r.username, r.user_version);
     return m;
   },
-  create(username: string, hash: string, role: number, note: string): boolean {
+  async create(username: string, hash: string, role: number, note: string): Promise<boolean> {
     try {
-      db.prepare(
-        'INSERT INTO users (username, password_hash, role, note, must_change_pwd, user_version, created_at, created_ts) VALUES (?, ?, ?, ?, 0, 1, ?, ?)'
-      ).run(username, hash, role, note, nowReadable(), nowTs());
+      await exec(
+        'INSERT INTO users (username, password_hash, role, note, must_change_pwd, user_version, created_at, created_ts) VALUES (?, ?, ?, ?, 0, 1, ?, ?)',
+        [username, hash, role, note, nowReadable(), nowTs()]
+      );
       return true;
     } catch {
       return false;
     }
   },
-  remove(username: string): boolean {
-    return db.prepare('DELETE FROM users WHERE username = ?').run(username).changes > 0;
+  async remove(username: string): Promise<boolean> {
+    return (await exec('DELETE FROM users WHERE username = ?', [username])) > 0;
   },
 };
 
 export const configStore = {
-  get(key: string): string | undefined {
-    const row = db.prepare('SELECT value FROM config WHERE key = ?').get(key) as { value: string } | undefined;
+  async get(key: string): Promise<string | undefined> {
+    const row = await queryOne<{ value: string }>('SELECT value FROM config WHERE key = ?', [key]);
     return row?.value;
   },
-  set(key: string, value: string, note?: string): void {
-    db.prepare('INSERT INTO config (key, value, note) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, note = excluded.note').run(key, value, note ?? '');
+  async set(key: string, value: string, note?: string): Promise<void> {
+    await exec(
+      'INSERT INTO config (key, value, note) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value), note = VALUES(note)',
+      [key, value, note ?? '']
+    );
   },
-  del(key: string): void {
-    db.prepare('DELETE FROM config WHERE key = ?').run(key);
+  async del(key: string): Promise<void> {
+    await exec('DELETE FROM config WHERE key = ?', [key]);
   },
 };
+
+// seed 默认 admin 用户（首次启动无用户时）
+export async function seedDefaults(): Promise<void> {
+  const row = await queryOne<{ c: number }>('SELECT COUNT(*) AS c FROM users');
+  if ((row?.c ?? 0) === 0) {
+    await exec(
+      'INSERT INTO users (username, password_hash, role, note, must_change_pwd, user_version, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ['admin', hashPasswordSync('admin'), 1, '默认管理员', 1, 1, nowReadable(), nowTs()]
+    );
+  }
+}
+
+// 同步 prompts 目录到 agent_interfaces（保持与旧逻辑一致）
+export async function syncInterfacesFromPrompts(promptFiles: Array<{ filename: string; path: string; name: string }>): Promise<void> {
+  const existing = await queryAll<{ path: string }>('SELECT path FROM agent_interfaces');
+  const existingPaths = new Set(existing.map(r => r.path));
+  const now = nowReadable();
+  const ts = nowTs();
+
+  for (const pf of promptFiles) {
+    if (existingPaths.has(pf.path)) {
+      await exec('UPDATE agent_interfaces SET name = ?, updated_at = ?, updated_ts = ? WHERE path = ?',
+        [pf.name, now, ts, pf.path]);
+    } else {
+      await exec(
+        'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [uuid(), pf.name, pf.path, '', now, now, ts, ts]
+      );
+    }
+  }
+
+  const diskPaths = new Set(promptFiles.map(pf => pf.path));
+  for (const ep of existingPaths) {
+    if (!diskPaths.has(ep)) {
+      await exec('DELETE FROM agent_interfaces WHERE path = ?', [ep]);
+    }
+  }
+}

@@ -13,34 +13,26 @@ export function createTasksRouter(): Router {
   const router = Router();
 
   // GET /api/v1/tasks — 查询进行中任务
-  router.get('/api/v1/tasks', (req: Request, res: Response) => {
-    const tasks = taskLogsStore.listActive();
+  router.get('/api/v1/tasks', async (req: Request, res: Response) => {
+    const tasks = await taskLogsStore.listActive();
     log.info({ from_ip: req.ip || '', count: tasks.length }, 'api_list_tasks');
     res.json({
-      code: 0,
-      timestamp: now(),
-      message: 'success',
-      task_id: '',
-      linkid: '',
+      code: 0, timestamp: now(), message: 'success', task_id: '', linkid: '',
       data: {
         total: tasks.length,
         tasks: tasks.map((t) => ({
-          task_id: t.task_id,
-          linkid: t.linkid,
-          session_id: t.session_id,
-          interface_path: t.path,
-          status: t.status,
-          created_at: t.created_at,
+          task_id: t.task_id, linkid: t.linkid, session_id: t.session_id,
+          interface_path: t.path, status: t.status, created_at: t.created_at,
         })),
       },
     });
   });
 
   // DELETE /api/v1/tasks/:task_id — 取消任务（支持 pending 和 processing）
-  router.delete('/api/v1/tasks/:task_id', (req: Request, res: Response) => {
+  router.delete('/api/v1/tasks/:task_id', async (req: Request, res: Response) => {
     const { task_id } = req.params;
     const fromIp = req.ip || '';
-    const task = taskLogsStore.get(task_id);
+    const task = await taskLogsStore.get(task_id);
 
     if (!task) {
       log.warn({ from_ip: fromIp, task_id }, 'api_cancel_task_not_found');
@@ -48,27 +40,23 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    // 已结束的任务不可取消
     if (task.status !== 'pending' && task.status !== 'processing') {
       log.warn({ from_ip: fromIp, task_id, status: task.status, linkid: task.linkid }, 'api_cancel_task_rejected');
       res.json({ code: 1001, message: '任务已结束，无法取消', task_id, linkid: task.linkid || '' });
       return;
     }
 
-    // pending → 从队列移除并置 cancelled；processing → 中断 SDK 执行
-    const cancelled = cancelTask(task_id);
+    const cancelled = await cancelTask(task_id);
 
     if (cancelled?.cancelled === 'processing') {
-      // 处理中：置为 cancelled，但让 runAgent 收尾后最终覆盖 finished 信息；
-      // 这里先标记，避免其它并发请求重复取消。
-      taskLogsStore.updateStatus(task_id, 'cancelled');
+      await taskLogsStore.updateStatus(task_id, 'cancelled');
       log.info({ from_ip: fromIp, task_id, linkid: task.linkid, mode: 'processing' }, 'api_cancel_task_ok');
       res.json({ code: 0, message: '任务停止中', task_id, linkid: task.linkid || '' });
       return;
     }
 
     if (cancelled?.cancelled === 'pending') {
-      taskLogsStore.updateResult(task_id, {
+      await taskLogsStore.updateResult(task_id, {
         status: 'cancelled',
         error_message: '任务已被管理员取消',
         finished_at: nowReadable(),
@@ -78,13 +66,12 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    // 理论上不会走到这里：状态是 pending/processing 但队列里找不到
     log.warn({ from_ip: fromIp, task_id, status: task.status, linkid: task.linkid }, 'api_cancel_task_noop');
     res.json({ code: 1001, message: '未找到可取消的任务', task_id, linkid: task.linkid || '' });
   });
 
   // GET /api/v1/task/trace?taskid=xxx — 任务追踪
-  router.get('/api/v1/task/trace', (req: Request, res: Response) => {
+  router.get('/api/v1/task/trace', async (req: Request, res: Response) => {
     const taskId = typeof req.query.taskid === 'string' ? req.query.taskid : '';
     const fromIp = req.ip || '';
     if (!taskId) {
@@ -93,7 +80,7 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    const task = taskLogsStore.get(taskId);
+    const task = await taskLogsStore.get(taskId);
     if (!task) {
       log.warn({ from_ip: fromIp, task_id: taskId }, 'api_task_trace_not_found');
       res.status(404).json({ code: 1001, message: '任务不存在', task_id: '', linkid: '' });
@@ -102,34 +89,25 @@ export function createTasksRouter(): Router {
 
     log.info({ from_ip: fromIp, task_id: taskId, linkid: task.linkid, status: task.status }, 'api_task_trace');
     res.json({
-      code: 0,
-      timestamp: now(),
-      message: 'success',
-      task_id: task.task_id,
-      linkid: task.linkid,
+      code: 0, timestamp: now(), message: 'success',
+      task_id: task.task_id, linkid: task.linkid,
       data: {
-        task_id: task.task_id,
-        linkid: task.linkid,
-        session_id: task.session_id,
-        path: task.path,
-        status: task.status,
-        request_body: safeParse(task.request_body),
-        prompt: task.prompt,
-        sdk_output: task.sdk_output,
-        error_message: task.error_message,
-        created_at: task.created_at,
-        finished_at: task.finished_at,
+        task_id: task.task_id, linkid: task.linkid, session_id: task.session_id,
+        path: task.path, status: task.status,
+        request_body: safeParse(task.request_body), prompt: task.prompt,
+        sdk_output: task.sdk_output, error_message: task.error_message,
+        created_at: task.created_at, finished_at: task.finished_at,
       },
     });
   });
 
   // GET /api/v1/task/log/:task_id?format=json|html — 任务审计日志时间线
-  router.get('/api/v1/task/log/:task_id', (req: Request, res: Response) => {
+  router.get('/api/v1/task/log/:task_id', async (req: Request, res: Response) => {
     const { task_id } = req.params;
     const fromIp = req.ip || '';
     const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'html';
 
-    const task = taskLogsStore.get(task_id);
+    const task = await taskLogsStore.get(task_id);
     if (!task) {
       log.warn({ from_ip: fromIp, task_id }, 'api_task_log_not_found');
       if (format === 'html') {
@@ -143,46 +121,36 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    const sdkTrace = sdkTracesStore.getTraceByTaskId(task_id);
+    const sdkTrace = await sdkTracesStore.getTraceByTaskId(task_id);
     const events = buildTimelineEvents(task, sdkTrace);
     const linkid = task.linkid || '';
 
     log.info({ from_ip: fromIp, task_id, linkid, status: task.status, format, events: events.length }, 'api_task_log');
 
     if (format === 'html') {
-      res.contentType('text/html; charset=utf-8').send(
-        renderTimelineHtml(task, events, linkid)
-      );
+      res.contentType('text/html; charset=utf-8').send(renderTimelineHtml(task, events, linkid));
       return;
     }
 
     res.json({
-      code: 0,
-      timestamp: now(),
-      message: 'success',
-      task_id: task.task_id,
-      linkid: task.linkid,
+      code: 0, timestamp: now(), message: 'success',
+      task_id: task.task_id, linkid: task.linkid,
       data: {
-        task_id: task.task_id,
-        linkid: task.linkid,
-        session_id: task.session_id,
-        path: task.path,
-        status: task.status,
-        error_message: task.error_message,
-        created_at: task.created_at,
-        finished_at: task.finished_at,
+        task_id: task.task_id, linkid: task.linkid, session_id: task.session_id,
+        path: task.path, status: task.status,
+        error_message: task.error_message, created_at: task.created_at, finished_at: task.finished_at,
         timeline: events,
       },
     });
   });
 
   // GET /api/v1/task/link/log/:linkid — 按 linkid 查最新一条任务时间线
-  router.get('/api/v1/task/link/log/:linkid', (req: Request, res: Response) => {
+  router.get('/api/v1/task/link/log/:linkid', async (req: Request, res: Response) => {
     const { linkid } = req.params;
     const fromIp = req.ip || '';
     const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'html';
 
-    const task = taskLogsStore.getLatestByLinkid(linkid);
+    const task = await taskLogsStore.getLatestByLinkid(linkid);
     if (!task) {
       log.warn({ from_ip: fromIp, linkid }, 'api_task_link_log_not_found');
       if (format === 'html') {
@@ -196,45 +164,35 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    const sdkTrace = sdkTracesStore.getTraceByTaskId(task.task_id);
+    const sdkTrace = await sdkTracesStore.getTraceByTaskId(task.task_id);
     const events = buildTimelineEvents(task, sdkTrace);
 
     log.info({ from_ip: fromIp, task_id: task.task_id, linkid, status: task.status, format, events: events.length }, 'api_task_link_log');
 
     if (format === 'html') {
-      res.contentType('text/html; charset=utf-8').send(
-        renderTimelineHtml(task, events, linkid)
-      );
+      res.contentType('text/html; charset=utf-8').send(renderTimelineHtml(task, events, linkid));
       return;
     }
 
     res.json({
-      code: 0,
-      timestamp: now(),
-      message: 'success',
-      task_id: task.task_id,
-      linkid: task.linkid,
+      code: 0, timestamp: now(), message: 'success',
+      task_id: task.task_id, linkid: task.linkid,
       data: {
-        task_id: task.task_id,
-        linkid: task.linkid,
-        session_id: task.session_id,
-        path: task.path,
-        status: task.status,
-        error_message: task.error_message,
-        created_at: task.created_at,
-        finished_at: task.finished_at,
+        task_id: task.task_id, linkid: task.linkid, session_id: task.session_id,
+        path: task.path, status: task.status,
+        error_message: task.error_message, created_at: task.created_at, finished_at: task.finished_at,
         timeline: events,
       },
     });
   });
 
   // GET /api/v1/task/link/:linkid/history — 会话处理时间线（按 linkid 聚合所有 task）
-  router.get('/api/v1/task/link/:linkid/history', (req: Request, res: Response) => {
+  router.get('/api/v1/task/link/:linkid/history', async (req: Request, res: Response) => {
     const { linkid } = req.params;
     const fromIp = req.ip || '';
     const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'json';
 
-    const tasks = taskLogsStore.listByLinkid(linkid);
+    const tasks = await taskLogsStore.listByLinkid(linkid);
     if (tasks.length === 0) {
       log.warn({ from_ip: fromIp, linkid }, 'api_link_history_not_found');
       if (format === 'html') {
@@ -249,13 +207,8 @@ export function createTasksRouter(): Router {
     }
 
     const historyTasks = tasks.map(t => ({
-      task_id: t.task_id,
-      session_id: t.session_id,
-      path: t.path,
-      status: t.status,
-      error_message: t.error_message,
-      created_at: t.created_at,
-      finished_at: t.finished_at,
+      task_id: t.task_id, session_id: t.session_id, path: t.path, status: t.status,
+      error_message: t.error_message, created_at: t.created_at, finished_at: t.finished_at,
       events: buildOutputOnlyEvents(t),
     }));
 
@@ -271,11 +224,7 @@ export function createTasksRouter(): Router {
     }
 
     res.json({
-      code: 0,
-      timestamp: now(),
-      message: 'success',
-      task_id: '',
-      linkid,
+      code: 0, timestamp: now(), message: 'success', task_id: '', linkid,
       data: { linkid, total: historyTasks.length, tasks: historyTasks },
     });
   });
@@ -311,9 +260,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 function renderTimelineHtml(task: TaskLog, events: TimelineEvent[], linkid: string): string {
   const itemsHtml = events.map((ev, i) => {
     const timeStr = ev.time ? fmtTs(ev.time) : '';
-    const detailBlock = ev.detail
-      ? `<pre class="detail">${escHtml(ev.detail)}</pre>`
-      : '';
+    const detailBlock = ev.detail ? `<pre class="detail">${escHtml(ev.detail)}</pre>` : '';
     return `<div class="item ${ev.type}">
         <div class="dot"></div>
         <div class="body">
@@ -366,9 +313,7 @@ function safeParse(s: string | null): unknown {
   try { return JSON.parse(s); } catch { return s; }
 }
 
-function now(): string {
-  return nowReadable();
-}
+function now(): string { return nowReadable(); }
 
 function escHtml(s: string | null): string {
   if (!s) return '';

@@ -15,6 +15,7 @@ import { publish } from './sse-bus.js';
 import { nowReadable, nowTs } from '../time.js';
 import { selectRunner, markDispatched, markFinished, hasRemoteRunners, getRunnerHttpConfig } from './dispatcher.js';
 import { streamRun, cancelRunnerTask } from './runner-client.js';
+import { queue, semaphore, linkidLock, activeTasks, getInstanceId, cancelRoute } from './redis.js';
 import type { RunFrame, RunResult } from './runner-protocol.js';
 import type { Config } from '../config.js';
 import type { AgentInterface, ProcessRequest, TaskLog, TaskStatus, RunRequest, RunSdkOptions } from '../types.js';
@@ -38,17 +39,20 @@ type WorkerItem = {
 };
 
 let cfg: Config;
-let running = 0;
-const pending: WorkerItem[] = [];
 
-// ── per-linkid 串行化 ──
-const linkChains = new Map<string, Promise<void>>();
-
-// ── 已出队、尚未结束的任务（链上等待 + 处理中）：task_id → WorkerItem ──
+// ── 已出队、尚未结束的任务（本实例持有）：task_id → WorkerItem ──
+// 多实例各自维护自己的 active，但通过 Redis 注册供取消路由查找。
 const active = new Map<string, WorkerItem>();
+
+// 各实例独立的消费者循环是否已启动
+let workerRunning = false;
 
 function nowLocal(): string {
   return nowReadable();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function processItem(item: WorkerItem): Promise<void> {
@@ -60,7 +64,7 @@ async function processItem(item: WorkerItem): Promise<void> {
   try {
     // 在链上等待期间被取消：直接置为 cancelled，不再启动 SDK
     if (abortController.signal.aborted) {
-      taskLogsStore.updateResult(task_id, {
+      await taskLogsStore.updateResult(task_id, {
         status: 'cancelled' as TaskStatus,
         error_message: '任务已被管理员取消',
         finished_at: nowLocal(),
@@ -70,13 +74,13 @@ async function processItem(item: WorkerItem): Promise<void> {
     }
 
     // 状态 → processing（started_ts 供看门狗判定「处理了多久」，用 created_ts 会误算排队时间）
-    taskLogsStore.updateResult(task_id, { status: 'processing', started_ts: nowTs() });
+    await taskLogsStore.updateResult(task_id, { status: 'processing', started_ts: nowTs() });
     log.info({ task_id, linkid, path: interfacePath }, 'task_processing');
 
     // 从磁盘读取提示词模板（DB 的 prompt 列已废弃）
     const template = loadPromptFromDisk(interfacePath);
     if (!template) {
-      taskLogsStore.updateResult(task_id, {
+      await taskLogsStore.updateResult(task_id, {
         status: 'failed' as TaskStatus,
         error_message: '提示词文件不存在: ' + interfacePath,
         finished_at: nowLocal(),
@@ -87,15 +91,15 @@ async function processItem(item: WorkerItem): Promise<void> {
 
     // 渲染提示词
     const rendered = renderPrompt(template, body as unknown as Record<string, unknown>, task_id);
-    taskLogsStore.updateResult(task_id, { prompt: rendered });
+    await taskLogsStore.updateResult(task_id, { prompt: rendered });
 
     // 查 sessions 表：同一 linkid 是否有已存在的 session
-    const existingSession = sessionsStore.getByLinkid(linkid);
+    const existingSession = await sessionsStore.getByLinkid(linkid);
     const resumeSessionId = existingSession?.session_id;
     const preferredRunnerId = existingSession?.runner_id; // session 亲和
 
     if (resumeSessionId) {
-      sessionsStore.touch(resumeSessionId);
+      await sessionsStore.touch(resumeSessionId);
       log.info({ task_id, linkid, sessionId: resumeSessionId }, 'session_resume');
     }
 
@@ -119,7 +123,7 @@ async function processItem(item: WorkerItem): Promise<void> {
     // ═══════════════════════════════════════════════════════════════
     // 选路：有远端 runner → 派发；无 → 本地执行
     // ═══════════════════════════════════════════════════════════════
-    const useRemote = hasRemoteRunners();
+    const useRemote = await hasRemoteRunners();
 
     let capturedSessionId: string | undefined;
     let result: SdkResult | null = null;
@@ -137,8 +141,8 @@ async function processItem(item: WorkerItem): Promise<void> {
         linkid, task_id, rendered, cfg, resumeSessionId,
         (sid) => {
           capturedSessionId = sid;
-          sessionsStore.upsert(sid, linkid);
-          taskLogsStore.updateResult(task_id, { session_id: sid });
+          void sessionsStore.upsert(sid, linkid);
+          void taskLogsStore.updateResult(task_id, { session_id: sid });
         },
         abortController.signal,
         () => { item.lastActivity = nowTs(); armTimeout(); },
@@ -149,33 +153,33 @@ async function processItem(item: WorkerItem): Promise<void> {
 
     // 兜底：若 onSessionId 未触发（例如异常路径），任务结束后再写一次。
     if (result.sessionId && !wasAborted) {
-      sessionsStore.upsert(result.sessionId, linkid);
+      await sessionsStore.upsert(result.sessionId, linkid);
     }
 
     // 被管理员手动停止：状态应记为 cancelled
     if (wasAborted && !timeoutFired && !item.watchdogKilled) {
-      taskLogsStore.updateResult(task_id, {
+      await taskLogsStore.updateResult(task_id, {
         status: 'cancelled' as TaskStatus,
         session_id: result.sessionId || null,
         sdk_output: result.rawOutput,
         error_message: '任务已被管理员停止',
         finished_at: nowLocal(),
       });
-      if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
+      if (result.trace) await sdkTracesStore.upsert(task_id, result.trace);
       log.info({ task_id, linkid, status: 'cancelled' }, 'task_cancelled');
       return;
     }
 
     // SDK 超时：记为 failed
     if (wasAborted && timeoutFired) {
-      taskLogsStore.updateResult(task_id, {
+      await taskLogsStore.updateResult(task_id, {
         status: 'failed' as TaskStatus,
         session_id: result.sessionId || null,
         sdk_output: result.rawOutput,
         error_message: 'SDK 无活动超时（连续 ' + hardTimeoutMs + 'ms 未收到任何消息），已强制中断',
         finished_at: nowLocal(),
       });
-      if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
+      if (result.trace) await sdkTracesStore.upsert(task_id, result.trace);
       log.error({ task_id, linkid, timeoutMs: hardTimeoutMs }, 'task_sdk_timeout_failed');
       return;
     }
@@ -184,30 +188,30 @@ async function processItem(item: WorkerItem): Promise<void> {
       const errMsg = item.watchdogKilled
         ? '执行超时（连续 ' + hardTimeoutMs + 'ms 无输出），看门狗已强制终止'
         : (result.errorMessage || 'Claude 处理失败');
-      taskLogsStore.updateResult(task_id, {
+      await taskLogsStore.updateResult(task_id, {
         status: 'failed' as TaskStatus,
         session_id: result.sessionId || null,
         sdk_output: result.rawOutput,
         error_message: errMsg,
         finished_at: nowLocal(),
       });
-      if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
+      if (result.trace) await sdkTracesStore.upsert(task_id, result.trace);
       log.error({ task_id, linkid, error: errMsg }, 'task_failed');
       return;
     }
 
     // LLM 成功
-    taskLogsStore.updateResult(task_id, {
+    await taskLogsStore.updateResult(task_id, {
       session_id: result.sessionId || null,
       sdk_output: result.rawOutput,
       status: 'completed' as TaskStatus,
       finished_at: nowLocal(),
     });
-    if (result.trace) sdkTracesStore.upsert(task_id, result.trace);
+    if (result.trace) await sdkTracesStore.upsert(task_id, result.trace);
     log.info({ task_id, linkid, status: 'completed' }, 'task_done');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    taskLogsStore.updateResult(task_id, {
+    await taskLogsStore.updateResult(task_id, {
       status: 'failed' as TaskStatus,
       error_message: item.watchdogKilled
         ? '执行超时，看门狗已强制终止'
@@ -221,7 +225,7 @@ async function processItem(item: WorkerItem): Promise<void> {
 }
 
 /** 把一次任务派发给远端 runner，解析 NDJSON 帧，收尾返回 SdkResult */
-function dispatchToRunner(
+async function dispatchToRunner(
   linkid: string,
   taskId: string,
   renderedPrompt: string,
@@ -244,136 +248,136 @@ function dispatchToRunner(
     auto_mode_server: cfg.llm.auto_mode_server,
   };
 
-  // 非 resume 时异步构建 claude_md（它读 data/memory/ 和 prompt_config，控制面环境）
-  return buildClaudeMdForDispatch(existingSession, cfg).then((claudeMd) => {
-    const runReq: RunRequest = {
-      task_id: taskId,
-      linkid,
-      mode: 'task',
-      prompt: renderedPrompt,
-      claude_md: claudeMd,
-      resume_session_id: existingSession?.session_id ?? null,
-      sdk_options: sdkOptions,
-      env: buildEnv(cfg, true) as Record<string, string>, // skipClaudeConfigDir = true
-    };
+  const claudeMd = await buildClaudeMdForDispatch(existingSession, cfg);
+  const env = await buildEnv(cfg, true) as Record<string, string>;
 
-    return new Promise<SdkResult>((resolve) => {
-      // 首次派发允许在「未收到 session 帧」前换一台重试一次
-      attemptDispatch(preferredRunnerId ?? undefined, true);
-      let abortHandler: (() => void) | undefined;
+  const runReq: RunRequest = {
+    task_id: taskId,
+    linkid,
+    mode: 'task',
+    prompt: renderedPrompt,
+    claude_md: claudeMd,
+    resume_session_id: existingSession?.session_id ?? null,
+    sdk_options: sdkOptions,
+    env,
+  };
 
-      function attemptDispatch(affinityRunnerId: string | undefined, allowRetry: boolean): void {
-        const runner = selectRunner(linkid, affinityRunnerId);
-        if (!runner) {
-          resolve({
-            success: false, rawOutput: '', trace: '[]',
-            errorMessage: '无可用的远端 runner（所有 runner 已下线或容量已满）', durationMs: 0,
-          });
-          return;
-        }
+  return new Promise<SdkResult>((resolve) => {
+    // 首次派发允许在「未收到 session 帧」前换一台重试一次
+    void attemptDispatch(preferredRunnerId ?? undefined, true);
+    let abortHandler: (() => void) | undefined;
 
-        const runnerId = runner.id;
-        item.runnerId = runnerId;
-        markDispatched(runnerId);
-        taskLogsStore.updateResult(taskId, { runner_id: runnerId });
-        log.info({ taskId, linkid, runner: runner.name }, 'runner_dispatch_start');
+    async function attemptDispatch(affinityRunnerId: string | undefined, allowRetry: boolean): Promise<void> {
+      const runner = await selectRunner(linkid, affinityRunnerId);
+      if (!runner) {
+        resolve({
+          success: false, rawOutput: '', trace: '[]',
+          errorMessage: '无可用的远端 runner（所有 runner 已下线或容量已满）', durationMs: 0,
+        });
+        return;
+      }
 
-        let capturedSid: string | undefined;
-        let sessionReceived = false;
-        let resultReceived = false;
+      const runnerId = runner.id;
+      item.runnerId = runnerId;
+      markDispatched(runnerId);
+      await taskLogsStore.updateResult(taskId, { runner_id: runnerId });
+      log.info({ taskId, linkid, runner: runner.name }, 'runner_dispatch_start');
 
-        const stream = streamRun(runner.addr, runReq, httpCfg,
-          (frame: RunFrame) => {
-            switch (frame.type) {
-              case 'session': {
-                sessionReceived = true;
-                capturedSid = frame.session_id;
-                onSessionId(capturedSid);
-                sessionsStore.upsert(capturedSid, linkid, runnerId);
-                taskLogsStore.updateResult(taskId, { session_id: capturedSid });
-                break;
-              }
-              case 'resume_gone': {
-                // runner 侧 session 已丢失，关闭 DB 记录；本次由 runner 降级为新建继续
-                sessionsStore.close(frame.session_id);
-                break;
-              }
-              case 'msg': {
-                onActivity();
-                // 只有拿到 session_id 后才推送 SSE（前端按 session 订阅）
-                if (capturedSid) publish(capturedSid, frame.message);
-                break;
-              }
-              case 'result': {
-                resultReceived = true;
-                const r = frame.result as RunResult;
-                markFinished(runnerId);
-                resolve({
-                  success: r.success,
-                  rawOutput: r.rawOutput,
-                  trace: r.trace,
-                  sessionId: r.sessionId,
-                  errorMessage: r.errorMessage,
-                  durationMs: r.durationMs,
-                  aborted: r.aborted,
-                });
-                break;
-              }
+      let capturedSid: string | undefined;
+      let sessionReceived = false;
+      let resultReceived = false;
+
+      const stream = streamRun(runner.addr, runReq, httpCfg,
+        (frame: RunFrame) => {
+          switch (frame.type) {
+            case 'session': {
+              sessionReceived = true;
+              capturedSid = frame.session_id;
+              onSessionId(capturedSid);
+              void sessionsStore.upsert(capturedSid, linkid, runnerId);
+              void taskLogsStore.updateResult(taskId, { session_id: capturedSid });
+              break;
             }
-          },
-          (err?: Error) => {
-            // 连接断开 / 出错（result 帧已收到则早已 resolve，此处为防御）
-            if (resultReceived) return;
-            markFinished(runnerId);
-
-            // 收到 session 帧 → 任务已开跑，不重试，避免同一 linkid 双跑
-            if (sessionReceived) {
+            case 'resume_gone': {
+              // runner 侧 session 已丢失，关闭 DB 记录；本次由 runner 降级为新建继续
+              void sessionsStore.close(frame.session_id);
+              break;
+            }
+            case 'msg': {
+              onActivity();
+              // 只有拿到 session_id 后才推送 SSE（前端按 session 订阅）
+              if (capturedSid) publish(capturedSid, frame.message);
+              break;
+            }
+            case 'result': {
+              resultReceived = true;
+              const r = frame.result as RunResult;
+              markFinished(runnerId);
               resolve({
-                success: false, rawOutput: '', trace: '[]',
-                sessionId: capturedSid,
-                errorMessage: err ? ('runner 连接中断: ' + err.message) : 'runner 连接中断',
-                durationMs: 0,
-                aborted: abortSignal.aborted,
+                success: r.success,
+                rawOutput: r.rawOutput,
+                trace: r.trace,
+                sessionId: r.sessionId,
+                errorMessage: r.errorMessage,
+                durationMs: r.durationMs,
+                aborted: r.aborted,
               });
-              return;
+              break;
             }
+          }
+        },
+        (err?: Error) => {
+          // 连接断开 / 出错（result 帧已收到则早已 resolve，此处为防御）
+          if (resultReceived) return;
+          markFinished(runnerId);
 
-            // 未收到 session 帧 → runner 没开始跑，可换一台重试一次
-            if (allowRetry && !abortSignal.aborted) {
-              log.warn({ taskId, linkid, runner: runner.name, error: err?.message }, 'runner_dispatch_pre_session_failed_retry');
-              attemptDispatch(undefined, false);
-              return;
-            }
-
+          // 收到 session 帧 → 任务已开跑，不重试，避免同一 linkid 双跑
+          if (sessionReceived) {
             resolve({
               success: false, rawOutput: '', trace: '[]',
-              errorMessage: err ? ('runner 派发失败: ' + err.message) : 'runner 派发失败',
+              sessionId: capturedSid,
+              errorMessage: err ? ('runner 连接中断: ' + err.message) : 'runner 连接中断',
               durationMs: 0,
               aborted: abortSignal.aborted,
             });
-          },
-        );
+            return;
+          }
 
-        // 外部取消：先调 runner /cancel，再断本地连接，并标记超时/取消语义由 processItem 收尾
-        abortHandler = () => {
-          cancelRunnerTask(runner.addr, taskId, httpCfg).catch(() => {});
-          stream.abort();
-          markTimeout();
-        };
-        if (abortSignal.aborted) {
-          abortHandler();
-        } else {
-          abortSignal.addEventListener('abort', abortHandler, { once: true });
-        }
-      }
+          // 未收到 session 帧 → runner 没开始跑，可换一台重试一次
+          if (allowRetry && !abortSignal.aborted) {
+            log.warn({ taskId, linkid, runner: runner.name, error: err?.message }, 'runner_dispatch_pre_session_failed_retry');
+            void attemptDispatch(undefined, false);
+            return;
+          }
 
-      // Promise resolve 后清理 abort 监听
-      const origResolve = resolve;
-      resolve = (v) => {
-        if (abortHandler) abortSignal.removeEventListener('abort', abortHandler);
-        origResolve(v);
+          resolve({
+            success: false, rawOutput: '', trace: '[]',
+            errorMessage: err ? ('runner 派发失败: ' + err.message) : 'runner 派发失败',
+            durationMs: 0,
+            aborted: abortSignal.aborted,
+          });
+        },
+      );
+
+      // 外部取消：先调 runner /cancel，再断本地连接，并标记超时/取消语义由 processItem 收尾
+      abortHandler = () => {
+        cancelRunnerTask(runner.addr, taskId, httpCfg).catch(() => {});
+        stream.abort();
+        markTimeout();
       };
-    });
+      if (abortSignal.aborted) {
+        abortHandler();
+      } else {
+        abortSignal.addEventListener('abort', abortHandler, { once: true });
+      }
+    }
+
+    // Promise resolve 后清理 abort 监听
+    const origResolve = resolve;
+    resolve = (v) => {
+      if (abortHandler) abortSignal.removeEventListener('abort', abortHandler);
+      origResolve(v);
+    };
   });
 }
 
@@ -386,41 +390,135 @@ async function buildClaudeMdForDispatch(
   return buildClaudeMd(cfg.sys.data_dir);
 }
 
+/**
+ * 多实例消费者循环：每个实例一个 worker，从 Redis 队列抢任务。
+ * 信号量（dp:sem:running）全局限并发；linkid 锁保证同 linkid 串行。
+ */
 async function pump(): Promise<void> {
   const maxConcurrent = cfg.sys.max_concurrent_tasks;
-  while (running < maxConcurrent && pending.length > 0) {
-    const item = pending.shift()!;
-    running++;
-    active.set(item.task_id, item);
 
-    // per-linkid 串行化：提交侧已保证同一 linkid 不会同时有多个活跃任务，
-    // 此链实际最多只有一个任务，但保留串行语义以防未来改动引入并发同 linkid。
-    const prev = linkChains.get(item.body.linkid) ?? Promise.resolve();
-    const next = prev
-      .then(() => processItem(item))
-      .catch(() => { /* processItem 内部已 catch，不抛到外层 */ })
-      .finally(() => {
-        running--;
-        active.delete(item.task_id);
-        // 链头是自己时才清除
-        if (linkChains.get(item.body.linkid) === next) {
-          linkChains.delete(item.body.linkid);
-        }
-        // 队列中还有任务且有空位，继续消费
-        if (pending.length > 0 && running < maxConcurrent) {
-          pump().catch(() => {});
-        }
+  while (true) {
+    // 1. 抢并发槽：全局 INCR，超限则 DECR 并退避
+    const slot = await semaphore.incr();
+    if (slot > maxConcurrent) {
+      await semaphore.decr();
+      await sleep(500);
+      continue;
+    }
+
+    // 2. 阻塞取队头任务
+    const taskId = await queue.pop(2);
+    if (!taskId) {
+      // 无任务：释放槽，短暂退避再试
+      await semaphore.decr();
+      await sleep(200);
+      continue;
+    }
+
+    // 3. 从 MySQL 加载任务上下文（任务提交侧已写入 task_logs）
+    const task = await taskLogsStore.get(taskId);
+    if (!task || task.status !== 'pending') {
+      await semaphore.decr();
+      continue; // 任务已取消/删除，跳过
+    }
+
+    const iface = await interfacesStore.getByPath(task.path);
+    if (!iface) {
+      // 接口已被删除：直接落 failed，释放槽
+      await taskLogsStore.updateResult(taskId, {
+        status: 'failed' as TaskStatus,
+        error_message: '服务重启：关联的接口模板已被删除',
+        finished_at: nowLocal(),
+        finished_ts: nowTs(),
       });
-    linkChains.set(item.body.linkid, next);
+      await semaphore.decr();
+      continue;
+    }
+
+    let body: ProcessRequest;
+    try {
+      body = JSON.parse(task.request_body);
+    } catch {
+      await taskLogsStore.updateResult(taskId, {
+        status: 'failed' as TaskStatus,
+        error_message: '服务重启：任务请求体数据损坏，无法恢复',
+        finished_at: nowLocal(),
+        finished_ts: nowTs(),
+      });
+      await semaphore.decr();
+      continue;
+    }
+
+    // 4. linkid 锁：跨实例同 linkid 串行兜底
+    const linkid = body.linkid;
+    const locked = await linkidLock.acquire(linkid, 3600);
+    if (!locked) {
+      // 同 linkid 已被其它实例处理中，放回队头稍后重试
+      await queue.pushFront(taskId);
+      await semaphore.decr();
+      await sleep(1000);
+      continue;
+    }
+
+    // 5. 建 WorkerItem 并执行
+    const item: WorkerItem = {
+      task_id: taskId,
+      path: task.path,
+      iface,
+      body,
+      abortController: new AbortController(),
+      lastActivity: 0,
+    };
+    active.set(taskId, item);
+    await activeTasks.set(taskId, { linkid, instance_id: getInstanceId() });
+    await activeTasks.addMine(taskId);
+
+    // 异步执行，本循环继续消费下一个任务
+    void (async () => {
+      try {
+        await processItem(item);
+      } finally {
+        active.delete(taskId);
+        await activeTasks.del(taskId);
+        await activeTasks.removeMine(taskId);
+        await linkidLock.release(linkid);
+        await semaphore.decr();
+      }
+    })();
   }
 }
 
-export function initTaskQueue(c: Config): void {
+export async function initTaskQueue(c: Config): Promise<void> {
   cfg = c;
-  recoverOrphanedTasks();
+  await recoverOrphanedTasks();
   // 看门狗只在本地执行模式启用（远端模式下 SDK 在 runner 上跑，看门狗已搬到 runner）
-  if (!hasRemoteRunners()) {
+  if (!(await hasRemoteRunners())) {
     startWatchdog();
+  }
+  // 订阅取消广播：其它实例发来的取消信号，命中本实例 active 则 abort
+  await cancelRoute.subscribe((msg) => {
+    if (msg.kind === 'task') {
+      const item = active.get(msg.target);
+      if (item) {
+        item.abortController.abort();
+        log.info({ task_id: msg.target }, 'cancel_route_abort_task');
+      }
+    } else if (msg.kind === 'linkid') {
+      for (const [taskId, item] of active.entries()) {
+        if (item.body.linkid === msg.target) {
+          item.abortController.abort();
+          log.info({ task_id: taskId, linkid: msg.target }, 'cancel_route_abort_linkid');
+        }
+      }
+    }
+  });
+  // 启动消费者循环（每实例一个）
+  if (!workerRunning) {
+    workerRunning = true;
+    pump().catch((err) => {
+      workerRunning = false;
+      log.error({ error: String(err) }, 'task_queue_worker_crashed');
+    });
   }
 }
 
@@ -468,7 +566,7 @@ function sweepStuckTasks(): void {
     item.watchdogKilled = true;
 
     // 立即落库 failed，释放 linkid 锁；processItem 收尾时的再次写入为幂等覆盖
-    taskLogsStore.updateResult(task_id, {
+    void taskLogsStore.updateResult(task_id, {
       status: 'failed' as TaskStatus,
       error_message: '执行超时（连续 ' + timeoutMs + 'ms 无输出），看门狗已强制终止',
       finished_at: nowLocal(),
@@ -479,8 +577,8 @@ function sweepStuckTasks(): void {
 /** 强制终止一个任务工作目录下的 SDK 子进程树（实现见 ./process-tree.ts，供控制面与 runner 共用） */
 
 /** 启动时恢复上次未完成的任务 */
-function recoverOrphanedTasks(): void {
-  const activeTasks = taskLogsStore.listActive();
+async function recoverOrphanedTasks(): Promise<void> {
+  const activeTasks = await taskLogsStore.listActive();
   if (activeTasks.length === 0) return;
 
   let resumed = 0;
@@ -489,9 +587,9 @@ function recoverOrphanedTasks(): void {
   for (const task of activeTasks) {
     if (task.status === 'pending') {
       // 用 path 查接口：接口删除后以相同 path 重建时 id 会变，按 id 查会误判「模板已删除」
-      const iface = interfacesStore.getByPath(task.path);
+      const iface = await interfacesStore.getByPath(task.path);
       if (!iface) {
-        taskLogsStore.updateResult(task.task_id, {
+        await taskLogsStore.updateResult(task.task_id, {
           status: 'failed' as TaskStatus,
           error_message: '服务重启：关联的接口模板已被删除',
           finished_at: nowLocal(),
@@ -506,7 +604,7 @@ function recoverOrphanedTasks(): void {
         body = JSON.parse(task.request_body);
       } catch {
         // 请求体损坏：不能静默跳过，否则任务永远 pending、linkid 永久被占用
-        taskLogsStore.updateResult(task.task_id, {
+        await taskLogsStore.updateResult(task.task_id, {
           status: 'failed' as TaskStatus,
           error_message: '服务重启：任务请求体数据损坏，无法恢复',
           finished_at: nowLocal(),
@@ -516,17 +614,10 @@ function recoverOrphanedTasks(): void {
         continue;
       }
 
-      pending.push({
-        task_id: task.task_id,
-        path: task.path,
-        iface,
-        body,
-        abortController: new AbortController(),
-        lastActivity: 0,
-      });
+      await queue.push(task.task_id);
       resumed++;
     } else if (task.status === 'processing') {
-      taskLogsStore.updateResult(task.task_id, {
+      await taskLogsStore.updateResult(task.task_id, {
         status: 'failed' as TaskStatus,
         error_message: '服务重启：任务被中断（原进程已退出）',
         finished_at: nowLocal(),
@@ -537,11 +628,9 @@ function recoverOrphanedTasks(): void {
   }
 
   log.info({ resumed, killed }, 'task_queue_recovered');
-
-  if (pending.length > 0) pump().catch(() => {});
 }
 
-export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id: string } {
+export async function enqueue(iface: AgentInterface, body: ProcessRequest): Promise<{ task_id: string }> {
   const taskId = uuid();
   const now = nowLocal();
 
@@ -564,27 +653,20 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
     finished_ts: null,
     started_ts: null,
   };
-  taskLogsStore.create(logEntry);
+  await taskLogsStore.create(logEntry);
 
-  pending.push({
-    task_id: taskId,
-    path: iface.path,
-    iface,
-    body,
-    abortController: new AbortController(),
-    lastActivity: 0,
-  });
-  pump().catch(() => {});
+  // 入 Redis 队列（多实例共享），消费者循环会抢到并执行
+  await queue.push(taskId);
 
   return { task_id: taskId };
 }
 
 export function getRunningCount(): number {
-  return running;
+  return active.size;
 }
 
-export function getPendingCount(): number {
-  return pending.length;
+export async function getPendingCount(): Promise<number> {
+  return queue.len();
 }
 
 /**
@@ -594,24 +676,24 @@ export function getPendingCount(): number {
  *   链上等待的任务会在 processItem 开头检测到 abort 并直接置为 cancelled。
  * 返回被取消的任务 id 对应的状态，或 null 表示未找到可取消的任务。
  */
-export function cancelTask(taskId: string): { cancelled: 'pending' | 'processing' } | null {
-  // 1) 已出队的任务：中断 SDK（或标记链上等待的任务）
+export async function cancelTask(taskId: string): Promise<{ cancelled: 'pending' | 'processing' } | null> {
+  // 1) 本实例 active 中的任务：直接 abort
   const activeItem = active.get(taskId);
   if (activeItem) {
     activeItem.abortController.abort();
     return { cancelled: 'processing' };
   }
 
-  // 2) 排队中的任务：从 pending 数组移除
-  const idx = pending.findIndex((item) => item.task_id === taskId);
-  if (idx >= 0) {
-    const item = pending[idx];
-    pending.splice(idx, 1);
-    item.abortController.abort(); // 防御性中断（任务已移除，无副作用）
+  // 2) 排队中的任务：从 Redis 队列移除
+  const removed = await queue.remove(taskId);
+  if (removed > 0) {
     return { cancelled: 'pending' };
   }
 
-  return null;
+  // 3) 任务可能在另一个实例上 processing：通过 Redis pub/sub 广播取消
+  //    处理中的任务由持有实例响应广播并 abort
+  await cancelRoute.publishTask(taskId);
+  return { cancelled: 'processing' };
 }
 
 /**
@@ -619,20 +701,21 @@ export function cancelTask(taskId: string): { cancelled: 'pending' | 'processing
  * 管理员删除会话时使用：先中断队列中的任务，再删工作目录，
  * 避免任务在已删除的目录中继续执行，或结束后把 cancelled 状态覆盖掉。
  */
-export function cancelByLinkidInQueue(linkid: string): number {
+export async function cancelByLinkidInQueue(linkid: string): Promise<number> {
   let count = 0;
+
+  // 本实例 active 任务：中断 SDK
   for (const item of active.values()) {
     if (item.body.linkid === linkid) {
       item.abortController.abort();
       count++;
     }
   }
-  for (let i = pending.length - 1; i >= 0; i--) {
-    if (pending[i].body.linkid === linkid) {
-      pending[i].abortController.abort();
-      pending.splice(i, 1);
-      count++;
-    }
-  }
+
+  // 跨实例：广播取消该 linkid 下所有任务，其它实例收到后 abort 自己的 active
+  await cancelRoute.publishLinkid(linkid);
+
+  // 排队任务：依赖 taskLogsStore.cancelByLinkid 落库 cancelled 后，
+  // 消费者读到非 pending 状态会自动跳过。
   return count;
 }

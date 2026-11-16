@@ -9,7 +9,8 @@ import { request as httpsRequest } from 'node:https';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'node:crypto';
 import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
-import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore, getDb, sdkTracesStore } from '../store.js';
+import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore, sdkTracesStore } from '../store.js';
+import { getDb } from '../db.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { cancelTask, cancelByLinkidInQueue } from '../services/task-queue.js';
 import { getRunnerByName, getRunnerHttpConfig } from '../services/dispatcher.js';
@@ -39,9 +40,9 @@ function sessionWorkDir(cfg: Config, linkid: string): string {
 }
 
 /** 若该 session 归属某个远端 runner，返回其 addr；否则返回 null（本机处理） */
-function resolveSessionRunnerAddr(session: { runner_id: string | null } | undefined): string | null {
+async function resolveSessionRunnerAddr(session: { runner_id: string | null; linkid?: string } | undefined): Promise<string | null> {
   if (!session?.runner_id) return null;
-  const runner = getRunnerByName(session.runner_id);
+  const runner = await getRunnerByName(session.runner_id);
   if (!runner || runner.status !== 'up') return null;
   return runner.addr;
 }
@@ -107,10 +108,10 @@ export function createAdminRouter(cfg: Config): Router {
   router.use('/admin/cache', adminOnlyMiddleware);
 
   // ---- Interfaces 列表 — 从 prompts/ 自动发现，DB 同步 ----
-  router.get('/admin/interfaces', (_req: Request, res: Response) => {
+  router.get('/admin/interfaces', async (_req: Request, res: Response) => {
     const allFiles = listAllPromptFiles();
-    const list = allFiles.map(pf => {
-      const iface = interfacesStore.getByPath(pf.path);
+    const list = await Promise.all(allFiles.map(async pf => {
+      const iface = await interfacesStore.getByPath(pf.path);
       return {
         id: iface?.id || '',
         name: pf.name,
@@ -119,13 +120,13 @@ export function createAdminRouter(cfg: Config): Router {
         created_at: iface?.created_at || '',
         updated_at: iface?.updated_at || '',
       };
-    });
+    }));
     res.json({ code: 0, data: list });
   });
 
   // Interfaces 获取单个
-  router.get('/admin/interfaces/:id', (req: Request, res: Response) => {
-    const iface = interfacesStore.get(req.params.id);
+  router.get('/admin/interfaces/:id', async (req: Request, res: Response) => {
+    const iface = await interfacesStore.get(req.params.id);
     if (!iface) {
       res.status(404).json({ code: 1001, message: '访问路径不存在' });
       return;
@@ -135,33 +136,33 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   // 创建
-  router.post('/admin/interfaces', (req: Request, res: Response) => {
+  router.post('/admin/interfaces', async (req: Request, res: Response) => {
     const { name, path, prompt } = req.body as { name?: string; path?: string; prompt?: string };
     if (!name || !path || !prompt) {
       res.status(400).json({ code: 1001, message: '缺少 name / path / prompt' });
       return;
     }
 
-    const existing = interfacesStore.getByPath(path);
+    const existing = await interfacesStore.getByPath(path);
     if (existing) {
       res.status(400).json({ code: 1001, message: '访问路径 path 已存在: ' + path });
       return;
     }
 
-    const created = interfacesStore.create(name, path, prompt);
+    const created = await interfacesStore.create(name, path, prompt);
     log.info({ name, path }, 'interface_created');
     res.json({ code: 0, data: created });
   });
 
   // 更新
-  router.put('/admin/interfaces/:id', (req: Request, res: Response) => {
+  router.put('/admin/interfaces/:id', async (req: Request, res: Response) => {
     const { name, path, prompt } = req.body as { name?: string; path?: string; prompt?: string };
     if (!name || !path || !prompt) {
       res.status(400).json({ code: 1001, message: '缺少 name / path / prompt' });
       return;
     }
 
-    const updated = interfacesStore.update(req.params.id, name, path, prompt);
+    const updated = await interfacesStore.update(req.params.id, name, path, prompt);
     if (!updated) {
       res.status(404).json({ code: 1001, message: '访问路径不存在' });
       return;
@@ -172,8 +173,8 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   // 删除
-  router.delete('/admin/interfaces/:id', (req: Request, res: Response) => {
-    const ok = interfacesStore.remove(req.params.id);
+  router.delete('/admin/interfaces/:id', async (req: Request, res: Response) => {
+    const ok = await interfacesStore.remove(req.params.id);
     if (!ok) {
       res.status(404).json({ code: 1001, message: '访问路径不存在' });
       return;
@@ -204,7 +205,7 @@ export function createAdminRouter(cfg: Config): Router {
     }
   });
 
-  router.post('/admin/simulate', (req: Request, res: Response) => {
+  router.post('/admin/simulate', async (req: Request, res: Response) => {
     const { interface_path, request_body } = req.body as {
       interface_path?: string;
       request_body?: Record<string, unknown>;
@@ -213,7 +214,7 @@ export function createAdminRouter(cfg: Config): Router {
     log.debug({ path: interface_path, body: request_body }, 'simulate_request_received');
 
     // 对外接口完全一致的逻辑：校验接口、队列上限、入队
-    const result = submitTask(interface_path || '', request_body || {}, cfg);
+    const result = await submitTask(interface_path || '', request_body || {}, cfg);
 
     if (result.status >= 400) {
       log.warn({ path: interface_path, request: request_body, response: result.body }, 'simulate_request_rejected');
@@ -226,31 +227,35 @@ export function createAdminRouter(cfg: Config): Router {
 
   // ---- 任务监控 ----
 
-  router.get('/admin/tasks', (req: Request, res: Response) => {
+  router.get('/admin/tasks', async (req: Request, res: Response) => {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const pageSize = Math.min(parseInt(String(req.query.page_size), 10) || 10, 100);
-    const { items, total } = taskLogsStore.listPaged((page - 1) * pageSize, pageSize);
-    res.json({ code: 0, data: {
-      total,
-      page,
-      page_size: pageSize,
-      items: items.map((t) => ({
+    const { items, total } = await taskLogsStore.listPaged((page - 1) * pageSize, pageSize);
+    const itemsWithSession = await Promise.all(items.map(async (t) => {
+      const sessionStatus = t.session_id ? (await sessionsStore.get(t.session_id))?.status ?? 'closed' : null;
+      return {
         task_id: t.task_id,
         linkid: t.linkid,
         session_id: t.session_id,
-        session_status: t.session_id ? (sessionsStore.get(t.session_id)?.status ?? 'closed') : null,
+        session_status: sessionStatus,
         title: extractTitle(t.request_body),
         path: t.path,
         status: t.status,
         error_message: t.error_message,
         created_at: t.created_at,
         finished_at: t.finished_at,
-      })),
+      };
+    }));
+    res.json({ code: 0, data: {
+      total,
+      page,
+      page_size: pageSize,
+      items: itemsWithSession,
     } });
   });
 
-  router.get('/admin/tasks/:task_id', (req: Request, res: Response) => {
-    const task = taskLogsStore.get(req.params.task_id);
+  router.get('/admin/tasks/:task_id', async (req: Request, res: Response) => {
+    const task = await taskLogsStore.get(req.params.task_id);
     if (!task) {
       res.status(404).json({ code: 1001, message: '任务不存在' });
       return;
@@ -264,10 +269,10 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   // 取消任务（支持 pending 和 processing）
-  router.delete('/admin/tasks/:task_id', (req: Request, res: Response) => {
+  router.delete('/admin/tasks/:task_id', async (req: Request, res: Response) => {
     const { task_id } = req.params;
     const fromIp = req.ip || '';
-    const task = taskLogsStore.get(task_id);
+    const task = await taskLogsStore.get(task_id);
 
     if (!task) {
       log.warn({ from_ip: fromIp, task_id }, 'admin_cancel_task_not_found');
@@ -281,17 +286,17 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    const cancelled = cancelTask(task_id);
+    const cancelled = await cancelTask(task_id);
 
     if (cancelled?.cancelled === 'processing') {
-      taskLogsStore.updateStatus(task_id, 'cancelled');
+      await taskLogsStore.updateStatus(task_id, 'cancelled');
       log.info({ from_ip: fromIp, task_id, mode: 'processing' }, 'admin_cancel_task_ok');
       res.json({ code: 0, message: '任务停止中' });
       return;
     }
 
     if (cancelled?.cancelled === 'pending') {
-      taskLogsStore.updateResult(task_id, {
+      await taskLogsStore.updateResult(task_id, {
         status: 'cancelled',
         error_message: '任务已被管理员取消',
         finished_at: nowReadable(),
@@ -315,11 +320,11 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    const session = sessionsStore.get(session_id);
+    const session = await sessionsStore.get(session_id);
     const linkid = session?.linkid || '';
 
     // 远端 runner：代理转发
-    const runnerAddr = resolveSessionRunnerAddr(session);
+    const runnerAddr = await resolveSessionRunnerAddr(session);
     if (runnerAddr) {
       try {
         const httpCfg = getRunnerHttpConfig();
@@ -356,9 +361,9 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    const session = sessionsStore.get(session_id);
+    const session = await sessionsStore.get(session_id);
     const linkid = session?.linkid || '';
-    const runnerAddr = resolveSessionRunnerAddr(session);
+    const runnerAddr = await resolveSessionRunnerAddr(session);
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -413,26 +418,26 @@ export function createAdminRouter(cfg: Config): Router {
   // ---- 会话管理（管理员） ----
   router.use('/admin/sessions', adminOnlyMiddleware);
 
-  router.get('/admin/sessions', (req: Request, res: Response) => {
+  router.get('/admin/sessions', async (req: Request, res: Response) => {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
     const pageSize = Math.min(parseInt(String(req.query.page_size), 10) || 10, 100);
-    const { items, total } = sessionsStore.listPaged((page - 1) * pageSize, pageSize);
+    const { items, total } = await sessionsStore.listPaged((page - 1) * pageSize, pageSize);
     res.json({ code: 0, data: { total, page, page_size: pageSize, items } });
   });
 
   router.delete('/admin/sessions/:session_id', async (req: Request, res: Response) => {
     const { session_id } = req.params;
-    const session = sessionsStore.get(session_id);
+    const session = await sessionsStore.get(session_id);
     if (!session) {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
 
     // 先中断该 linkid 下还在队列中的任务（处理中 / 链上等待 / 排队）——控制面内存队列
-    const aborted = cancelByLinkidInQueue(session.linkid);
+    const aborted = await cancelByLinkidInQueue(session.linkid);
 
     // 远端 runner：委托其删 workdir + 中断该 linkid 的 SDK（runner 本地）
-    const runnerAddr = resolveSessionRunnerAddr(session);
+    const runnerAddr = await resolveSessionRunnerAddr(session);
     if (runnerAddr) {
       try {
         const httpCfg = getRunnerHttpConfig();
@@ -450,8 +455,8 @@ export function createAdminRouter(cfg: Config): Router {
     }
 
     // 逻辑删除：该 linkid 下未完成任务标记为 cancelled，session 标记为 closed
-    const cancelled = taskLogsStore.cancelByLinkid(session.linkid);
-    sessionsStore.close(session_id);
+    const cancelled = await taskLogsStore.cancelByLinkid(session.linkid);
+    await sessionsStore.close(session_id);
     log.info({ session_id, linkid: session.linkid, abortedTasks: aborted, cancelledTasks: cancelled }, 'session_deleted');
     res.json({ code: 0, message: '已删除' });
   });
@@ -461,13 +466,13 @@ export function createAdminRouter(cfg: Config): Router {
   /** 递归列出工作目录下的所有文件，返回扁平数组 */
   router.get('/admin/sessions/:session_id/files', async (req: Request, res: Response) => {
     const { session_id } = req.params;
-    const session = sessionsStore.get(session_id);
+    const session = await sessionsStore.get(session_id);
     if (!session) {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
 
-    const runnerAddr = resolveSessionRunnerAddr(session);
+    const runnerAddr = await resolveSessionRunnerAddr(session);
     if (runnerAddr) {
       try {
         const httpCfg = getRunnerHttpConfig();
@@ -524,13 +529,13 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    const session = sessionsStore.get(session_id);
+    const session = await sessionsStore.get(session_id);
     if (!session) {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
 
-    const runnerAddr = resolveSessionRunnerAddr(session);
+    const runnerAddr = await resolveSessionRunnerAddr(session);
     if (runnerAddr) {
       try {
         const httpCfg = getRunnerHttpConfig();
@@ -581,13 +586,13 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    const session = sessionsStore.get(session_id);
+    const session = await sessionsStore.get(session_id);
     if (!session) {
       res.status(404).json({ code: 1001, message: '会话不存在' });
       return;
     }
 
-    const runnerAddr = resolveSessionRunnerAddr(session);
+    const runnerAddr = await resolveSessionRunnerAddr(session);
     if (runnerAddr) {
       // 代理下载：直接 pipe runner 的响应流到客户端
       const { protocol, hostname, port, path } = buildRunnerProxyTarget(runnerAddr, `/session/${encodeURIComponent(session.linkid)}/file-download?path=${encodeURIComponent(relPath)}`);
@@ -679,7 +684,7 @@ export function createAdminRouter(cfg: Config): Router {
           permissionMode: 'bypassPermissions',
           tools: { type: 'preset', preset: 'claude_code' },
           model: cfg.llm.model,
-          env: buildEnv(cfg),
+          env: await buildEnv(cfg),
           systemPrompt: { type: 'preset', preset: 'claude_code' },
         },
       });
@@ -688,7 +693,7 @@ export function createAdminRouter(cfg: Config): Router {
         const sid = (m as Record<string, unknown>).session_id;
         if (!capturedSessionId && typeof sid === 'string' && sid) {
           capturedSessionId = sid;
-          sessionsStore.upsert(sid, linkid);
+          void sessionsStore.upsert(sid, linkid);
           log.info({ sessionId: sid, linkid, workDir }, 'chat_new_session_created');
         }
         sendSSE(res, m);
@@ -710,7 +715,7 @@ export function createAdminRouter(cfg: Config): Router {
       res.status(400).json({ code: 1001, message: '缺少 session_id 或 message' });
       return;
     }
-    const session = sessionsStore.get(session_id);
+    const session = await sessionsStore.get(session_id);
     if (!session) {
       log.warn({ session_id }, 'chat_session_not_found');
       res.status(404).json({ code: 1001, message: '会话不存在' });
@@ -735,7 +740,7 @@ export function createAdminRouter(cfg: Config): Router {
           permissionMode: 'bypassPermissions',
           tools: { type: 'preset', preset: 'claude_code' },
           model: cfg.llm.model,
-          env: buildEnv(cfg),
+          env: await buildEnv(cfg),
           systemPrompt: { type: 'preset', preset: 'claude_code' },
           resume: session_id,
         },
@@ -759,7 +764,7 @@ export function createAdminRouter(cfg: Config): Router {
   // ---- 任务审查 ----
 
   // 任务审查列表：默认最近 N 条；支持按 task_id 精确查询（limit 1）或 linkid 精确查询（limit 50）
-  router.get('/admin/audit', (req: Request, res: Response) => {
+  router.get('/admin/audit', async (req: Request, res: Response) => {
     const taskId = typeof req.query.task_id === 'string' ? req.query.task_id.trim() : '';
     const linkid = typeof req.query.linkid === 'string' ? req.query.linkid.trim() : '';
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
@@ -768,19 +773,16 @@ export function createAdminRouter(cfg: Config): Router {
     let items: TaskLog[] = [];
     let total = 0;
     if (taskId) {
-      // task_id 全局唯一，精确查询，只取一条
-      const task = taskLogsStore.getLightByTaskId(taskId);
+      const task = await taskLogsStore.getLightByTaskId(taskId);
       if (task) {
         items = [task];
         total = 1;
       }
     } else if (linkid) {
-      // 同一 linkid 可有多轮任务，精确匹配，最多 50 条
-      items = taskLogsStore.listLightByLinkid(linkid);
+      items = await taskLogsStore.listLightByLinkid(linkid);
       total = items.length;
     } else {
-      // 最近 N 条（轻量列）
-      const paged = taskLogsStore.listPaged((page - 1) * pageSize, pageSize);
+      const paged = await taskLogsStore.listPaged((page - 1) * pageSize, pageSize);
       items = paged.items;
       total = paged.total;
     }
@@ -788,25 +790,18 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({
       code: 0,
       data: {
-        total,
-        page,
-        page_size: pageSize,
+        total, page, page_size: pageSize,
         items: items.map((t) => ({
-          task_id: t.task_id,
-          linkid: t.linkid,
-          session_id: t.session_id,
-          title: extractTitle(t.request_body),
-          path: t.path,
-          status: t.status,
-          created_at: t.created_at,
-          finished_at: t.finished_at,
+          task_id: t.task_id, linkid: t.linkid, session_id: t.session_id,
+          title: extractTitle(t.request_body), path: t.path, status: t.status,
+          created_at: t.created_at, finished_at: t.finished_at,
         })),
       },
     });
   });
 
-  router.get('/admin/audit/:task_id', (req: Request, res: Response) => {
-    const task = taskLogsStore.get(req.params.task_id);
+  router.get('/admin/audit/:task_id', async (req: Request, res: Response) => {
+    const task = await taskLogsStore.get(req.params.task_id);
     if (!task) {
       res.status(404).json({ code: 1001, message: '任务不存在' });
       return;
@@ -814,102 +809,68 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({
       code: 0,
       data: {
-        task_id: task.task_id,
-        linkid: task.linkid,
-        session_id: task.session_id,
-        title: extractTitle(task.request_body),
-        path: task.path,
-        status: task.status,
-        error_message: task.error_message,
-        created_at: task.created_at,
-        finished_at: task.finished_at,
-        request_body: safeParse(task.request_body),
-        request_response: safeParse(task.request_response),
-        prompt: task.prompt,
-        sdk_output: task.sdk_output,
-        sdk_trace: sdkTracesStore.getTraceByTaskId(task.task_id),
+        task_id: task.task_id, linkid: task.linkid, session_id: task.session_id,
+        title: extractTitle(task.request_body), path: task.path, status: task.status,
+        error_message: task.error_message, created_at: task.created_at, finished_at: task.finished_at,
+        request_body: safeParse(task.request_body), request_response: safeParse(task.request_response),
+        prompt: task.prompt, sdk_output: task.sdk_output,
+        sdk_trace: await sdkTracesStore.getTraceByTaskId(task.task_id),
       },
     });
   });
 
-  // 会话处理时间线（按 linkid 聚合所有 task）
-  router.get('/admin/audit/link/:linkid/timeline', (req: Request, res: Response) => {
+  router.get('/admin/audit/link/:linkid/timeline', async (req: Request, res: Response) => {
     const { linkid } = req.params;
     const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'json';
 
-    const tasks = taskLogsStore.listByLinkid(linkid);
+    const tasks = await taskLogsStore.listByLinkid(linkid);
     if (tasks.length === 0) {
       res.status(404).json({ code: 1001, message: '该 linkid 下无任务记录' });
       return;
     }
 
     const historyTasks = tasks.map(t => ({
-      task_id: t.task_id,
-      session_id: t.session_id,
-      title: extractTitle(t.request_body),
-      path: t.path,
-      status: t.status,
-      error_message: t.error_message,
-      created_at: t.created_at,
-      finished_at: t.finished_at,
+      task_id: t.task_id, session_id: t.session_id, title: extractTitle(t.request_body),
+      path: t.path, status: t.status, error_message: t.error_message,
+      created_at: t.created_at, finished_at: t.finished_at,
       events: buildOutputOnlyEvents(t),
     }));
 
     log.info({ linkid, taskCount: tasks.length, format }, 'admin_link_timeline');
 
-    if (format === 'html') {
-      res.contentType('text/html; charset=utf-8').send(renderHistoryHtml(linkid, historyTasks));
-      return;
-    }
-    if (format === 'md') {
-      res.contentType('text/markdown; charset=utf-8').send(renderHistoryMd(linkid, historyTasks));
-      return;
-    }
-
-    res.json({
-      code: 0,
-      data: { linkid, total: historyTasks.length, tasks: historyTasks },
-    });
+    if (format === 'html') { res.contentType('text/html; charset=utf-8').send(renderHistoryHtml(linkid, historyTasks)); return; }
+    if (format === 'md') { res.contentType('text/markdown; charset=utf-8').send(renderHistoryMd(linkid, historyTasks)); return; }
+    res.json({ code: 0, data: { linkid, total: historyTasks.length, tasks: historyTasks } });
   });
 
   // ---- 系统设置（仅管理员） ----
 
-  router.get('/admin/sys-config', (req: Request, res: Response) => {
-    const name = configStore.get('sys.name') || '';
-    const apiAuthEnabled = configStore.get('api_auth_enabled');
-    // token 已哈希存储，不再回传哈希值，仅告知是否已配置
-    const apiAuthTokenSet = !!configStore.get('api_auth_token');
+  router.get('/admin/sys-config', async (req: Request, res: Response) => {
+    const name = (await configStore.get('sys.name')) || '';
+    const apiAuthEnabled = await configStore.get('api_auth_enabled');
+    const apiAuthTokenSet = !!(await configStore.get('api_auth_token'));
     res.json({
       code: 0,
       data: {
         sys: { name },
-        api: {
-          auth_enabled: apiAuthEnabled === '1',
-          auth_token: '', // 不回传 token/哈希
-          has_token: apiAuthTokenSet,
-        },
+        api: { auth_enabled: apiAuthEnabled === '1', auth_token: '', has_token: apiAuthTokenSet },
       },
     });
   });
 
-  router.put('/admin/sys-config', (req: Request, res: Response) => {
+  router.put('/admin/sys-config', async (req: Request, res: Response) => {
     const { sys, api } = req.body as {
       sys?: { name?: string };
       api?: { auth_enabled?: boolean; auth_token?: string };
     };
     if (sys && typeof sys.name === 'string' && sys.name.trim()) {
-      configStore.set('sys.name', sys.name.trim(), '系统名称');
+      await configStore.set('sys.name', sys.name.trim(), '系统名称');
     }
     if (api) {
-      configStore.set(
-        'api_auth_enabled',
-        api.auth_enabled ? '1' : '0',
-        '对外 API 是否启用 X-Api-Key 认证'
-      );
+      await configStore.set('api_auth_enabled', api.auth_enabled ? '1' : '0', '对外 API 是否启用 X-Api-Key 认证');
       if (typeof api.auth_token === 'string' && api.auth_token.trim()) {
-        // 仅存 SHA-256 哈希，不落明文
         const hash = createHash('sha256').update(api.auth_token.trim(), 'utf8').digest('hex');
-        configStore.set('api_auth_token', hash, '对外 API 认证 Token（SHA-256 哈希）');
+        await configStore.set('api_auth_token', hash, '对外 API 认证 Token（SHA-256 哈希）');
       }
     }
     log.info({ sys_name: sys?.name, api_auth_enabled: api?.auth_enabled }, 'admin_update_sys_config');
@@ -918,63 +879,43 @@ export function createAdminRouter(cfg: Config): Router {
 
   // ---- 用户管理（仅管理员） ----
 
-  router.get('/admin/users', adminOnlyMiddleware, (_req: Request, res: Response) => {
-    const users = usersStore.list().map((u) => ({
-      id: u.id,
-      user_name: u.username,
-      role: u.role,
-      note: u.note,
-      created_at: u.created_at,
-    }));
-    res.json({ code: 0, data: users });
+  router.get('/admin/users', adminOnlyMiddleware, async (_req: Request, res: Response) => {
+    const users = await usersStore.list();
+    res.json({ code: 0, data: users.map((u) => ({
+      id: u.id, user_name: u.username, role: u.role, note: u.note, created_at: u.created_at,
+    })) });
   });
 
-  router.post('/admin/users', adminOnlyMiddleware, (req: Request, res: Response) => {
+  router.post('/admin/users', adminOnlyMiddleware, async (req: Request, res: Response) => {
     const { user_name, user_pwd, role, note } = req.body as {
-      user_name?: string;
-      user_pwd?: string;
-      role?: number;
-      note?: string;
+      user_name?: string; user_pwd?: string; role?: number; note?: string;
     };
     if (!user_name || !user_pwd) {
       res.status(400).json({ code: 1001, message: '用户名和密码不能为空' });
       return;
     }
-
     const strengthErr = validatePasswordStrength(user_pwd);
-    if (strengthErr) {
-      res.status(400).json({ code: 1001, message: strengthErr });
-      return;
-    }
-
-    if (usersStore.get(user_name)) {
+    if (strengthErr) { res.status(400).json({ code: 1001, message: strengthErr }); return; }
+    if (await usersStore.get(user_name)) {
       res.status(409).json({ code: 1001, message: '用户名已存在' });
       return;
     }
-
     const hash = hashPasswordSync(user_pwd);
-    const ok = usersStore.create(user_name, hash, role === 1 ? 1 : 0, note || '');
-    if (!ok) {
-      res.status(500).json({ code: 1001, message: '创建失败' });
-      return;
-    }
-
+    const ok = await usersStore.create(user_name, hash, role === 1 ? 1 : 0, note || '');
+    if (!ok) { res.status(500).json({ code: 1001, message: '创建失败' }); return; }
     const cu = getCurrentUser(req);
     log.info({ admin: cu?.uname, target: user_name, role }, 'admin_create_user');
     res.json({ code: 0, message: '添加成功' });
   });
 
-  router.delete('/admin/users/:username', adminOnlyMiddleware, (req: Request, res: Response) => {
+  router.delete('/admin/users/:username', adminOnlyMiddleware, async (req: Request, res: Response) => {
     const username = req.params.username;
     if (username === 'admin') {
       res.status(400).json({ code: 1001, message: '不能删除 admin 用户' });
       return;
     }
-    const ok = usersStore.remove(username);
-    if (!ok) {
-      res.status(404).json({ code: 1001, message: '用户不存在' });
-      return;
-    }
+    const ok = await usersStore.remove(username);
+    if (!ok) { res.status(404).json({ code: 1001, message: '用户不存在' }); return; }
     const cu = getCurrentUser(req);
     log.info({ admin: cu?.uname, target: username }, 'admin_delete_user');
     res.json({ code: 0, message: '已删除' });
@@ -988,7 +929,7 @@ export function createAdminRouter(cfg: Config): Router {
   const uploadCsv = multer({ storage: multer.memoryStorage(), limits: { fileSize: 64 * 1024 } });
 
   // 上传 CSV 文件（三列：key, value, 说明）
-  router.post('/admin/prompt-config/upload-csv', uploadCsv.single('file'), (req: Request, res: Response) => {
+  router.post('/admin/prompt-config/upload-csv', uploadCsv.single('file'), async (req: Request, res: Response) => {
     const file = req.file;
     if (!file) {
       res.status(400).json({ code: 1001, message: '请选择 CSV 文件' });
@@ -1036,8 +977,8 @@ export function createAdminRouter(cfg: Config): Router {
     }
 
     // 替换模式：先清空再批量导入
-    promptConfigStore.clearAll();
-    const count = promptConfigStore.importRows(rows);
+    await promptConfigStore.clearAll();
+    const count = await promptConfigStore.importRows(rows);
 
     log.info({ count, keys: rows.map(r => r.key) }, 'prompt_config_csv_uploaded');
     res.json({ code: 0, data: { imported: count, keys: rows.map(r => r.key) } });
@@ -1068,48 +1009,39 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   // 获取配置列表（value 默认脱敏）
-  router.get('/admin/prompt-config', (_req: Request, res: Response) => {
+  router.get('/admin/prompt-config', async (_req: Request, res: Response) => {
     const reveal = _req.query.reveal === '1';
-    const rows = promptConfigStore.list(reveal);
+    const rows = await promptConfigStore.list(reveal);
     res.json({ code: 0, data: { rows, count: rows.length } });
   });
 
   // 清空配置
-  router.delete('/admin/prompt-config', (_req: Request, res: Response) => {
-    promptConfigStore.clearAll();
+  router.delete('/admin/prompt-config', async (_req: Request, res: Response) => {
+    await promptConfigStore.clearAll();
     log.info('prompt_config_cleared');
     res.json({ code: 0, message: '已清空' });
   });
 
   // 新增/更新单个配置项（页面直接添加环境变量，无需编辑 CSV）
-  router.post('/admin/prompt-config/item', (req: Request, res: Response) => {
+  router.post('/admin/prompt-config/item', async (req: Request, res: Response) => {
     const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
     const value = typeof req.body?.value === 'string' ? req.body.value : '';
     const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
 
     const keyErr = validatePromptConfigKey(key);
-    if (keyErr) {
-      res.status(400).json({ code: 1001, message: keyErr });
-      return;
-    }
-    if (!value) {
-      res.status(400).json({ code: 1001, message: 'value 不能为空' });
-      return;
-    }
+    if (keyErr) { res.status(400).json({ code: 1001, message: keyErr }); return; }
+    if (!value) { res.status(400).json({ code: 1001, message: 'value 不能为空' }); return; }
 
-    promptConfigStore.upsertItem(key, value, note);
+    await promptConfigStore.upsertItem(key, value, note);
     log.info({ key }, 'prompt_config_item_upserted');
     res.json({ code: 0, data: { key } });
   });
 
   // 删除单个配置项
-  router.delete('/admin/prompt-config/item/:key', (req: Request, res: Response) => {
+  router.delete('/admin/prompt-config/item/:key', async (req: Request, res: Response) => {
     const key = req.params.key;
-    const ok = promptConfigStore.deleteItem(key);
-    if (!ok) {
-      res.status(404).json({ code: 1001, message: '配置项不存在' });
-      return;
-    }
+    const ok = await promptConfigStore.deleteItem(key);
+    if (!ok) { res.status(404).json({ code: 1001, message: '配置项不存在' }); return; }
     log.info({ key }, 'prompt_config_item_deleted');
     res.json({ code: 0, message: '已删除' });
   });
@@ -1214,12 +1146,12 @@ export function createAdminRouter(cfg: Config): Router {
     }
 
     // 先校验 CSV 已上传
-    if (promptConfigStore.count() === 0) {
+    if ((await promptConfigStore.count()) === 0) {
       res.status(400).json({ code: 1001, message: '请先上传 CSV 配置文件（步骤 1），再进行步骤 2' });
       return;
     }
 
-    const validKeys = new Set(promptConfigStore.listKeys());
+    const validKeys = new Set(await promptConfigStore.listKeys());
     const builtinKeys = new Set(['request.body', 'request.linkid', 'request.files',
       'request.form_data', 'request.approval_history']);
     for (const k of builtinKeys) validKeys.add(k);
@@ -1271,7 +1203,7 @@ export function createAdminRouter(cfg: Config): Router {
 
     // 重新扫描并同步 agent_interfaces 表
     const pfs = rescanPromptsDir();
-    syncInterfacesFromPrompts(pfs.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
+    await syncInterfacesFromPrompts(pfs.map(pf => ({ filename: pf.filename, path: pf.path, name: pf.name })));
 
     const fileList = Object.keys(files);
     log.info({ files: fileList, warnings }, 'prompt_archive_uploaded');
@@ -1295,13 +1227,13 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   // 预览模板（渲染后的内容）
-  router.get('/admin/prompt-preview', (_req: Request, res: Response) => {
+  router.get('/admin/prompt-preview', async (_req: Request, res: Response) => {
     const promptsDir = resolve(process.cwd(), 'prompts');
     const previews: Array<{ file: string; raw: string; variables: Array<{ type: string; label: string; hint: string }> }> = [];
 
     // 环境变量名 → { key, note } 反向映射（与 sdk-runner 的 keyToEnvName 保持一致）
     const envMap = new Map<string, { key: string; note: string }>();
-    for (const row of promptConfigStore.list()) {
+    for (const row of await promptConfigStore.list()) {
       envMap.set('DP_' + row.key.replace(/\./g, '_').toUpperCase(), { key: row.key, note: row.note });
     }
     // 兼容旧名称（与 sdk-runner.buildEnv 保持一致）
@@ -1522,32 +1454,25 @@ export function createAdminRouter(cfg: Config): Router {
   ];
 
   // 表信息 + 行数
-  router.get('/admin/data-tables', (_req: Request, res: Response) => {
-    const countOf = (id: string): number => {
+  router.get('/admin/data-tables', async (_req: Request, res: Response) => {
+    const countOf = async (id: string): Promise<number> => {
       if (id === 'sessions') return sessionsStore.countAll();
       if (id === 'task_logs') return taskLogsStore.countAll();
       if (id === 'sdk_traces') return sdkTracesStore.countAll();
       return 0;
     };
-    const tables = DATA_TABLES.map((t) => ({
-      id: t.id,
-      label: t.label,
-      note: t.note,
-      count: countOf(t.id),
-    }));
+    const tables = await Promise.all(DATA_TABLES.map(async (t) => ({
+      id: t.id, label: t.label, note: t.note, count: await countOf(t.id),
+    })));
 
-    // 数据库文件大小（含 WAL，VACUUM 前展示，供运维判断是否需要压缩）
-    const dbPath = join(cfg.sys.data_dir, 'app.db');
-    let dbSizeBytes = 0;
-    try { dbSizeBytes = statSync(dbPath).size; } catch { /* 文件不存在则保持 0 */ }
-
-    res.json({ code: 0, data: { tables, db_size_bytes: dbSizeBytes } });
+    // MySQL 模式下无本地 SQLite 文件大小可统计，返回 0（该字段前端仅展示，不再需要）
+    res.json({ code: 0, data: { tables, db_size_bytes: 0 } });
   });
 
   // 获取最新 N 条任务（SDK Trace tab 默认展示，无需先检索）
-  router.get('/admin/data-tables/task_logs/latest', (_req: Request, res: Response) => {
+  router.get('/admin/data-tables/task_logs/latest', async (_req: Request, res: Response) => {
     const limit = Math.min(parseInt(String(_req.query.limit), 10) || 5, 50);
-    const items = taskLogsStore.listLatest(limit);
+    const items = await taskLogsStore.listLatest(limit);
     res.json({
       code: 0,
       data: {
@@ -1568,7 +1493,7 @@ export function createAdminRouter(cfg: Config): Router {
 
   // 按 task_id 或 linkid 查询任务（用于数据管理：先查再导出 sdk_trace）
   // 精确匹配，只返回轻量列（不含 sdk_trace 大字段）；task_id limit 1，linkid limit 50
-  router.get('/admin/data-tables/task_logs/query', (req: Request, res: Response) => {
+  router.get('/admin/data-tables/task_logs/query', async (req: Request, res: Response) => {
     const taskId = typeof req.query.task_id === 'string' ? req.query.task_id.trim() : '';
     const linkid = typeof req.query.linkid === 'string' ? req.query.linkid.trim() : '';
     if (!taskId && !linkid) {
@@ -1578,10 +1503,10 @@ export function createAdminRouter(cfg: Config): Router {
 
     let tasks: TaskLog[] = [];
     if (taskId) {
-      const task = taskLogsStore.getLightByTaskId(taskId);
+      const task = await taskLogsStore.getLightByTaskId(taskId);
       if (task) tasks = [task];
     } else {
-      tasks = taskLogsStore.listLightByLinkid(linkid);
+      tasks = await taskLogsStore.listLightByLinkid(linkid);
     }
 
     if (tasks.length === 0) {
@@ -1608,14 +1533,14 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   // 导出单条任务的 sdk_trace 为 <taskid>.json
-  router.get('/admin/data-tables/task_logs/:task_id/sdk-trace', (req: Request, res: Response) => {
+  router.get('/admin/data-tables/task_logs/:task_id/sdk-trace', async (req: Request, res: Response) => {
     const { task_id } = req.params;
-    const task = taskLogsStore.get(task_id);
+    const task = await taskLogsStore.get(task_id);
     if (!task) {
       res.status(404).json({ code: 1001, message: '任务不存在' });
       return;
     }
-    const sdkTrace = sdkTracesStore.getTraceByTaskId(task_id);
+    const sdkTrace = await sdkTracesStore.getTraceByTaskId(task_id);
     if (!sdkTrace) {
       res.status(404).json({ code: 1001, message: '该任务无 sdk_trace 数据' });
       return;
@@ -1642,7 +1567,7 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   // 清空整表数据
-  router.delete('/admin/data-tables/:id', (req: Request, res: Response) => {
+  router.delete('/admin/data-tables/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const table = DATA_TABLES.find((t) => t.id === id);
     if (!table) {
@@ -1650,14 +1575,14 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    const countOf = (tid: string): number => {
+    const countOf = async (tid: string): Promise<number> => {
       if (tid === 'sessions') return sessionsStore.countAll();
       if (tid === 'task_logs') return taskLogsStore.countAll();
       if (tid === 'sdk_traces') return sdkTracesStore.countAll();
       return 0;
     };
 
-    const before = countOf(id);
+    const before = await countOf(id);
     if (before === 0) {
       res.json({ code: 0, message: '表已是空的', deleted: 0 });
       return;
@@ -1667,41 +1592,33 @@ export function createAdminRouter(cfg: Config): Router {
     // 其对应的 SDK 工作目录（上下文快照）一并清理，避免残留脏数据。
     let deleted = 0;
     if (id === 'sessions') {
-      const sessions = sessionsStore.listAll();
+      const sessions = await sessionsStore.listAll();
       for (const s of sessions) {
         const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(s.linkid));
         if (existsSync(workDir)) {
           try { rmSync(workDir, { recursive: true, force: true }); } catch { /* 删除失败不阻塞 */ }
         }
       }
-      deleted = sessionsStore.clearAll();
+      deleted = await sessionsStore.clearAll();
     } else if (id === 'task_logs') {
-      deleted = taskLogsStore.clearAll();
+      deleted = await taskLogsStore.clearAll();
     } else if (id === 'sdk_traces') {
-      deleted = sdkTracesStore.clearAll();
+      deleted = await sdkTracesStore.clearAll();
     }
-
-    // 清空后重建 SQLite 自增序列，避免 sqlite_sequence 无限增长
-    try {
-      const db = getDb();
-      db.prepare(`DELETE FROM sqlite_sequence WHERE name = ?`).run(id);
-    } catch { /* 无该序列则忽略 */ }
 
     log.info({ table: id, deleted }, 'data_table_cleared');
     res.json({ code: 0, message: `已清空 ${deleted} 条记录`, deleted });
   });
 
-  // 压缩数据库（VACUUM）
-  router.post('/admin/data-tables/vacuum', (_req: Request, res: Response) => {
-    const dbPath = join(cfg.sys.data_dir, 'app.db');
-    let beforeSize = 0;
-    try { beforeSize = statSync(dbPath).size; } catch { /* */ }
-
+  // 压缩数据库（MySQL：OPTIMIZE TABLE 等价物，回收表空间）
+  router.post('/admin/data-tables/vacuum', async (_req: Request, res: Response) => {
+    // 旧 SQLite 的 VACUUM 与 MySQL 的 OPTIMIZE TABLE 语义对应；此处按 MySQL 处理。
+    // 通过 db 执行 OPTIMIZE TABLE 对 3 张可管理表逐个优化。
     try {
       const db = getDb();
-      db.pragma('journal_mode = DELETE'); // VACUUM 要求 journal_mode 非 WAL
-      db.exec('VACUUM');
-      db.pragma('journal_mode = WAL');   // 切回 WAL
+      for (const t of DATA_TABLES) {
+        await db.query(`OPTIMIZE TABLE ${t.id}`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error({ error: msg }, 'vacuum_failed');
@@ -1709,20 +1626,15 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    let afterSize = 0;
-    try { afterSize = statSync(dbPath).size; } catch { /* */ }
-
-    const shrunk = beforeSize - afterSize;
-    const pct = beforeSize > 0 ? ((shrunk / beforeSize) * 100).toFixed(1) : '0';
-    log.info({ beforeSize, afterSize, shrunk, pct }, 'vacuum_ok');
-    res.json({ code: 0, message: `压缩完成：${fmtSize(beforeSize)} → ${fmtSize(afterSize)}，回收 ${fmtSize(Math.max(0, shrunk))}（${pct}%）` });
+    log.info({}, 'vacuum_ok');
+    res.json({ code: 0, message: '压缩完成' });
   });
 
   // ---- 缓存管理（仅管理员，前端 tab「缓存管理」） ----
 
   // 清空 doc-util 文档解析服务缓存（后端代理转发，避免浏览器直连自签名 HTTPS 跨域）
-  router.delete('/admin/cache/doc-util-cache', (req: Request, res: Response) => {
-    const baseUrl = promptConfigStore.getPlain('doc.doc_util_url');
+  router.delete('/admin/cache/doc-util-cache', async (req: Request, res: Response) => {
+    const baseUrl = await promptConfigStore.getPlain('doc.doc_util_url');
     if (!baseUrl) {
       res.status(400).json({ code: 1001, message: '未配置 doc.doc_util_url，无法清空缓存' });
       return;

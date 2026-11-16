@@ -49,6 +49,18 @@ interface CfgFile {
       capacity?: number;
     }>;
   };
+  mysql?: {
+    host?: string;
+    port?: number;
+    user?: string;
+    password?: string;
+    database?: string;
+    connection_limit?: number;
+  };
+  redis?: {
+    url?: string;
+    key_prefix?: string;
+  };
 }
 
 export interface Config {
@@ -89,6 +101,18 @@ export interface Config {
     connect_timeout_ms: number;
     request_timeout_ms: number;
     addresses: Array<{ name: string; addr: string; capacity: number }>;
+  };
+  mysql: {
+    host: string;
+    port: number;
+    user: string;
+    password: string;
+    database: string;
+    connection_limit: number;
+  };
+  redis: {
+    url: string;
+    key_prefix: string;
   };
 }
 
@@ -138,6 +162,8 @@ export function loadConfig(): Config {
   const y = cfg.sys ?? {};
   const l = cfg.llm ?? {};
   const r = cfg.runner ?? {};
+  const m = cfg.mysql ?? {};
+  const rd = cfg.redis ?? {};
 
   const llmBaseUrl = env('ANTHROPIC_BASE_URL', l.base_url ?? '');
   if (!llmBaseUrl) {
@@ -195,6 +221,18 @@ export function loadConfig(): Config {
         addr: a.addr,
         capacity: a.capacity ?? 5,
       })),
+    },
+    mysql: {
+      host: env('MYSQL_HOST', m.host ?? '127.0.0.1'),
+      port: envInt('MYSQL_PORT', m.port ?? 3306),
+      user: env('MYSQL_USER', m.user ?? 'dp_agt'),
+      password: env('MYSQL_PASSWORD', m.password ?? ''),
+      database: env('MYSQL_DATABASE', m.database ?? 'dp_agt'),
+      connection_limit: envInt('MYSQL_CONNECTION_LIMIT', m.connection_limit ?? 10),
+    },
+    redis: {
+      url: env('REDIS_URL', rd.url ?? 'redis://127.0.0.1:6379'),
+      key_prefix: env('REDIS_KEY_PREFIX', rd.key_prefix ?? 'dp:'),
     },
   };
 }
