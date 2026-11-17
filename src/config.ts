@@ -186,7 +186,7 @@ export function loadConfig(): Config {
     },
     runner: {
       token: env('RUNNER_TOKEN', r.token ?? ''),
-      port: envInt('RUNNER_PORT', r.port ?? 20002),
+      port: envInt('RUNNER_PORT', r.port ?? 21001),
       heartbeat_ms: envInt('RUNNER_HEARTBEAT_MS', r.heartbeat_ms ?? 5000),
       connect_timeout_ms: envInt('RUNNER_CONNECT_TIMEOUT_MS', r.connect_timeout_ms ?? 5000),
       request_timeout_ms: envInt('RUNNER_REQUEST_TIMEOUT_MS', r.request_timeout_ms ?? 15000),

@@ -126,7 +126,7 @@
   <!-- 控制面 → runner -->
   <polyline points="625,160 672,160 672,155 720,155" stroke="#4b6cb7" stroke-width="1.8" fill="none" marker-end="url(#arr-b)"/>
   <rect x="630" y="138" width="96" height="26" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
-  <text x="678" y="149" text-anchor="middle" fill="#4b6cb7" font-size="9" font-weight="600">:20002 加密传输</text>
+  <text x="678" y="149" text-anchor="middle" fill="#4b6cb7" font-size="9" font-weight="600">:21002 加密传输</text>
   <text x="678" y="158" text-anchor="middle" fill="#94a3b8" font-size="8">流式消息派发 / 心跳</text>
 
   <!-- runner 出站 -->

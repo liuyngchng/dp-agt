@@ -123,7 +123,7 @@ export type RunnerStatus = 'up' | 'down';
 export interface Runner {
   id: string;
   name: string;
-  addr: string;              // 例：https://runner-1:20002
+  addr: string;              // 例：https://runner-1:21001
   capacity: number;          // 最大并发 SDK 数
   status: RunnerStatus;
   last_heartbeat_ts: number | null;

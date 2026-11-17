@@ -31,7 +31,7 @@ const log = getLogger();
 
 // ── 运行时配置（环境变量，无 cfg.yml / SQLite） ──
 const RUNTIME_DIR = process.env.RUNTIME_DIR || resolve(process.cwd(), 'runtime');
-const PORT = parseInt(process.env.RUNNER_PORT || '20002', 10);
+const PORT = parseInt(process.env.RUNNER_PORT || '21001', 10);
 const CAPACITY = parseInt(process.env.RUNNER_MAX_CONCURRENT || '5', 10);
 const TIMEOUT_MS = parseInt(process.env.RUNNER_TIMEOUT_MS || '600000', 10);
 const GRACE_MS = parseInt(process.env.RUNNER_GRACE_MS || '60000', 10);

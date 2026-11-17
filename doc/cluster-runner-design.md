@@ -64,7 +64,7 @@
 CREATE TABLE IF NOT EXISTS runners (
   id               TEXT PRIMARY KEY,      -- uuid
   name             TEXT NOT NULL UNIQUE,  -- 例：runner-1
-  addr             TEXT NOT NULL,         -- 例：https://runner-1:20002
+  addr             TEXT NOT NULL,         -- 例：https://runner-1:21001
   capacity         INTEGER NOT NULL DEFAULT 5,  -- 该 runner 最大并发 SDK 数
   status           TEXT NOT NULL DEFAULT 'up',  -- up | down
   last_heartbeat_ts INTEGER,              -- 最近一次心跳（Unix 毫秒）
@@ -101,16 +101,16 @@ ALTER TABLE task_logs ADD COLUMN runner_id TEXT;
 ```yaml
 runner:
   token: ${RUNNER_TOKEN}          # 控制面 ↔ runner 认证，从环境变量读，绝不写死
-  port: 20002
+  port: 21001
   heartbeat_ms: 5000
   connect_timeout_ms: 5000
   request_timeout_ms: 15000       # 心跳/会话代理等短请求超时
   addresses:
     - name: runner-1
-      addr: https://runner-1:20002
+      addr: https://runner-1:21001
       capacity: 5
     - name: runner-2
-      addr: https://runner-2:20002
+      addr: https://runner-2:21002
       capacity: 5
 ```
 
@@ -393,7 +393,7 @@ services:
     command: ["node", "dist/runner.js"]
     environment:
       RUNTIME_DIR: /app/runtime
-      RUNNER_PORT: 20002
+      RUNNER_PORT: 21001
       RUNNER_MAX_CONCURRENT: 5
       RUNNER_TOKEN: ${RUNNER_TOKEN}
     # 无 data 挂载：runner 无状态，runtime 重启即丢
@@ -403,7 +403,7 @@ services:
     command: ["node", "dist/runner.js"]
     environment:
       RUNTIME_DIR: /app/runtime
-      RUNNER_PORT: 20002
+      RUNNER_PORT: 21002
       RUNNER_MAX_CONCURRENT: 5
       RUNNER_TOKEN: ${RUNNER_TOKEN}
 ```

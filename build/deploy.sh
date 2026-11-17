@@ -14,7 +14,7 @@
 # 环境变量（均可被同名环境变量覆盖）:
 #   IMAGE_TAG   镜像版本（默认取 package.json 的 version）
 #   HOST_PORT   控制面对外端口（默认 20001）
-#   RUNNER_PORT runner 监听端口（默认 20002）
+#   RUNNER_PORT runner 监听端口（默认 21001）
 #   RUNNER_MAX_CONCURRENT  单 runner 最大并发（默认 5）
 set -euo pipefail
 
@@ -96,7 +96,7 @@ cmd_up() {
   export HOST_GID="${HOST_GID:-$(id -g)}"
   export IMAGE_TAG="${IMAGE_TAG:-latest}"
   export HOST_PORT="${HOST_PORT:-20001}"
-  export RUNNER_PORT="${RUNNER_PORT:-20002}"
+  export RUNNER_PORT="${RUNNER_PORT:-21001}"
   export RUNNER_MAX_CONCURRENT="${RUNNER_MAX_CONCURRENT:-5}"
   export RUNNER_TIMEOUT_MS="${RUNNER_TIMEOUT_MS:-600000}"
   export RUNNER_GRACE_MS="${RUNNER_GRACE_MS:-60000}"
@@ -135,7 +135,7 @@ cmd_down() {
   load_env
   export IMAGE_TAG="${IMAGE_TAG:-latest}"
   export HOST_PORT="${HOST_PORT:-20001}"
-  export RUNNER_PORT="${RUNNER_PORT:-20002}"
+  export RUNNER_PORT="${RUNNER_PORT:-21001}"
 
   msg "停止并移除 $role 容器"
   docker-compose -f "$compose_file" down
@@ -149,7 +149,7 @@ cmd_restart() {
   load_env
   export IMAGE_TAG="${IMAGE_TAG:-latest}"
   export HOST_PORT="${HOST_PORT:-20001}"
-  export RUNNER_PORT="${RUNNER_PORT:-20002}"
+  export RUNNER_PORT="${RUNNER_PORT:-21001}"
 
   msg "重启 $role"
   docker-compose -f "$compose_file" restart

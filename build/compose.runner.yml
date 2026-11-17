@@ -8,7 +8,7 @@
 #   RUNNER_TOKEN    控制面↔runner 认证 token（必填，与控制面一致）
 #   HOST_UID        宿主机用户 UID（默认 1000）
 #   HOST_GID        宿主机用户 GID（默认 1000）
-#   RUNNER_PORT     runner 监听端口（默认 20002）
+#   RUNNER_PORT     runner 监听端口（默认 21001；多 runner 可分别设 21001 / 21002）
 #   RUNNER_MAX_CONCURRENT  单 runner 最大并发 SDK 数（默认 5）
 #   RUNNER_TIMEOUT_MS      看门狗滑动超时（默认 600000）
 #   RUNNER_GRACE_MS        看门狗宽限（默认 60000）
@@ -48,12 +48,12 @@ services:
     command: ["node", "dist/runner.js"]
     environment:
       RUNTIME_DIR: /app/runtime
-      RUNNER_PORT: ${RUNNER_PORT:-20002}
+      RUNNER_PORT: ${RUNNER_PORT:-21001}
       RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-5}
       RUNNER_TIMEOUT_MS: ${RUNNER_TIMEOUT_MS:-600000}
       RUNNER_GRACE_MS: ${RUNNER_GRACE_MS:-60000}
       RUNNER_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN 必须设置，请先 export RUNNER_TOKEN=xxx}
     ports:
-      - "${RUNNER_PORT:-20002}:20002"
+      - "${RUNNER_PORT:-21001}:${RUNNER_PORT:-21001}"
     extra_hosts: *extra-hosts
     restart: unless-stopped

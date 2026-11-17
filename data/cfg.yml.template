@@ -74,9 +74,6 @@ runner:
   # 控制面 ↔ runner 认证 token，从环境变量 RUNNER_TOKEN 读取，不写死
   # token: "${RUNNER_TOKEN}"
 
-  # runner 监听端口
-  port: 20002
-
   # 心跳间隔（毫秒）
   heartbeat_ms: 5000
 
@@ -92,10 +89,10 @@ runner:
   # 修改此列表后需重启控制面生效
   addresses:
     - name: runner-1
-      addr: https://192.168.1.11:20002     # 示例：runner 服务器 A
+      addr: https://192.168.1.11:21001     # 示例：runner 服务器 A
       capacity: 5
     - name: runner-2
-      addr: https://192.168.1.12:20002     # 示例：runner 服务器 B
+      addr: https://192.168.1.12:21002     # 示例：runner 服务器 B
       capacity: 5
 
 # ---- 数据目录（可选，默认程序运行目录下的 data/） ----
