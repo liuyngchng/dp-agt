@@ -60,10 +60,10 @@ npm run dev:runner   # 热更启动 runner，监听 RUNNER_PORT（默认 21001�
 runner:
   addresses:
     - name: runner-1
-      addr: https://192.168.1.11:21001   # runner 服务器内网 IP（默认 HTTPS，自签证书）
+      addr: https://192.168.1.11:21001   # runner 服务器 A 内网 IP（默认 HTTPS，自签证书）
       capacity: 5
     - name: runner-2
-      addr: https://192.168.1.12:21002
+      addr: https://192.168.1.12:21001   # runner 服务器 B 内网 IP
       capacity: 5
 ```
 
@@ -76,7 +76,6 @@ runner:
 | 配置 | 环境变量 | 默认 | 说明 |
 |------|---------|------|------|
 | `runner.token` | `RUNNER_TOKEN` | 空 | 控制面↔runner 认证，从环境变量读 |
-| `runner.port` | `RUNNER_PORT` | 21001 | runner 监听端口 |
 | `runner.heartbeat_ms` | `RUNNER_HEARTBEAT_MS` | 5000 | 心跳间隔 |
 | `runner.connect_timeout_ms` | `RUNNER_CONNECT_TIMEOUT_MS` | 5000 | 连接超时 |
 | `runner.request_timeout_ms` | `RUNNER_REQUEST_TIMEOUT_MS` | 15000 | 短请求超时 |
