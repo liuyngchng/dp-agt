@@ -625,7 +625,7 @@ export const runnersStore = {
            capacity = excluded.capacity,
            status = 'up',
            updated_at = excluded.updated_at`
-      ).run(uuid(), a.name, a.addr, a.capacity, now, now, now);
+      ).run(uuid(), a.name, a.addr, a.capacity, now, now);
     }
 
     return this.list();
