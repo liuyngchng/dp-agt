@@ -43,7 +43,6 @@ x-extra-hosts: &extra-hosts
 services:
   runner:
     image: dp-agt:${IMAGE_TAG:-latest}
-    container_name: dp-agt-runner
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     command: ["node", "dist/runner.js"]
     environment:

@@ -21,6 +21,10 @@ set -euo pipefail
 # 切换到项目根目录（本脚本位于 build/ 下）
 cd "$(dirname "$0")/.."
 
+# 默认项目名取部署目录名，让 control / runner1 / runner2 各自独立，
+# 避免都落到 compose 文件所在目录名（build/）导致互相覆盖、误判孤儿容器。
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
+
 ENV_FILE="data/.runner-env"
 
 # ── 工具函数 ────────────────────────────────────────────────────

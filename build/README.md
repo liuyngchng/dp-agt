@@ -143,6 +143,15 @@ RUNNER_PORT=21001 ./build/deploy.sh up runner   # 第一个
 RUNNER_PORT=21002 ./build/deploy.sh up runner   # 第二个
 ```
 
+> ⚠ **同机多 runner 必须放在不同目录**：`deploy.sh` 会以部署目录名作为 compose 项目名（`COMPOSE_PROJECT_NAME`），不同目录才互不干扰。若都放在同名目录（或都叫 `build/` 目录），会因项目名相同而互相覆盖——后面启动的 runner 会把前面那个 stop 掉（旧版本还因 `container_name` 写死为 `dp-agt-runner` 直接顶掉）。推荐布局：
+
+```bash
+/data/dp-agt-runner1/   # RUNNER_PORT=21001 ./build/deploy.sh up runner
+/data/dp-agt-runner2/   # RUNNER_PORT=21002 ./build/deploy.sh up runner
+```
+
+> 容器名由 compose 自动生成为 `项目名_runner_1`（如 `dp-agt-runner1-runner-1`、`dp-agt-runner2-runner-1`），无需手动指定；`down` / `restart` / `logs` 在各自目录内执行即可精准命中对应实例。
+
 验证：
 
 ```bash
@@ -216,6 +225,7 @@ curl -k https://<控制面IP>:20001/health
 | 变量 | 默认值 | 作用范围 | 说明 |
 |------|--------|---------|------|
 | `IMAGE_TAG` | `latest` | 两者 | 镜像 tag；`deploy.sh` 默认用 `package.json` 版本 |
+| `COMPOSE_PROJECT_NAME` | 部署目录名 | 两者 | compose 项目名；同机多 runner 时靠不同部署目录自动区分，一般无需手动设置 |
 | `RUNNER_TOKEN` | 空 | 两者 | 控制面↔runner 认证，必填（`gen-token` 生成） |
 | `HOST_UID` / `HOST_GID` | `id -u` / `id -g` | 两者 | 容器运行用户，匹配 `data/` 目录属主 |
 | `HOST_PORT` | `20001` | 控制面 | 对外端口 |
