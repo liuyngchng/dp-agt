@@ -23,7 +23,9 @@ server:
 
 # ---- 系统配置 ----
 sys:
-  # Worker 数量 = 同时调用 Agent SDK 的任务数上限
+  # Worker 数量 = 控制面同时派发到所有 runner 的任务数上限。
+  # 多 runner 部署时建议设为各 runner capacity 之和，否则控制面会因这里太小
+  # 而派不满各 runner，导致部分 runner 空闲。例：2 个 runner 各 capacity=5 → 填 10。
   max_concurrent_tasks: 5
 
   # 任务总数上限 (pending + processing)，超过后拒单返回 code=2002
@@ -87,6 +89,9 @@ runner:
   # 跨机器部署时，addr 填 runner 服务器的内网 IP 或主机名
   # runner 默认 HTTPS（自签证书，控制面客户端不校验）；如需 HTTP 设 RUNNER_USE_HTTPS=0
   # 修改此列表后需重启控制面生效
+  #
+  # capacity 必须与该 runner 容器实际并发一致（环境变量 RUNNER_MAX_CONCURRENT，默认 5），
+  # 两者独立配置、不会互相校验；不一致会导致控制面超额派发或浪费槽位。
   addresses:
     - name: runner-1
       addr: https://192.168.1.11:21001     # 示例：runner 服务器 A

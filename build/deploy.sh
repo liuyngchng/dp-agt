@@ -67,6 +67,20 @@ resolve_compose() {
   esac
 }
 
+# 移除同名旧容器。control 使用固定 container_name（单点），若旧容器来自
+# 另一个 compose 项目（历史部署的 COMPOSE_PROJECT_NAME 不同），`up` 会因
+# 名字冲突失败。control 状态都在 data/ 卷，容器本身无状态，直接重建即可。
+remove_stale_container() {
+  local compose_file="$1"
+  local cname
+  cname=$(docker-compose -f "$compose_file" config 2>/dev/null | awk '/container_name:/{print $2; exit}')
+  [ -z "$cname" ] && return 0
+  if docker ps -aq -f "name=^/${cname}$" | grep -q .; then
+    warn "检测到同名旧容器 $cname，先停止并移除（单点 control 直接重建）"
+    docker rm -f "$cname" >/dev/null
+  fi
+}
+
 # ── 子命令 ──────────────────────────────────────────────────────
 cmd_gen_token() {
   if [ -f "$ENV_FILE" ] && grep -q '^RUNNER_TOKEN=' "$ENV_FILE" 2>/dev/null; then
@@ -109,6 +123,7 @@ cmd_up() {
   host_ip=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 
   msg "启动 $role (镜像 dp-agt:$IMAGE_TAG)"
+  remove_stale_container "$compose_file"
   docker-compose -f "$compose_file" up -d
 
   case "$role" in

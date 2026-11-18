@@ -258,9 +258,9 @@ function dispatchToRunner(
     };
 
     return new Promise<SdkResult>((resolve) => {
+      let abortHandler: (() => void) | undefined;
       // 首次派发允许在「未收到 session 帧」前换一台重试一次
       attemptDispatch(preferredRunnerId ?? undefined, true);
-      let abortHandler: (() => void) | undefined;
 
       function attemptDispatch(affinityRunnerId: string | undefined, allowRetry: boolean): void {
         const runner = selectRunner(linkid, affinityRunnerId);
