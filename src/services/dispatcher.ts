@@ -130,6 +130,11 @@ export function getRunnerByName(name: string): Runner | undefined {
   return runnersStore.getByName(name);
 }
 
+/** 通过 runner id 找 runner（sessions.runner_id 存的是 id） */
+export function getRunnerById(id: string): Runner | undefined {
+  return runnersStore.get(id);
+}
+
 export function getRunnerHttpConfig(): RunnerHttpConfig {
   return httpCfg;
 }

@@ -51,4 +51,13 @@ services:
     ports:
       - "${HOST_PORT:-20001}:20001"
     extra_hosts: *extra-hosts
+    networks:
+      - default
+      - llm_net
     restart: unless-stopped
+
+# 单机部署时，api-gate / doc-util 等外部服务在同一宿主机的 llm_net 上，
+# 挂载后控制面才能用容器名（如 api-gate）直接访问；多机部署用宿主机 IP 时该网络冗余、无副作用。
+networks:
+  llm_net:
+    external: true

@@ -12,7 +12,7 @@ import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore, getDb, sdkTracesStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { cancelTask, cancelByLinkidInQueue } from '../services/task-queue.js';
-import { getRunnerByName, getRunnerHttpConfig } from '../services/dispatcher.js';
+import { getRunnerByName, getRunnerById, getRunnerHttpConfig } from '../services/dispatcher.js';
 import { proxyGet, proxyDelete } from '../services/runner-client.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
@@ -41,7 +41,8 @@ function sessionWorkDir(cfg: Config, linkid: string): string {
 /** 若该 session 归属某个远端 runner，返回其 addr；否则返回 null（本机处理） */
 function resolveSessionRunnerAddr(session: { runner_id: string | null } | undefined): string | null {
   if (!session?.runner_id) return null;
-  const runner = getRunnerByName(session.runner_id);
+  // sessions.runner_id 存的是 runners.id，不是 name
+  const runner = getRunnerById(session.runner_id);
   if (!runner || runner.status !== 'up') return null;
   return runner.addr;
 }
