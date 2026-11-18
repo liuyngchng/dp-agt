@@ -1,4 +1,6 @@
 node_modules/
+prompts/doc/
+prompts/dept/
 dist/
 *.log
 .env
@@ -16,6 +18,7 @@ data/cfg.yml
 data/mock.json
 data/mock*.json
 data/secrets.key
+data/.runner-env
 data/logs/
 data/tasks/
 data/.claude/
