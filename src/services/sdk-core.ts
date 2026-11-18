@@ -6,6 +6,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { query, getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { getLogger } from '../logger.js';
 import type { RunSdkOptions } from '../types.js';
@@ -91,12 +92,18 @@ export async function runAgentCore(
     }
   }
 
+  // 新建会话时固定一个我们生成的 session UUID 传给 SDK（options.sessionId）。
+  // SDK 在未指定 sessionId 时，流式消息里的 session_id 字段与磁盘上真正的
+  // 会话文件 UUID 是两个不同的值；若不固定，存库/回放/resume 会拿到错误的 id，
+  // 导致「会话记录」读不到历史、resume 也永远降级为新建。
+  const pinnedSessionId = effectiveResumeId ?? randomUUID();
+
   // CLAUDE.md 仅首次写入（resume 时不覆盖，因为 SDK snapshot 已固化 system prompt）
   if (!effectiveResumeId && claudeMd != null) {
     await writeFile(join(workDir, 'CLAUDE.md'), claudeMd, 'utf8');
   }
 
-  log.info({ taskId, linkid, resumeSessionId: effectiveResumeId || '(new)', originalResumeId: input.resumeSessionId || '(none)', workDir }, 'sdk_run_start');
+  log.info({ taskId, linkid, resumeSessionId: effectiveResumeId || '(new)', pinnedSessionId, workDir }, 'sdk_run_start');
 
   const start = Date.now();
   let fullOutput = '';
@@ -128,7 +135,9 @@ export async function runAgentCore(
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         maxTurns: sdkOptions.max_turns,
         abortController,
-        ...(effectiveResumeId ? { resume: effectiveResumeId } : {}),
+        // resume 时用既有 id 续跑；新建时用 pinnedSessionId 固定磁盘文件 UUID，
+        // 使磁盘文件名、流式 session_id、存库 id 三者一致。
+        ...(effectiveResumeId ? { resume: effectiveResumeId } : { sessionId: pinnedSessionId }),
       },
     });
 
