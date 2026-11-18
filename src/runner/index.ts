@@ -282,6 +282,7 @@ function startServer() {
   });
 }
 
-// 初始化 logger（runner 无 data_dir，日志仅 stdout）
-initLogger(join(RUNTIME_DIR, 'logs'), DEBUG, 7);
+// 初始化 logger（runner 无 data_dir，日志仅 stdout 之外的本地文件滚动。
+// 传 RUNTIME_DIR，logger 内部会拼 logs/ 子目录：<RUNTIME_DIR>/logs/app.*.log）
+initLogger(RUNTIME_DIR, DEBUG, 7);
 startServer();
