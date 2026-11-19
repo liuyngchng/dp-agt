@@ -16,7 +16,7 @@ import { cancelTask, cancelByLinkidInQueue } from '../services/task-queue.js';
 import { getRunnerByName, getRunnerById, getRunnerHttpConfig, markDispatched, markFinished } from '../services/dispatcher.js';
 import { proxyGet, proxyDelete, streamRun } from '../services/runner-client.js';
 import { getLogger } from '../logger.js';
-import { nowReadable } from '../time.js';
+import { nowReadable, fmtLocalTs } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
 import { submitTask } from './process.js';
 
@@ -247,6 +247,8 @@ export function createAdminRouter(cfg: Config): Router {
         error_message: t.error_message,
         created_at: t.created_at,
         finished_at: t.finished_at,
+        started_at: t.started_ts ? fmtLocalTs(t.started_ts) : null,
+        runner_name: t.runner_id ? (getRunnerById(t.runner_id)?.name ?? t.runner_id) : '本机',
       })),
     } });
   });
@@ -889,6 +891,8 @@ export function createAdminRouter(cfg: Config): Router {
         error_message: task.error_message,
         created_at: task.created_at,
         finished_at: task.finished_at,
+        started_at: task.started_ts ? fmtLocalTs(task.started_ts) : null,
+        runner_name: task.runner_id ? (getRunnerById(task.runner_id)?.name ?? task.runner_id) : '本机',
         request_body: safeParse(task.request_body),
         request_response: safeParse(task.request_response),
         prompt: task.prompt,

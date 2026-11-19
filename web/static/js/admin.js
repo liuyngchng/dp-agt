@@ -690,10 +690,16 @@ function renderTasksPage(list) {
         </tr>
         <tr class="row-detail" id="${rid}" style="display:none;">
             <td colspan="8" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
-                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-                    <span><span class="audit-info-label">Task ID:</span> ${taskId}</span>
-                    <span><span class="audit-info-label">LinkID:</span> ${escHtml(t.linkid || '-')}</span>
-                    <span style="margin-left:auto;">${stopBtn}</span>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                        <span><span class="audit-info-label">Task ID:</span> ${taskId}</span>
+                        <span><span class="audit-info-label">LinkID:</span> ${escHtml(t.linkid || '-')}</span>
+                        <span style="margin-left:auto;">${stopBtn}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                        <span><span class="audit-info-label">开始时间:</span> ${fmtTs(t.started_at)}</span>
+                        <span><span class="audit-info-label">执行节点:</span> ${escHtml(t.runner_name || '本机')}</span>
+                    </div>
                 </div>
             </td>
         </tr>`;
@@ -2360,6 +2366,7 @@ function auditTimelineHtml(t) {
     let html = '<div class="audit-info-bar" style="flex-shrink:0;">' +
         '<div class="audit-info-row"><span class="audit-info-label">标题:</span> <span class="audit-info-title">' + escHtml(title) + '</span></div>' +
         '<div class="audit-info-row"><span class="audit-info-label">执行周期:</span> ' + escHtml(startStr) + ' ~ ' + escHtml(endStr) + '</div>' +
+        '<div class="audit-info-row"><span class="audit-info-label">执行节点:</span> ' + escHtml(t.runner_name || '本机') + '</div>' +
         '<div class="audit-info-row"><span class="audit-info-label">Task ID:</span> ' + escHtml(t.task_id) + ' <span class="audit-info-label" style="margin-left:16px;">Link ID:</span> ' + escHtml(t.linkid || '-') + '</div>' +
         '</div>';
     // 时间线 — 可滚动
@@ -2374,6 +2381,7 @@ function auditTimelineHtml(t) {
             : ev.type === 'done' ? 'fa-check-circle'
             : ev.type === 'error' ? 'fa-times-circle'
             : ev.type === 'create' ? 'fa-plus-circle'
+            : ev.type === 'start' ? 'fa-play-circle'
             : ev.type === 'prompt' ? 'fa-file-code'
             : 'fa-circle';
         const cls = ev.type === 'error' ? 'error'
@@ -2400,27 +2408,31 @@ function buildAuditEvents(t) {
     const events = [];
     // 1. 任务创建
     events.push({ time: t.created_at, type: 'create', title: '任务创建', detail: '访问路径: ' + (t.path || '-') });
-    // 2. 收到请求数据
+    // 2. 任务开始（出队进入处理）
+    if (t.started_at) {
+        events.push({ time: t.started_at, type: 'start', title: '任务开始', detail: '' });
+    }
+    // 3. 收到请求数据
     if (t.request_body) {
         events.push({ time: t.created_at, type: 'input', title: '收到请求数据', detail: jsonFmt(t.request_body) });
     }
-    // 3. 返回同步响应
+    // 4. 返回同步响应
     if (t.request_response) {
         events.push({ time: t.created_at, type: 'output', title: '返回同步响应', detail: jsonFmt(t.request_response) });
     }
-    // 4. 渲染提示词
+    // 5. 渲染提示词
     if (t.prompt) {
         events.push({ time: t.created_at, type: 'prompt', title: '渲染提示词', detail: t.prompt });
     }
-    // 5. Agent 输出结果（查看上方「对话」按钮可获取完整 SDK 对话记录）
-    // 6. Agent 最终输出
+    // 6. Agent 输出结果（查看上方「对话」按钮可获取完整 SDK 对话记录）
+    // 7. Agent 最终输出
     if (t.sdk_output) {
         events.push({ time: t.finished_at, type: 'output', title: 'Agent 输出结果', detail: t.sdk_output });
     }
-    // 7. 结果回调（从 SDK trace 中提取 Bash curl 记录）
+    // 8. 结果回调（从 SDK trace 中提取 Bash curl 记录）
     const cbEvent = tryExtractCallbackFromTrace(t.sdk_trace, t.finished_at);
     if (cbEvent) events.push(cbEvent);
-    // 8. 完成 / 失败
+    // 9. 完成 / 失败
     events.push({
         time: t.finished_at,
         type: t.status === 'completed' ? 'done' : (t.status === 'failed' ? 'error' : 'info'),
