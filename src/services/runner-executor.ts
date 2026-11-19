@@ -93,6 +93,12 @@ export async function runnerExecute(
   const { task_id, linkid, resume_session_id, prompt, claude_md, sdk_options, env } = req;
   const runtimeDir = process.env.RUNTIME_DIR ?? './runtime';
   const workDir = join(runtimeDir, 'tasks', sanitizeDirName(linkid));
+  // 会话 transcript 的读写必须指向同一个目录：
+  // - 读：runner 启动时已设置 process.env.CLAUDE_CONFIG_DIR（见 runner/index.ts）
+  // - 写：SDK 子进程的 env 由控制面下发且已剔除 CLAUDE_CONFIG_DIR，若不补回，
+  //   子进程会退回 $HOME/.claude 写入，导致「会话记录」历史读到空。
+  // 这里强制与 runner 读取端一致，保证两者落在同一个 projects/ 目录。
+  const configDir = process.env.CLAUDE_CONFIG_DIR || join(runtimeDir, 'claude-config');
 
   const abortController = new AbortController();
   const activeItem: RunnerActiveTask = {
@@ -123,7 +129,7 @@ export async function runnerExecute(
       claudeMd: claude_md,
       resumeSessionId: resume_session_id || undefined,
       sdkOptions: sdk_options,
-      env: env ?? {},
+      env: { ...env, CLAUDE_CONFIG_DIR: configDir },
     };
 
     const hooks: RunAgentHooks = {

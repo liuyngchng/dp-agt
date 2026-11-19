@@ -67,6 +67,25 @@ resolve_compose() {
   esac
 }
 
+# 预创建 compose 里所有 bind mount 的源目录（owner 为当前用户）。
+# 否则目录不存在时 Docker 会用 root 自动创建，容器内以 HOST_UID 运行时写不进去（EACCES）。
+# 仅处理「项目根目录内」的源路径（相对路径 ../xxx 解析后仍在本项目内）；绝对路径挂系统目录的不碰。
+ensure_bind_dirs() {
+  local compose_file="$1"
+  local proj_root
+  proj_root="$(cd "$(dirname "$0")/.." && pwd)"
+
+  docker-compose -f "$compose_file" config 2>/dev/null \
+    | awk '/source:/{sub(/^[ \t]*source:[ \t]*/, ""); print}' \
+    | while IFS= read -r src; do
+        [ -z "$src" ] && continue
+        case "$src" in
+          "$proj_root"/*) mkdir -p "$src" ;;
+          *) ;;  # 项目外路径：不预创建
+        esac
+      done
+}
+
 # 移除同名旧容器。control 使用固定 container_name（单点），若旧容器来自
 # 另一个 compose 项目（历史部署的 COMPOSE_PROJECT_NAME 不同），`up` 会因
 # 名字冲突失败。control 状态都在 data/ 卷，容器本身无状态，直接重建即可。
@@ -123,6 +142,7 @@ cmd_up() {
   host_ip=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 
   msg "启动 $role (镜像 dp-agt:$IMAGE_TAG)"
+  ensure_bind_dirs "$compose_file"
   remove_stale_container "$compose_file"
   docker-compose -f "$compose_file" up -d
 

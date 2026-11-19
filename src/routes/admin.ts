@@ -9,11 +9,12 @@ import { request as httpsRequest } from 'node:https';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'node:crypto';
 import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
+import type { RunSdkOptions, RunRequest } from '../types.js';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore, getDb, sdkTracesStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { cancelTask, cancelByLinkidInQueue } from '../services/task-queue.js';
-import { getRunnerByName, getRunnerById, getRunnerHttpConfig } from '../services/dispatcher.js';
-import { proxyGet, proxyDelete } from '../services/runner-client.js';
+import { getRunnerByName, getRunnerById, getRunnerHttpConfig, markDispatched, markFinished } from '../services/dispatcher.js';
+import { proxyGet, proxyDelete, streamRun } from '../services/runner-client.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
@@ -718,8 +719,6 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
     const linkid = session.linkid;
-    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
-    log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir) }, 'session_chat_start');
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -727,6 +726,72 @@ export function createAdminRouter(cfg: Config): Router {
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
+
+    // 远端 runner 上的 session：续聊必须派回持有该 session 的 runner 执行，
+    // 否则控制面本地没有对应 transcript 与 workdir，resume 拿不到上下文。
+    const runnerAddr = resolveSessionRunnerAddr(session);
+    if (runnerAddr) {
+      const runner = getRunnerById(session.runner_id!);
+      const runnerId = runner!.id;
+      const sdkOptions: RunSdkOptions = {
+        model: cfg.llm.model,
+        max_turns: cfg.llm.max_turns,
+        effort_level: cfg.llm.effort_level,
+        disable_nonessential_traffic: cfg.llm.disable_nonessential_traffic,
+        attribution_header: cfg.llm.attribution_header,
+        auto_mode_server: cfg.llm.auto_mode_server,
+      };
+      const runReq: RunRequest = {
+        task_id: 'chat-' + uuidv4(),
+        linkid,
+        mode: 'chat',
+        prompt: message,
+        claude_md: null,            // resume：不覆盖既有 CLAUDE.md
+        resume_session_id: session_id,
+        sdk_options: sdkOptions,
+        env: buildEnv(cfg, true) as Record<string, string>,
+      };
+
+      log.info({ session_id, linkid, runnerId, runnerAddr }, 'session_chat_dispatch_runner');
+
+      const httpCfg = getRunnerHttpConfig();
+      markDispatched(runnerId);
+      let finished = false;
+      const finish = (err?: Error) => {
+        if (finished) return;
+        finished = true;
+        markFinished(runnerId);
+        if (err) sendSSE(res, { type: 'error', message: err.message });
+        else sendSSE(res, { type: 'error', message: 'runner 连接中断' });
+        res.end();
+      };
+      streamRun(runnerAddr, runReq, httpCfg, (frame) => {
+        switch (frame.type) {
+          case 'session':
+            // resume 命中时 frame.session_id 与原 session 一致；若 runner 降级新建则为新 id
+            sessionsStore.upsert(frame.session_id, linkid, runnerId);
+            break;
+          case 'resume_gone':
+            sessionsStore.close(frame.session_id);
+            break;
+          case 'msg':
+            sendSSE(res, frame.message);
+            break;
+          case 'result':
+            if (finished) break;
+            finished = true;
+            markFinished(runnerId);
+            sendSSE(res, { type: 'end', session_id: frame.result.sessionId });
+            res.end();
+            break;
+        }
+      }, finish);
+      return;
+    }
+
+    // 本机 session：控制面本地直接续跑
+    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
+    log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir) }, 'session_chat_start');
 
     try {
       const q = query({
