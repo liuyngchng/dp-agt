@@ -371,7 +371,7 @@ export const interfacesStore = {
 // ═══════════════════════════════════════════════════════════════════
 
 // 列表查询专用列：不包含 sdk_output / prompt / request_body 等大字段（sdk_trace 已独立存储）
-const TASK_LOG_LIGHT_COLS = `task_id, linkid, session_id, path, interface_id, status, request_body, request_response, error_message, created_at, finished_at, created_ts, finished_ts, started_ts`;
+const TASK_LOG_LIGHT_COLS = `task_id, linkid, session_id, path, interface_id, status, request_body, request_response, error_message, runner_id, created_at, finished_at, created_ts, finished_ts, started_ts`;
 // 单条详情用列：全量（timeline 需通过 sdkTracesStore 单独取 sdk_trace）
 const TASK_LOG_FULL_COLS = `*`;
 
