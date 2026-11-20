@@ -98,7 +98,9 @@ export async function runAgentCore(
   // 导致「会话记录」读不到历史、resume 也永远降级为新建。
   const pinnedSessionId = effectiveResumeId ?? randomUUID();
 
-  // CLAUDE.md 仅首次写入（resume 时不覆盖，因为 SDK snapshot 已固化 system prompt）
+  // CLAUDE.md 仅首次写入（resume 时不覆盖，因为 SDK snapshot 已固化 system prompt）。
+  // 注意：resume-gone 降级为新建时 effectiveResumeId 已清空，此时依赖 claudeMd 非空
+  // 才能补写 CLAUDE.md —— 因此派发方必须始终下发 claude_md（不能对 resume 返回 null）。
   if (!effectiveResumeId && claudeMd != null) {
     await writeFile(join(workDir, 'CLAUDE.md'), claudeMd, 'utf8');
   }

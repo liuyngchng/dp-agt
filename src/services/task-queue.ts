@@ -244,8 +244,10 @@ function dispatchToRunner(
     auto_mode_server: cfg.llm.auto_mode_server,
   };
 
-  // 非 resume 时异步构建 claude_md（它读 data/memory/ 和 prompt_config，控制面环境）
-  return buildClaudeMdForDispatch(existingSession, cfg).then((claudeMd) => {
+  // 异步构建 claude_md（它读 data/memory/ 和 prompt_config，控制面环境）。
+  // resume 时也照常下发：runner 侧在真 resume 时不会覆盖既有 CLAUDE.md，
+  // 但 resume-gone 降级为新建时需要用它补写，故这里不再对 resume 返回 null。
+  return buildClaudeMdForDispatch(cfg).then((claudeMd) => {
     const runReq: RunRequest = {
       task_id: taskId,
       linkid,
@@ -377,12 +379,8 @@ function dispatchToRunner(
   });
 }
 
-/** resume 时返回 null（不覆盖既有 CLAUDE.md），否则控制面构建一份完整 CLAUDE.md */
-async function buildClaudeMdForDispatch(
-  existingSession: { session_id: string } | undefined,
-  cfg: Config,
-): Promise<string | null> {
-  if (existingSession?.session_id) return null;
+/** 构建一份完整 CLAUDE.md 下发（resume 也下发，由 runner 侧决定是否写入） */
+async function buildClaudeMdForDispatch(cfg: Config): Promise<string> {
   return buildClaudeMd(cfg.sys.data_dir);
 }
 
