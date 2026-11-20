@@ -1,5 +1,6 @@
 key,value,说明
 doc.doc_util_url,https://doc-util:8080,PDX/docx文档解析服务地址
+doc.hotwords,,PDF转Word截图版时需下划线标注的热词（多个用英文分号;分隔，留空则不标注）
 doc.renew_file_url_api,,文件下载回退接口地址（留空禁用）
 doc.file_url_token,,文件下载/回调共用认证Token
 doc.workflow_next_node_options_info_search_url,,工作流当前节点的下一节点所需信息获取接口地址（留空禁用）
