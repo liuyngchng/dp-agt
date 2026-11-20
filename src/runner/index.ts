@@ -31,7 +31,7 @@ const log = getLogger();
 
 // ── 运行时配置（环境变量，无 cfg.yml / SQLite） ──
 const RUNTIME_DIR = process.env.RUNTIME_DIR || resolve(process.cwd(), 'runtime');
-const PORT = parseInt(process.env.RUNNER_PORT || '20002', 10);
+const PORT = parseInt(process.env.RUNNER_PORT || '21001', 10);
 const CAPACITY = parseInt(process.env.RUNNER_MAX_CONCURRENT || '5', 10);
 const TIMEOUT_MS = parseInt(process.env.RUNNER_TIMEOUT_MS || '600000', 10);
 const GRACE_MS = parseInt(process.env.RUNNER_GRACE_MS || '60000', 10);
@@ -282,6 +282,7 @@ function startServer() {
   });
 }
 
-// 初始化 logger（runner 无 data_dir，日志仅 stdout）
-initLogger(join(RUNTIME_DIR, 'logs'), DEBUG, 7);
+// 初始化 logger（runner 无 data_dir，日志仅 stdout 之外的本地文件滚动。
+// 传 RUNTIME_DIR，logger 内部会拼 logs/ 子目录：<RUNTIME_DIR>/logs/app.*.log）
+initLogger(RUNTIME_DIR, DEBUG, 7);
 startServer();

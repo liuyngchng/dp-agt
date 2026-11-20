@@ -85,6 +85,9 @@ function availableSlots(r: Runner): number {
   return Math.max(0, r.capacity - busy);
 }
 
+/** 同负载并列时的轮询游标：多个 runner 空闲槽位相同（如都空载）时打散分配，避免总压在同一台 */
+let rrCursor = 0;
+
 /**
  * 选择 runner。
  * @param linkid 用于 session 亲和：同 linkid 已有 session 时优先路由回原 runner。
@@ -102,17 +105,27 @@ export async function selectRunner(linkid: string, preferredRunnerId?: string): 
     // 原 runner down 或满：交给调用方决定是「降级新建 session」还是换一台
   }
 
-  // 2) 负载最低的 up runner
-  let best: Runner | null = null;
+  // 2) 负载最低的 up runner；并列最优时轮询，避免首次/空载时总落在同一台
+  const candidates: Runner[] = [];
   let bestSlots = -1;
   for (const r of up) {
     const slots = availableSlots(r);
     if (slots > bestSlots) {
-      best = r;
+      candidates.length = 0;
+      candidates.push(r);
       bestSlots = slots;
+    } else if (slots === bestSlots) {
+      candidates.push(r);
     }
   }
-  return best;
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  // up 已按 name 字典序排列，此处 round-robin 会在并列者之间轮流选择
+  const pick = candidates[rrCursor % candidates.length];
+  rrCursor = (rrCursor + 1) % candidates.length;
+  return pick;
 }
 
 /** 派发成功后调用：占用 +1 */
@@ -129,6 +142,11 @@ export function markFinished(runnerId: string): void {
 /** 通过 runner name 找 runner（供 admin 会话代理用） */
 export async function getRunnerByName(name: string): Promise<Runner | undefined> {
   return runnersStore.getByName(name);
+}
+
+/** 通过 runner id 找 runner（sessions.runner_id 存的是 id） */
+export async function getRunnerById(id: string): Promise<Runner | undefined> {
+  return runnersStore.get(id);
 }
 
 export function getRunnerHttpConfig(): RunnerHttpConfig {

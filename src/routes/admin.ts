@@ -13,10 +13,10 @@ import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore,
 import { getDb } from '../db.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { cancelTask, cancelByLinkidInQueue } from '../services/task-queue.js';
-import { getRunnerByName, getRunnerHttpConfig } from '../services/dispatcher.js';
-import { proxyGet, proxyDelete } from '../services/runner-client.js';
+import { getRunnerByName, getRunnerById, getRunnerHttpConfig, markDispatched, markFinished } from '../services/dispatcher.js';
+import { proxyGet, proxyDelete, streamRun } from '../services/runner-client.js';
 import { getLogger } from '../logger.js';
-import { nowReadable } from '../time.js';
+import { nowReadable, fmtLocalTs } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
 import { submitTask } from './process.js';
 
@@ -30,7 +30,7 @@ import { buildOutputOnlyEvents, renderHistoryHtml, renderHistoryMd } from '../se
 import { listMemories, getMemory, saveMemory, deleteMemory, ensureMemoryDir } from '../services/memory-store.js';
 import { xmindToMarkdown } from '../services/xmind.js';
 import { syncInterfacesFromPrompts } from '../store.js';import type { Config } from '../config.js';
-import type { TaskLog } from '../types.js';
+import type { TaskLog, RunSdkOptions, RunRequest } from '../types.js';
 
 const log = getLogger();
 
@@ -42,7 +42,8 @@ function sessionWorkDir(cfg: Config, linkid: string): string {
 /** 若该 session 归属某个远端 runner，返回其 addr；否则返回 null（本机处理） */
 async function resolveSessionRunnerAddr(session: { runner_id: string | null; linkid?: string } | undefined): Promise<string | null> {
   if (!session?.runner_id) return null;
-  const runner = await getRunnerByName(session.runner_id);
+  // sessions.runner_id 存的是 runners.id，不是 name
+  const runner = await getRunnerById(session.runner_id);
   if (!runner || runner.status !== 'up') return null;
   return runner.addr;
 }
@@ -244,6 +245,8 @@ export function createAdminRouter(cfg: Config): Router {
         error_message: t.error_message,
         created_at: t.created_at,
         finished_at: t.finished_at,
+        started_at: t.started_ts ? fmtLocalTs(t.started_ts) : null,
+        runner_name: t.runner_id ? ((await getRunnerById(t.runner_id))?.name ?? t.runner_id) : '本机',
       };
     }));
     res.json({ code: 0, data: {
@@ -263,6 +266,8 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({ code: 0, data: {
       ...task,
       title: extractTitle(task.request_body),
+      started_at: task.started_ts ? fmtLocalTs(task.started_ts) : null,
+      runner_name: task.runner_id ? ((await getRunnerById(task.runner_id))?.name ?? task.runner_id) : '本机',
       request_body: safeParse(task.request_body),
       request_response: safeParse(task.request_response),
     }});
@@ -722,8 +727,6 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
     const linkid = session.linkid;
-    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
-    log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir) }, 'session_chat_start');
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -731,6 +734,72 @@ export function createAdminRouter(cfg: Config): Router {
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
+
+    // 远端 runner 上的 session：续聊必须派回持有该 session 的 runner 执行，
+    // 否则控制面本地没有对应 transcript 与 workdir，resume 拿不到上下文。
+    const runnerAddr = await resolveSessionRunnerAddr(session);
+    if (runnerAddr) {
+      const runner = await getRunnerById(session.runner_id!);
+      const runnerId = runner!.id;
+      const sdkOptions: RunSdkOptions = {
+        model: cfg.llm.model,
+        max_turns: cfg.llm.max_turns,
+        effort_level: cfg.llm.effort_level,
+        disable_nonessential_traffic: cfg.llm.disable_nonessential_traffic,
+        attribution_header: cfg.llm.attribution_header,
+        auto_mode_server: cfg.llm.auto_mode_server,
+      };
+      const runReq: RunRequest = {
+        task_id: 'chat-' + uuidv4(),
+        linkid,
+        mode: 'chat',
+        prompt: message,
+        claude_md: null,            // resume：不覆盖既有 CLAUDE.md
+        resume_session_id: session_id,
+        sdk_options: sdkOptions,
+        env: await buildEnv(cfg, true) as Record<string, string>,
+      };
+
+      log.info({ session_id, linkid, runnerId, runnerAddr }, 'session_chat_dispatch_runner');
+
+      const httpCfg = getRunnerHttpConfig();
+      markDispatched(runnerId);
+      let finished = false;
+      const finish = (err?: Error) => {
+        if (finished) return;
+        finished = true;
+        markFinished(runnerId);
+        if (err) sendSSE(res, { type: 'error', message: err.message });
+        else sendSSE(res, { type: 'error', message: 'runner 连接中断' });
+        res.end();
+      };
+      streamRun(runnerAddr, runReq, httpCfg, (frame) => {
+        switch (frame.type) {
+          case 'session':
+            // resume 命中时 frame.session_id 与原 session 一致；若 runner 降级新建则为新 id
+            sessionsStore.upsert(frame.session_id, linkid, runnerId);
+            break;
+          case 'resume_gone':
+            sessionsStore.close(frame.session_id);
+            break;
+          case 'msg':
+            sendSSE(res, frame.message);
+            break;
+          case 'result':
+            if (finished) break;
+            finished = true;
+            markFinished(runnerId);
+            sendSSE(res, { type: 'end', session_id: frame.result.sessionId });
+            res.end();
+            break;
+        }
+      }, finish);
+      return;
+    }
+
+    // 本机 session：控制面本地直接续跑
+    const workDir = join(cfg.sys.runtime_dir, 'tasks', sanitizeLinkid(linkid));
+    log.info({ session_id, linkid, workDir, dirExists: existsSync(workDir) }, 'session_chat_start');
 
     try {
       const q = query({
@@ -791,11 +860,13 @@ export function createAdminRouter(cfg: Config): Router {
       code: 0,
       data: {
         total, page, page_size: pageSize,
-        items: items.map((t) => ({
+        items: await Promise.all(items.map(async (t) => ({
           task_id: t.task_id, linkid: t.linkid, session_id: t.session_id,
           title: extractTitle(t.request_body), path: t.path, status: t.status,
           created_at: t.created_at, finished_at: t.finished_at,
-        })),
+          started_at: t.started_ts ? fmtLocalTs(t.started_ts) : null,
+          runner_name: t.runner_id ? ((await getRunnerById(t.runner_id))?.name ?? t.runner_id) : '本机',
+        }))),
       },
     });
   });
@@ -812,6 +883,8 @@ export function createAdminRouter(cfg: Config): Router {
         task_id: task.task_id, linkid: task.linkid, session_id: task.session_id,
         title: extractTitle(task.request_body), path: task.path, status: task.status,
         error_message: task.error_message, created_at: task.created_at, finished_at: task.finished_at,
+        started_at: task.started_ts ? fmtLocalTs(task.started_ts) : null,
+        runner_name: task.runner_id ? ((await getRunnerById(task.runner_id))?.name ?? task.runner_id) : '本机',
         request_body: safeParse(task.request_body), request_response: safeParse(task.request_response),
         prompt: task.prompt, sdk_output: task.sdk_output,
         sdk_trace: await sdkTracesStore.getTraceByTaskId(task.task_id),

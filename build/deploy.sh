@@ -14,12 +14,18 @@
 # 环境变量（均可被同名环境变量覆盖）:
 #   IMAGE_TAG   镜像版本（默认取 package.json 的 version）
 #   HOST_PORT   控制面对外端口（默认 20001）
-#   RUNNER_PORT runner 监听端口（默认 20002）
+#   RUNNER_PORT runner 监听端口（默认 21001）
 #   RUNNER_MAX_CONCURRENT  单 runner 最大并发（默认 5）
 set -euo pipefail
 
-# 切换到项目根目录（本脚本位于 build/ 下）
-cd "$(dirname "$0")/.."
+# 定位项目根目录（本脚本位于 build/ 下）。用 BASH_SOURCE 而非 $0，
+# 避免「用相对路径从项目外调用脚本」时 dirname 解析错位，导致 proj_root 算成 / 等错误值。
+PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJ_ROOT"
+
+# 默认项目名取部署目录名，让 control / runner1 / runner2 各自独立，
+# 避免都落到 compose 文件所在目录名（build/）导致互相覆盖、误判孤儿容器。
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
 
 ENV_FILE="data/.runner-env"
 
@@ -63,6 +69,21 @@ resolve_compose() {
   esac
 }
 
+# 预创建 compose bind mount 的源目录（data/claude-config 等），owner 设为 HOST_UID，
+# 否则容器以 HOST_UID 运行时对宿主机 root 建出的目录无写权限。
+ensure_bind_dirs() {
+  local compose_file="$1"
+  docker-compose -f "$compose_file" config 2>/dev/null \
+    | awk '/source:/{sub(/^[ \t]*source:[ \t]*/, ""); print}' \
+    | while IFS= read -r src; do
+        [ -z "$src" ] && continue
+        case "$src" in
+          "$PROJ_ROOT"/*) mkdir -p "$src" ;;
+          *) ;;  # 项目外路径：不预创建
+        esac
+      done
+}
+
 # ── 子命令 ──────────────────────────────────────────────────────
 cmd_gen_token() {
   if [ -f "$ENV_FILE" ] && grep -q '^RUNNER_TOKEN=' "$ENV_FILE" 2>/dev/null; then
@@ -96,10 +117,12 @@ cmd_up() {
   export HOST_GID="${HOST_GID:-$(id -g)}"
   export IMAGE_TAG="${IMAGE_TAG:-latest}"
   export HOST_PORT="${HOST_PORT:-20001}"
-  export RUNNER_PORT="${RUNNER_PORT:-20002}"
+  export RUNNER_PORT="${RUNNER_PORT:-21001}"
   export RUNNER_MAX_CONCURRENT="${RUNNER_MAX_CONCURRENT:-5}"
   export RUNNER_TIMEOUT_MS="${RUNNER_TIMEOUT_MS:-600000}"
   export RUNNER_GRACE_MS="${RUNNER_GRACE_MS:-60000}"
+
+  ensure_bind_dirs "$compose_file"
 
   local host_ip
   host_ip=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
@@ -135,7 +158,7 @@ cmd_down() {
   load_env
   export IMAGE_TAG="${IMAGE_TAG:-latest}"
   export HOST_PORT="${HOST_PORT:-20001}"
-  export RUNNER_PORT="${RUNNER_PORT:-20002}"
+  export RUNNER_PORT="${RUNNER_PORT:-21001}"
 
   msg "停止并移除 $role 容器"
   docker-compose -f "$compose_file" down
@@ -149,7 +172,7 @@ cmd_restart() {
   load_env
   export IMAGE_TAG="${IMAGE_TAG:-latest}"
   export HOST_PORT="${HOST_PORT:-20001}"
-  export RUNNER_PORT="${RUNNER_PORT:-20002}"
+  export RUNNER_PORT="${RUNNER_PORT:-21001}"
 
   msg "重启 $role"
   docker-compose -f "$compose_file" restart

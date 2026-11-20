@@ -27,7 +27,7 @@ npm start          # HTTPS 模式（读取 deploy/certs/cert.pem、key.pem）
 本地开发 runner（集群联调用，无需证书/数据库）：
 
 ```bash
-npm run dev:runner   # 热更启动 runner，监听 RUNNER_PORT（默认 20002）
+npm run dev:runner   # 热更启动 runner，监听 RUNNER_PORT（默认 21001）
 ```
 
 构建产物（同镜像双入口）：
@@ -60,10 +60,10 @@ npm run dev:runner   # 热更启动 runner，监听 RUNNER_PORT（默认 20002�
 runner:
   addresses:
     - name: runner-1
-      addr: https://192.168.1.11:20002   # runner 服务器内网 IP（默认 HTTPS，自签证书）
+      addr: https://192.168.1.11:21001   # runner 服务器内网 IP（默认 HTTPS，自签证书）
       capacity: 5
     - name: runner-2
-      addr: https://192.168.1.12:20002
+      addr: https://192.168.1.12:21001
       capacity: 5
 ```
 
@@ -76,7 +76,7 @@ runner:
 | 配置 | 环境变量 | 默认 | 说明 |
 |------|---------|------|------|
 | `runner.token` | `RUNNER_TOKEN` | 空 | 控制面↔runner 认证，从环境变量读 |
-| `runner.port` | `RUNNER_PORT` | 20002 | runner 监听端口 |
+| `runner.port` | `RUNNER_PORT` | 21001 | runner 监听端口 |
 | `runner.heartbeat_ms` | `RUNNER_HEARTBEAT_MS` | 5000 | 心跳间隔 |
 | `runner.connect_timeout_ms` | `RUNNER_CONNECT_TIMEOUT_MS` | 5000 | 连接超时 |
 | `runner.request_timeout_ms` | `RUNNER_REQUEST_TIMEOUT_MS` | 15000 | 短请求超时 |
@@ -86,7 +86,7 @@ runner:
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `RUNTIME_DIR` | ./runtime | runner 本地工作目录（不挂载，重启丢弃） |
-| `RUNNER_PORT` | 20002 | 监听端口 |
+| `RUNNER_PORT` | 21001 | 监听端口 |
 | `RUNNER_MAX_CONCURRENT` | 5 | 单 runner 最大并发 SDK 数 |
 | `RUNNER_TIMEOUT_MS` | 600000 | 看门狗滑动超时 |
 | `RUNNER_GRACE_MS` | 60000 | 看门狗宽限 |
@@ -209,7 +209,7 @@ AI 数字员工/
 - `DATA_DIR` — 第 1 类持久化数据根目录（默认 `./data`，Docker 中为 `/app/data`）
 - `RUNTIME_DIR` — 第 3 类运行时工作目录（默认 `./runtime`，Docker 中为 `/app/runtime`）
 - `RUNNER_TOKEN` — 控制面 ↔ runner 认证（集群模式必填，单实例无需）
-- `RUNNER_PORT` — runner 监听端口（默认 20002）
+- `RUNNER_PORT` — runner 监听端口（默认 21001）
 - 其余集群配置见上方「Docker 集群部署」节
 
 **关键点**：

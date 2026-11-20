@@ -6,7 +6,7 @@
 
 ## 1. 架构与拓扑
 
-> 端口一览：`20001` = 控制面对外（`HOST_PORT`），`20002` = runner（`RUNNER_PORT`）。
+> 端口一览：`20001` = 控制面对外（`HOST_PORT`），`21001` = runner（`RUNNER_PORT`）。
 > 外部服务端口由 `cfg.yml` 的 `llm.base_url` 与 `prompt_config` 表（注入为 `DP_*` 环境变量）决定，非固定值。
 
 ![集群拓扑](topology.svg)
@@ -24,7 +24,7 @@
 |------|------|
 | Docker ≥ 24 | 本脚本用 `docker-compose`（v5 兼容 v2） |
 | Node.js ≥ 22 | 仅构建机需要（`build.sh` 读取 `package.json` 版本号） |
-| 内网互通 | 控制面能访问各 runner 的 `20002` 端口；runner 能访问 LLM 网关 |
+| 内网互通 | 控制面能访问各 runner 的 `21001` 端口；runner 能访问 LLM 网关 |
 | 镜像分发 | 各服务器需要同一份 `dp-agt` 镜像（推 registry 或 `docker save/load`） |
 
 ## 3. 网络策略（内网需申请开通）
@@ -37,7 +37,7 @@
 |---|-----|------|------|------|------|
 | 1 | 外部业务系统 | 控制面服务器 | `20001` | HTTPS | 提交任务、查询结果 |
 | 2 | 管理员终端 | 控制面服务器 | `20001` | HTTPS | 管理后台 |
-| 3 | 控制面服务器 | 各 runner 服务器 | `20002` | HTTPS | 任务派发 / 心跳 / 取消 / 会话代理 |
+| 3 | 控制面服务器 | 各 runner 服务器 | `21001` | HTTPS | 任务派发 / 心跳 / 取消 / 会话代理 |
 | 4 | 各 runner 服务器 | LLM 网关 | `<网关端口>` | HTTP(S) | 跑 Claude Agent SDK |
 | 5 | 控制面服务器 | LLM 网关 | `<网关端口>` | HTTP(S) | 管理后台 chat（不用可不开） |
 
@@ -65,7 +65,7 @@
 【必开】
 1. 外部系统      → 控制面服务器 <IP>:20001/tcp  (HTTPS)  任务提交与结果查询
 2. 管理员终端    → 控制面服务器 <IP>:20001/tcp  (HTTPS)  管理后台
-3. 控制面服务器  → 各 runner 服务器 <IP>:20002/tcp (HTTPS)  任务派发与心跳
+3. 控制面服务器  → 各 runner 服务器 <IP>:21001/tcp (HTTPS)  任务派发与心跳
 4. 各 runner 服务器 → LLM 网关 (api-gate) <IP>:<端口>  (HTTP/HTTPS)  模型调用
 5. 控制面服务器  → LLM 网关 (api-gate) <IP>:<端口>  (HTTP/HTTPS)  后台 chat（可选）
 
@@ -82,8 +82,8 @@
 
 ### 3.5 注意点
 
-- **端口号可配**：`20001` = `HOST_PORT`，`20002` = `RUNNER_PORT`；LLM 网关端口以 `cfg.yml` 的 `llm.base_url` 为准，外部服务端口以 `prompt_config` 表的 `DP_*` 配置为准。
-- **第 3 条是集群内部通信**（控制面 → runner 的 `20002`），除对外端口外需单独开通。
+- **端口号可配**：`20001` = `HOST_PORT`，`21001` = `RUNNER_PORT`；LLM 网关端口以 `cfg.yml` 的 `llm.base_url` 为准，外部服务端口以 `prompt_config` 表的 `DP_*` 配置为准。
+- **第 3 条是集群内部通信**（控制面 → runner 的 `21001`），除对外端口外需单独开通。
 - **runner 是"发起方"**：第 4、6、7、8、9、10 条都是 **runner 出站**流量，不是入站。只开入站端口，runner 会因访问不了 LLM 网关 / 文件服务器 / 外部服务而失败。
 - **镜像离线分发**：镜像走本地打包 + 拷贝到服务器（`docker save/load`），不走 registry，无需为镜像拉取开网络策略。
 - **构建机的联网**（下载 Node 二进制、`npm install`）属构建时行为，走代理即可，不列入运行时策略。
@@ -140,7 +140,7 @@ ssh user@<server-host> "docker load < /tmp/dp-agt-0.1.0.tar.gz"
 
 ```bash
 ./build/deploy.sh ps runner
-curl -k https://localhost:20002/status -H "Authorization: Bearer <token>"
+curl -k https://localhost:21001/status -H "Authorization: Bearer <token>"
 # 返回 { "capacity": 5, "running_count": 0, "uptime_ms": ... }
 ```
 
@@ -152,10 +152,10 @@ curl -k https://localhost:20002/status -H "Authorization: Bearer <token>"
 runner:
   addresses:
     - name: runner-1
-      addr: https://192.168.1.11:20002     # runner 服务器 A 的内网 IP
+      addr: https://192.168.1.11:21001     # runner 服务器 A 的内网 IP
       capacity: 5
     - name: runner-2
-      addr: https://192.168.1.12:20002     # runner 服务器 B
+      addr: https://192.168.1.12:21001     # runner 服务器 B
       capacity: 5
 ```
 
@@ -212,7 +212,7 @@ curl -k https://<控制面IP>:20001/health
 | `RUNNER_TOKEN` | 空 | 两者 | 控制面↔runner 认证，必填（`gen-token` 生成） |
 | `HOST_UID` / `HOST_GID` | `id -u` / `id -g` | 两者 | 容器运行用户，匹配 `data/` 目录属主 |
 | `HOST_PORT` | `20001` | 控制面 | 对外端口 |
-| `RUNNER_PORT` | `20002` | runner | runner 监听端口 |
+| `RUNNER_PORT` | `21001` | runner | runner 监听端口 |
 | `RUNNER_MAX_CONCURRENT` | `5` | runner | 单 runner 最大并发 SDK 数 |
 | `RUNNER_TIMEOUT_MS` | `600000` | runner | 看门狗滑动超时 |
 | `RUNNER_GRACE_MS` | `60000` | runner | 看门狗宽限 |
@@ -224,7 +224,7 @@ curl -k https://<控制面IP>:20001/health
 
 ### Q1：控制面日志里 `runner_heartbeat_failed` 一直刷？
 
-- 检查控制面能否访问 runner 的 `20002` 端口（`curl -k https://<runner-ip>:20002/status`）
+- 检查控制面能否访问 runner 的 `21001` 端口（`curl -k https://<runner-ip>:21001/status`）
 - 检查 `data/.runner-env` 里 token 是否与 runner 完全一致
 - 检查 `cfg.yml` 的 `addr` 是否写对了协议（默认 `https://`）
 

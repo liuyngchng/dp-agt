@@ -248,7 +248,7 @@ async function dispatchToRunner(
     auto_mode_server: cfg.llm.auto_mode_server,
   };
 
-  const claudeMd = await buildClaudeMdForDispatch(existingSession, cfg);
+  const claudeMd = await buildClaudeMdForDispatch(cfg);
   const env = await buildEnv(cfg, true) as Record<string, string>;
 
   const runReq: RunRequest = {
@@ -381,12 +381,8 @@ async function dispatchToRunner(
   });
 }
 
-/** resume 时返回 null（不覆盖既有 CLAUDE.md），否则控制面构建一份完整 CLAUDE.md */
-async function buildClaudeMdForDispatch(
-  existingSession: { session_id: string } | undefined,
-  cfg: Config,
-): Promise<string | null> {
-  if (existingSession?.session_id) return null;
+/** 构建一份完整 CLAUDE.md 下发（resume 也下发，由 runner 侧决定是否写入） */
+async function buildClaudeMdForDispatch(cfg: Config): Promise<string> {
   return buildClaudeMd(cfg.sys.data_dir);
 }
 
