@@ -18,8 +18,10 @@
 #   RUNNER_MAX_CONCURRENT  单 runner 最大并发（默认 5）
 set -euo pipefail
 
-# 切换到项目根目录（本脚本位于 build/ 下）
-cd "$(dirname "$0")/.."
+# 定位项目根目录（本脚本位于 build/ 下）。用 BASH_SOURCE 而非 $0，
+# 避免「用相对路径从项目外调用脚本」时 dirname 解析错位，导致 proj_root 算成 / 等错误值。
+PROJ_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJ_ROOT"
 
 # 默认项目名取部署目录名，让 control / runner1 / runner2 各自独立，
 # 避免都落到 compose 文件所在目录名（build/）导致互相覆盖、误判孤儿容器。
@@ -72,15 +74,13 @@ resolve_compose() {
 # 仅处理「项目根目录内」的源路径（相对路径 ../xxx 解析后仍在本项目内）；绝对路径挂系统目录的不碰。
 ensure_bind_dirs() {
   local compose_file="$1"
-  local proj_root
-  proj_root="$(cd "$(dirname "$0")/.." && pwd)"
 
   docker-compose -f "$compose_file" config 2>/dev/null \
     | awk '/source:/{sub(/^[ \t]*source:[ \t]*/, ""); print}' \
     | while IFS= read -r src; do
         [ -z "$src" ] && continue
         case "$src" in
-          "$proj_root"/*) mkdir -p "$src" ;;
+          "$PROJ_ROOT"/*) mkdir -p "$src" ;;
           *) ;;  # 项目外路径：不预创建
         esac
       done

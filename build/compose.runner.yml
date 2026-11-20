@@ -53,8 +53,11 @@ services:
       RUNNER_GRACE_MS: ${RUNNER_GRACE_MS:-60000}
       RUNNER_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN 必须设置，请先 export RUNNER_TOKEN=xxx}
     volumes:
-      # 仅持久化日志（任务 workdir 仍留在容器临时层，保持「重启即丢」的无状态语义）
+      # 持久化日志与会话历史；任务 workdir 仍留在容器临时层，保持「重启即丢」。
+      # claude-config 是 SDK 会话历史（projects/.../*.jsonl），挂载后 runner 重建
+      # 仍能 resume 同一 linkid 的会话，否则重启必触发 resume-gone 降级为新建。
       - ../data/logs:/app/runtime/logs
+      - ../data/claude-config:/app/runtime/claude-config
     ports:
       - "${RUNNER_PORT:-21001}:${RUNNER_PORT:-21001}"
     extra_hosts: *extra-hosts

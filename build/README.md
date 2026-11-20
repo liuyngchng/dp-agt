@@ -12,7 +12,7 @@
 ![集群拓扑](topology.svg)
 
 - **控制面**：唯一 SQLite 写者，挂载 `data/` 持久化目录。轻量，单实例。
-- **runner**：无状态执行节点，不读 SQLite / prompts / secrets，本地 `runtime/` 重启即丢。
+- **runner**：无状态执行节点，不读 SQLite / prompts / secrets；本地 `runtime/tasks/` 重启即丢，但会话历史 `runtime/claude-config/` 挂载到 `data/claude-config` 持久化，重建后仍可 resume。
 - **出站依赖**：runner 在执行任务时会以出站方式访问 LLM 网关（`api-gate`）、doc-util（WPS 续期）、rd-cli（审稿，异步+轮询）、业务回调、工作流服务、文件下载白名单。地址/令牌由 `prompt_config` 表加密注入 Agent 子进程环境变量（`DP_*`）。
 - 控制面通过 `data/cfg.yml` 的 `runner.addresses` 静态认识各 runner，按容量 + 心跳选路。
 
@@ -256,7 +256,7 @@ curl -k https://<控制面IP>:20001/health
 
 ### Q4：runner 挂了，上面的 session/workdir 丢失怎么办？
 
-该 linkid 下次提交时，控制面发现原 runner down，会新建 session（session resume 语义降级），业务可继续。
+`claude-config/` 已挂载到宿主机 `data/claude-config`，runner 重建后会话历史仍在，可直接 resume。只有 `tasks/`（任务工作目录）会丢，但里面只是下载的临时文件，可重新下载、CLAUDE.md 可重新注入。若个别 runner 的宿主机数据也被清理，控制面发现原 runner down / session 丢失，会降级新建 session，业务仍可继续。
 
 ---
 

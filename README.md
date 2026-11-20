@@ -84,7 +84,7 @@ runner:
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
-| `RUNTIME_DIR` | ./runtime | runner 本地工作目录（不挂载，重启丢弃） |
+| `RUNTIME_DIR` | ./runtime | runner 运行时工作目录（其中 `claude-config/` 挂载持久化，`tasks/` 不挂载） |
 | `RUNNER_PORT` | 21001 | 监听端口 |
 | `RUNNER_MAX_CONCURRENT` | 5 | 单 runner 最大并发 SDK 数 |
 | `RUNNER_TIMEOUT_MS` | 600000 | 看门狗滑动超时 |
@@ -195,27 +195,27 @@ AI 数字员工/
 
 ### 数据目录与挂载（重要）
 
-数据按「是否需要在容器外持久化」分为三类，Docker 部署时**只挂载第 1 类目录**。
+数据按「是否需要在容器外持久化」分为三类，Docker 部署时挂载第 1 类目录，以及第 3 类中的会话历史目录。
 
 | 类别 | 目录 | 内容 | 持久化 | 说明 |
 |------|------|------|--------|------|
 | 第 1 类 | `DATA_DIR`（宿主机挂载到 `/app/data`） | `cfg.yml`、`app.db`、`logs/`、`secrets.key` | ✅ 重启保留 | 配置文件、数据库、日志、加密密钥 |
 | 第 2 类 | `/app/assets`（镜像内，不挂载） | `cfg.csv.template`、`mock.json` | ✅ 随镜像 | 静态模板资源，构建时打入镜像 |
-| 第 3 类 | `RUNTIME_DIR`（容器内，不挂载） | `tasks/`、`claude-config/` | ❌ 重启丢弃 | SDK 工作目录与会话历史，ephemeral |
+| 第 3a 类 | `RUNTIME_DIR/claude-config`（宿主机 `data/claude-config` 挂载到 `/app/runtime/claude-config`） | SDK 会话历史 `projects/.../*.jsonl` | ✅ 重启保留 | runner 重建后仍能 resume 同一 linkid 会话 |
+| 第 3b 类 | `RUNTIME_DIR/tasks`（容器内，不挂载） | 每个任务的工作目录（下载文件、CLAUDE.md、上下文快照） | ❌ 重启丢弃 | 任务临时文件，重启后可重新下载/注入 |
 
 **环境变量**：
 
 - `DATA_DIR` — 第 1 类持久化数据根目录（默认 `./data`，Docker 中为 `/app/data`）
-- `RUNTIME_DIR` — 第 3 类运行时工作目录（默认 `./runtime`，Docker 中为 `/app/runtime`）
+- `RUNTIME_DIR` — 运行时工作目录（默认 `./runtime`，Docker 中为 `/app/runtime`；其中 `claude-config/` 已挂载持久化，`tasks/` 不挂载）
 - `RUNNER_TOKEN` — 控制面 ↔ runner 认证（集群模式必填，单实例无需）
 - `RUNNER_PORT` — runner 监听端口（默认 21001）
 - 其余集群配置见上方「Docker 集群部署」节
 
 **关键点**：
 
-- SDK 会话历史写入 `RUNTIME_DIR/claude-config`（通过 `CLAUDE_CONFIG_DIR` 环境变量指定），**不再使用 `~/.claude`**。这避免了宿主机 UID 与容器 UID 不一致时，bind mount 的 `~/.claude` 目录无法写入导致历史消息丢失的问题。
-- `tasks/`（每个任务的 SDK 工作目录，含下载的文件、上下文快照）同样放在 `RUNTIME_DIR`，重启后自动丢弃，不影响持久化数据。
-- 因此 Docker 部署**不需要**再挂载 `$DATA_DIR/.claude`，`run.sh` 已移除该挂载项。
+- SDK 会话历史写入 `RUNTIME_DIR/claude-config`（通过 `CLAUDE_CONFIG_DIR` 环境变量指定），**不再使用 `~/.claude`**。Docker 部署时该目录 bind mount 到 `data/claude-config`（源目录由 `deploy.sh` 以当前用户预创建，owner 与容器 `HOST_UID` 一致），既避免宿主机 UID 与容器 UID 不一致导致写失败，又保证 runner 重建后会话不丢。
+- `tasks/`（每个任务的 SDK 工作目录，含下载的文件、上下文快照）仍在 `RUNTIME_DIR` 且不挂载，重启后自动丢弃——内含下载的公文等敏感临时文件，丢之可重新下载，不落盘宿主机更安全。
 
 
 ### 提示词与配置管理（模板管理页面）
