@@ -21,6 +21,8 @@ interface CfgFile {
     watchdog_grace_ms?: number;
     log_rolled_count?: number;
     log_gz_count?: number;
+    session_max_resume?: number;
+    session_max_age_days?: number;
   };
   llm?: {
     base_url?: string;
@@ -66,6 +68,8 @@ export interface Config {
     watchdog_grace_ms: number;
     log_rolled_count: number;
     log_gz_count: number;
+    session_max_resume: number;
+    session_max_age_days: number;
   };
   llm: {
     base_url: string;
@@ -168,6 +172,10 @@ export function loadConfig(): Config {
       log_rolled_count: envInt('LOG_ROLLED_COUNT', y.log_rolled_count ?? 30),
       // 压缩日志保留数量（.log.gz）
       log_gz_count: envInt('LOG_GZ_COUNT', y.log_gz_count ?? 60),
+      // 同一 linkid 的 session 最多复用（resume）次数，超过后新建会话
+      session_max_resume: envInt('SESSION_MAX_RESUME', y.session_max_resume ?? 10),
+      // 同一 linkid 的 session 最长复用天数（自创建起），超过后新建会话
+      session_max_age_days: envInt('SESSION_MAX_AGE_DAYS', y.session_max_age_days ?? 7),
     },
     llm: {
       base_url: llmBaseUrl,

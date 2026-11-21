@@ -38,6 +38,12 @@ sys:
   log_rolled_count: 30     # 滚动 .log 文件保留数量（不含 .gz）
   log_gz_count: 60         # 压缩 .log.gz 文件保留数量
 
+  # 同一 linkid 的 session 最多复用（resume）次数，超过后新建会话
+  session_max_resume: 10
+
+  # 同一 linkid 的 session 最长复用天数（自创建起），超过后新建会话
+  session_max_age_days: 7
+
 # ---- LLM 适配器配置（必填，指向 Anthropic 协议兼容网关） ----
 # 本服务通过网关调用 LLM，base_url 留空则启动时报错退出。
 llm:

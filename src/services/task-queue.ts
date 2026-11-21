@@ -90,13 +90,36 @@ async function processItem(item: WorkerItem): Promise<void> {
     taskLogsStore.updateResult(task_id, { prompt: rendered });
 
     // 查 sessions 表：同一 linkid 是否有已存在的 session
-    const existingSession = sessionsStore.getByLinkid(linkid);
-    const resumeSessionId = existingSession?.session_id;
-    const preferredRunnerId = existingSession?.runner_id; // session 亲和
+    let existingSession = sessionsStore.getByLinkid(linkid);
+    let resumeSessionId = existingSession?.session_id;
+    let preferredRunnerId = existingSession?.runner_id; // session 亲和
 
-    if (resumeSessionId) {
-      sessionsStore.touch(resumeSessionId);
-      log.info({ task_id, linkid, sessionId: resumeSessionId }, 'session_resume');
+    if (existingSession) {
+      // 复用上限：超过次数/天数则关闭旧会话（等待 retention 回收），本次降级为新建。
+      const overResumeLimit =
+        cfg.sys.session_max_resume > 0 &&
+        existingSession.resume_count >= cfg.sys.session_max_resume;
+      const overAgeLimit =
+        cfg.sys.session_max_age_days > 0 &&
+        typeof existingSession.created_ts === 'number' &&
+        nowTs() - existingSession.created_ts >= cfg.sys.session_max_age_days * 24 * 3600 * 1000;
+      if (overResumeLimit || overAgeLimit) {
+        sessionsStore.close(existingSession.session_id);
+        log.info({
+          task_id,
+          linkid,
+          sessionId: existingSession.session_id,
+          resumeCount: existingSession.resume_count,
+          maxResume: cfg.sys.session_max_resume,
+          maxAgeDays: cfg.sys.session_max_age_days,
+        }, 'session_limit_reached_create_new');
+        existingSession = undefined;
+        resumeSessionId = undefined;
+        preferredRunnerId = undefined;
+      } else {
+        sessionsStore.touch(existingSession.session_id);
+        log.info({ task_id, linkid, sessionId: existingSession.session_id }, 'session_resume');
+      }
     }
 
     // ── 滑动超时（arm）│ 阈值 = cfg.llm.timeout_ms ──

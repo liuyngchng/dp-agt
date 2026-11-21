@@ -118,6 +118,20 @@ runner:
 - **Path 即接口**：管理员在 Web 后台为每个 path 配置一段提示词模板，调用方感知为"不同接口"，无需改代码、无需重启
 - **占位符渲染**：提示词中用 `{{request.field}}` 引用请求 JSON 中的任意字段
 - **无业务逻辑**：系统只是 Claude Agent SDK 的网关壳，所有文档分析判断全交给 LLM
+
+### Session 复用与限制策略
+
+同一 `linkid` 的多次提交会复用同一个 Claude Agent SDK session（`resume` 续跑），保留对话上下文。为避免无限复用导致上下文无限膨胀（token 成本线性上涨、撞上下文窗口、早期无关历史稀释注意力），session 复用设有**双重上限**，达到任一上限即关闭旧会话、本次降级为新建会话：
+
+| 配置项 | 默认值 | 含义 |
+|--------|--------|------|
+| `sys.session_max_resume` | `10` | 同一 session 最多复用（resume）次数，超过后新建 |
+| `sys.session_max_age_days` | `7` | 同一 session 自创建起最长复用天数，超过后新建 |
+
+- 每次命中复用（resume）时，`sessions.resume_count` 累加 `1`；新建会话时归零。
+- 达到上限后，旧会话被标记为 `closed`，其 `updated_ts` 不再刷新，随后按 `sys.retention_days`（默认 180 天）到期由定时清理任务调用 SDK 的 `deleteSession` 回收（含 runner 上的会话历史文件）。
+- 配置项位于 `cfg.yml`（或 `cfg.yml.template`）的 `sys` 段，也支持环境变量 `SESSION_MAX_RESUME` / `SESSION_MAX_AGE_DAYS` 覆盖；设为 `0` 表示关闭对应维度的上限检查。
+
 ## 任务状态机
 
 任务状态机定义在 `src/types.ts`（状态类型）与 `src/services/task-queue.ts`（转移逻辑）中。

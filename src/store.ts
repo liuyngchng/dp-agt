@@ -66,8 +66,10 @@ export function initStore(dataDir: string): Database.Database {
 
     CREATE TABLE IF NOT EXISTS sessions (
       session_id  TEXT PRIMARY KEY,
-      linkid      TEXT NOT NULL UNIQUE,
+      linkid      TEXT NOT NULL,
       status      TEXT NOT NULL DEFAULT 'active',
+      resume_count INTEGER NOT NULL DEFAULT 0,
+      runner_id   TEXT,
       created_at  TEXT,
       updated_at  TEXT,
       created_ts  INTEGER,
@@ -149,11 +151,45 @@ export function initStore(dataDir: string): Database.Database {
   try { db.exec(`ALTER TABLE prompt_config ADD COLUMN note TEXT DEFAULT ''`); } catch { /* */ }
   try { db.exec(`ALTER TABLE sessions ADD COLUMN runner_id TEXT`); } catch { /* */ }
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN runner_id TEXT`); } catch { /* */ }
+  try { db.exec(`ALTER TABLE sessions ADD COLUMN resume_count INTEGER NOT NULL DEFAULT 0`); } catch { /* */ }
+
+  // 迁移：旧 sessions 表 linkid 带 UNIQUE 约束（sqlite_autoindex），只允许同一 linkid 存一行，
+  // 无法保留「已 close 的旧会话」供 retention 后续 deleteSession 回收。这里在保留数据的前提下
+  // 重建表去掉该约束，改用下方「每 linkid 仅一条 active」的部分唯一索引保证互斥。
+  try {
+    const autoIndex = db.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sessions' AND name LIKE 'sqlite_autoindex_sessions%'`
+    ).get() as { name: string } | undefined;
+    if (autoIndex) {
+      const migrate = db.transaction(() => {
+        db.exec(`
+          CREATE TABLE sessions_new (
+            session_id  TEXT PRIMARY KEY,
+            linkid      TEXT NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'active',
+            resume_count INTEGER NOT NULL DEFAULT 0,
+            runner_id   TEXT,
+            created_at  TEXT,
+            updated_at  TEXT,
+            created_ts  INTEGER,
+            updated_ts  INTEGER
+          );
+          INSERT INTO sessions_new (session_id, linkid, status, resume_count, runner_id, created_at, updated_at, created_ts, updated_ts)
+            SELECT session_id, linkid, status, resume_count, runner_id, created_at, updated_at, created_ts, updated_ts FROM sessions;
+          DROP TABLE sessions;
+          ALTER TABLE sessions_new RENAME TO sessions;
+        `);
+      });
+      migrate();
+    }
+  } catch { /* 重建失败不阻塞启动，仅回退为原行为 */ }
 
   // ── 性能索引 ──
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_task_logs_created_ts ON task_logs(created_ts DESC)`); } catch { /* */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_task_logs_linkid_created_ts ON task_logs(linkid, created_ts DESC)`); } catch { /* */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_updated_ts ON sessions(updated_ts DESC)`); } catch { /* */ }
+  // 同一 linkid 至多一条 active 会话（closed 的旧会话可共存，供 retention 回收）
+  try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_active_linkid ON sessions(linkid) WHERE status = 'active'`); } catch { /* */ }
 
   backfillTsColumns(db);
   seedDefaults(db);
@@ -167,6 +203,7 @@ function backfillTsColumns(db: Database.Database): void {
     { table: 'task_logs', ts: 'created_ts', at: 'created_at' },
     { table: 'task_logs', ts: 'finished_ts', at: 'finished_at' },
     { table: 'users', ts: 'created_ts', at: 'created_at' },
+    { table: 'sessions', ts: 'created_ts', at: 'created_at' },
   ];
   for (const { table, ts, at } of rows) {
     const stale = db.prepare(
@@ -526,18 +563,34 @@ export const sessionsStore = {
   upsert(sessionId: string, linkid: string, runnerId?: string): Session {
     const now = nowReadable();
     const ts = nowTs();
-    // 以 linkid 为唯一键：同一 linkid 复用会话时，无论旧行是 active 还是 closed，
-    // 都覆盖为当前新的 session_id，避免 UNIQUE(linkid) 冲突。
+    const existing = this.get(sessionId);
+
+    // 同 session 续跑（resume 命中）：刷新活跃时间与 runner 归属，保留 resume_count。
+    if (existing && existing.status === 'active') {
+      db.prepare(
+        `UPDATE sessions SET status = 'active', runner_id = COALESCE(?, runner_id), updated_at = ?, updated_ts = ? WHERE session_id = ?`
+      ).run(runnerId ?? null, now, ts, sessionId);
+      return this.get(sessionId)!;
+    }
+
+    // 新 session（或把已 close 的旧 session 重新激活为全新会话）：
+    // 先关闭该 linkid 下仍 active 的旧会话，让其进入 retention 回收队列，再写新行。
     db.prepare(
-      `INSERT INTO sessions (session_id, linkid, status, runner_id, created_at, updated_at, created_ts, updated_ts)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(linkid) DO UPDATE SET
-         session_id = excluded.session_id,
+      `UPDATE sessions SET status = 'closed', updated_at = ?, updated_ts = ? WHERE linkid = ? AND status = 'active'`
+    ).run(now, ts, linkid);
+    db.prepare(
+      `INSERT INTO sessions (session_id, linkid, status, resume_count, runner_id, created_at, updated_at, created_ts, updated_ts)
+       VALUES (?, ?, 'active', 0, ?, ?, ?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET
          status = 'active',
+         resume_count = 0,
+         linkid = excluded.linkid,
          runner_id = COALESCE(excluded.runner_id, sessions.runner_id),
+         created_at = excluded.created_at,
+         created_ts = excluded.created_ts,
          updated_at = excluded.updated_at,
          updated_ts = excluded.updated_ts`
-    ).run(sessionId, linkid, 'active', runnerId ?? null, now, now, ts, ts);
+    ).run(sessionId, linkid, runnerId ?? null, now, now, ts, ts);
     return this.get(sessionId)!;
   },
   get(sessionId: string): Session | undefined {
@@ -565,12 +618,12 @@ export const sessionsStore = {
       "UPDATE sessions SET status = 'closed', updated_at = ?, updated_ts = ? WHERE session_id = ?"
     ).run(now, ts, sessionId).changes > 0;
   },
-  // 有新任务命中该 session 时刷新「更新时间」（保持 status 为 active）
+  // 有新任务命中该 session 时刷新「更新时间」（保持 status 为 active），并累计复用次数
   touch(sessionId: string): boolean {
     const now = nowReadable();
     const ts = nowTs();
     return db.prepare(
-      "UPDATE sessions SET status = 'active', updated_at = ?, updated_ts = ? WHERE session_id = ?"
+      "UPDATE sessions SET status = 'active', resume_count = resume_count + 1, updated_at = ?, updated_ts = ? WHERE session_id = ?"
     ).run(now, ts, sessionId).changes > 0;
   },
   // 把 session 归属到某个 runner（新建 session 拿到 runner_id 时调用）

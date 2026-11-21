@@ -63,6 +63,7 @@ export interface Session {
   session_id: string;
   linkid: string;
   status: SessionStatus;
+  resume_count: number;          // 已复用（resume）次数，达上限后新建会话
   runner_id: string | null;   // 持有该 linkid session/workdir 的 runner
   created_at: string;
   updated_at: string;
