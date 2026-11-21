@@ -46,9 +46,9 @@
     <line x1="880" y1="178" x2="880" y2="380"/>
     <!-- 控制面：总线 + 两列脊柱 -->
     <line x1="530" y1="178" x2="530" y2="184"/>
-    <line x1="462.5" y1="184" x2="722.5" y2="184"/>
-    <line x1="462.5" y1="184" x2="462.5" y2="380"/>
-    <line x1="722.5" y1="184" x2="722.5" y2="380"/>
+    <line x1="420" y1="184" x2="640" y2="184"/>
+    <line x1="420" y1="184" x2="420" y2="380"/>
+    <line x1="640" y1="184" x2="640" y2="380"/>
   </g>
 
   <!-- ══ 根节点 ══ -->
@@ -61,104 +61,104 @@
 
   <!-- ══ 二级分支 ══ -->
   <g filter="url(#sh)">
-    <rect x="60" y="136" width="230" height="42" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <rect x="80" y="136" width="190" height="42" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
   </g>
-  <use href="#fa-desktop" x="72" y="146" width="14" height="14" fill="#4b6cb7"/>
-  <text x="92" y="158" fill="#1e293b" font-size="12.5" font-weight="600">对外接入层</text>
-  <text x="92" y="172" fill="#94a3b8" font-size="9">提交 · 查询 · 回调</text>
+  <use href="#fa-desktop" x="92" y="146" width="14" height="14" fill="#4b6cb7"/>
+  <text x="112" y="158" fill="#1e293b" font-size="12.5" font-weight="600">对外接入层</text>
+  <text x="112" y="172" fill="#94a3b8" font-size="9">提交 · 查询 · 回调</text>
 
   <g filter="url(#sh)">
-    <rect x="380" y="136" width="300" height="42" rx="6" fill="#fff" stroke="#4b6cb7" stroke-width="1.5"/>
+    <rect x="400" y="136" width="260" height="42" rx="6" fill="#fff" stroke="#4b6cb7" stroke-width="1.5"/>
   </g>
-  <use href="#fa-server" x="392" y="146" width="14" height="14" fill="#4b6cb7"/>
-  <text x="412" y="158" fill="#1e293b" font-size="12.5" font-weight="600">控制面 (control)</text>
-  <text x="412" y="172" fill="#94a3b8" font-size="9">调度 · 渲染 · 管理 · 存储</text>
+  <use href="#fa-server" x="412" y="146" width="14" height="14" fill="#4b6cb7"/>
+  <text x="432" y="158" fill="#1e293b" font-size="12.5" font-weight="600">控制面 (control)</text>
+  <text x="432" y="172" fill="#94a3b8" font-size="9">调度 · 渲染 · 管理 · 存储</text>
 
   <g filter="url(#sh)">
-    <rect x="760" y="136" width="240" height="42" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <rect x="780" y="136" width="200" height="42" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
   </g>
-  <use href="#fa-microchip" x="772" y="146" width="14" height="14" fill="#4b6cb7"/>
-  <text x="792" y="158" fill="#1e293b" font-size="12.5" font-weight="600">Runner 执行层</text>
-  <text x="792" y="172" fill="#94a3b8" font-size="9">执行引擎 · 出站</text>
+  <use href="#fa-microchip" x="792" y="146" width="14" height="14" fill="#4b6cb7"/>
+  <text x="812" y="158" fill="#1e293b" font-size="12.5" font-weight="600">Runner 执行层</text>
+  <text x="812" y="172" fill="#94a3b8" font-size="9">执行引擎 · 出站</text>
 
   <!-- ══ 接入层叶子 ══ -->
-  <g filter="url(#sh)"><rect x="60" y="196" width="230" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-paper-plane" x="72" y="206" width="13" height="13" fill="#4b6cb7"/>
-  <text x="92" y="216" fill="#334155" font-size="11" font-weight="600">任务提交</text>
-  <text x="72" y="232" fill="#94a3b8" font-size="9">提交任务请求</text>
+  <g filter="url(#sh)"><rect x="80" y="196" width="190" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-paper-plane" x="92" y="206" width="13" height="13" fill="#4b6cb7"/>
+  <text x="112" y="216" fill="#334155" font-size="11" font-weight="600">任务提交</text>
+  <text x="92" y="232" fill="#94a3b8" font-size="9">提交任务请求</text>
 
-  <g filter="url(#sh)"><rect x="60" y="250" width="230" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-magnifying-glass" x="72" y="260" width="13" height="13" fill="#4b6cb7"/>
-  <text x="92" y="270" fill="#334155" font-size="11" font-weight="600">任务查询 / 取消</text>
-  <text x="72" y="286" fill="#94a3b8" font-size="9">查询 / 取消任务请求</text>
+  <g filter="url(#sh)"><rect x="80" y="250" width="190" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-magnifying-glass" x="92" y="260" width="13" height="13" fill="#4b6cb7"/>
+  <text x="112" y="270" fill="#334155" font-size="11" font-weight="600">任务查询 / 取消</text>
+  <text x="92" y="286" fill="#94a3b8" font-size="9">查询 / 取消任务请求</text>
 
-  <g filter="url(#sh)"><rect x="60" y="304" width="230" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-route" x="72" y="314" width="13" height="13" fill="#4b6cb7"/>
-  <text x="92" y="324" fill="#334155" font-size="11" font-weight="600">结果回调</text>
-  <text x="72" y="340" fill="#94a3b8" font-size="9">执行引擎自行回传</text>
+  <g filter="url(#sh)"><rect x="80" y="304" width="190" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-route" x="92" y="314" width="13" height="13" fill="#4b6cb7"/>
+  <text x="112" y="324" fill="#334155" font-size="11" font-weight="600">结果回调</text>
+  <text x="92" y="340" fill="#94a3b8" font-size="9">执行引擎自行回传</text>
 
   <!-- ══ 控制面叶子（左列） ══ -->
-  <g filter="url(#sh)"><rect x="340" y="196" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-key" x="352" y="206" width="13" height="13" fill="#4b6cb7"/>
-  <text x="372" y="216" fill="#334155" font-size="11" font-weight="600">鉴权认证</text>
-  <text x="352" y="232" fill="#94a3b8" font-size="9">不同鉴权方式</text>
+  <g filter="url(#sh)"><rect x="335" y="196" width="170" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-key" x="347" y="206" width="13" height="13" fill="#4b6cb7"/>
+  <text x="367" y="216" fill="#334155" font-size="11" font-weight="600">鉴权认证</text>
+  <text x="347" y="232" fill="#94a3b8" font-size="9">不同鉴权方式</text>
 
-  <g filter="url(#sh)"><rect x="340" y="250" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-list-check" x="352" y="260" width="13" height="13" fill="#4b6cb7"/>
-  <text x="372" y="270" fill="#334155" font-size="11" font-weight="600">任务队列 / 状态机</text>
-  <text x="352" y="286" fill="#94a3b8" font-size="9">排队 → 处理中 → 完成</text>
+  <g filter="url(#sh)"><rect x="335" y="250" width="170" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-list-check" x="347" y="260" width="13" height="13" fill="#4b6cb7"/>
+  <text x="367" y="270" fill="#334155" font-size="11" font-weight="600">任务队列 / 状态机</text>
+  <text x="347" y="286" fill="#94a3b8" font-size="9">排队 → 处理中 → 完成</text>
 
-  <g filter="url(#sh)"><rect x="340" y="304" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-diagram" x="352" y="314" width="13" height="13" fill="#4b6cb7"/>
-  <text x="372" y="324" fill="#334155" font-size="11" font-weight="600">提示词渲染 / 占位符</text>
-  <text x="352" y="340" fill="#94a3b8" font-size="9">请求变量 · 配置变量 · 条件片段</text>
+  <g filter="url(#sh)"><rect x="335" y="304" width="170" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-diagram" x="347" y="314" width="13" height="13" fill="#4b6cb7"/>
+  <text x="367" y="324" fill="#334155" font-size="11" font-weight="600">提示词渲染 / 占位符</text>
+  <text x="347" y="340" fill="#94a3b8" font-size="9">请求变量 · 配置变量 · 条件片段</text>
 
-  <g filter="url(#sh)"><rect x="340" y="358" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-shuffle" x="352" y="368" width="13" height="13" fill="#4b6cb7"/>
-  <text x="372" y="378" fill="#334155" font-size="11" font-weight="600">runner 选路 / 心跳</text>
-  <text x="352" y="394" fill="#94a3b8" font-size="9">session 亲和 · 负载均衡</text>
+  <g filter="url(#sh)"><rect x="335" y="358" width="170" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-shuffle" x="347" y="368" width="13" height="13" fill="#4b6cb7"/>
+  <text x="367" y="378" fill="#334155" font-size="11" font-weight="600">runner 选路 / 心跳</text>
+  <text x="347" y="394" fill="#94a3b8" font-size="9">session 亲和 · 负载均衡</text>
 
   <!-- ══ 控制面叶子（右列） ══ -->
-  <g filter="url(#sh)"><rect x="600" y="196" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-desktop" x="612" y="206" width="13" height="13" fill="#4b6cb7"/>
-  <text x="632" y="216" fill="#334155" font-size="11" font-weight="600">管理后台</text>
-  <text x="612" y="232" fill="#94a3b8" font-size="9">Web 后台 · 模板 / 配置 / 会话</text>
+  <g filter="url(#sh)"><rect x="555" y="196" width="170" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-desktop" x="567" y="206" width="13" height="13" fill="#4b6cb7"/>
+  <text x="587" y="216" fill="#334155" font-size="11" font-weight="600">管理后台</text>
+  <text x="567" y="232" fill="#94a3b8" font-size="9">Web 后台 · 模板 / 配置 / 会话</text>
 
-  <g filter="url(#sh)"><rect x="600" y="250" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-folder-open" x="612" y="260" width="13" height="13" fill="#4b6cb7"/>
-  <text x="632" y="270" fill="#334155" font-size="11" font-weight="600">会话 / 文件代理</text>
-  <text x="612" y="286" fill="#94a3b8" font-size="9">按 runner 转发读 / 删</text>
+  <g filter="url(#sh)"><rect x="555" y="250" width="170" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-folder-open" x="567" y="260" width="13" height="13" fill="#4b6cb7"/>
+  <text x="587" y="270" fill="#334155" font-size="11" font-weight="600">会话 / 文件代理</text>
+  <text x="567" y="286" fill="#94a3b8" font-size="9">按 runner 转发读 / 删</text>
 
-  <g filter="url(#sh)"><rect x="600" y="304" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-file-lines" x="612" y="314" width="13" height="13" fill="#4b6cb7"/>
-  <text x="632" y="324" fill="#334155" font-size="11" font-weight="600">配置 / 记忆管理</text>
-  <text x="612" y="340" fill="#94a3b8" font-size="9">结构化配置加密 · 记忆库注入</text>
+  <g filter="url(#sh)"><rect x="555" y="304" width="170" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-file-lines" x="567" y="314" width="13" height="13" fill="#4b6cb7"/>
+  <text x="587" y="324" fill="#334155" font-size="11" font-weight="600">配置 / 记忆管理</text>
+  <text x="567" y="340" fill="#94a3b8" font-size="9">结构化配置加密 · 记忆库注入</text>
 
-  <g filter="url(#sh)"><rect x="600" y="358" width="245" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-database" x="612" y="368" width="13" height="13" fill="#4b6cb7"/>
-  <text x="632" y="378" fill="#334155" font-size="11" font-weight="600">持久化存储</text>
-  <text x="612" y="394" fill="#94a3b8" font-size="9">数据存储 · 唯一写入方</text>
+  <g filter="url(#sh)"><rect x="555" y="358" width="170" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-database" x="567" y="368" width="13" height="13" fill="#4b6cb7"/>
+  <text x="587" y="378" fill="#334155" font-size="11" font-weight="600">持久化存储</text>
+  <text x="567" y="394" fill="#94a3b8" font-size="9">数据存储 · 唯一写入方</text>
 
   <!-- ══ Runner 叶子 ══ -->
-  <g filter="url(#sh)"><rect x="760" y="196" width="240" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-brain" x="772" y="206" width="13" height="13" fill="#4b6cb7"/>
-  <text x="792" y="216" fill="#334155" font-size="11" font-weight="600">执行引擎</text>
-  <text x="772" y="232" fill="#94a3b8" font-size="9">Agent SDK</text>
+  <g filter="url(#sh)"><rect x="780" y="196" width="200" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-brain" x="792" y="206" width="13" height="13" fill="#4b6cb7"/>
+  <text x="812" y="216" fill="#334155" font-size="11" font-weight="600">执行引擎</text>
+  <text x="792" y="232" fill="#94a3b8" font-size="9">Agent SDK</text>
 
-  <g filter="url(#sh)"><rect x="760" y="250" width="240" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-clock" x="772" y="260" width="13" height="13" fill="#4b6cb7"/>
-  <text x="792" y="270" fill="#334155" font-size="11" font-weight="600">看门狗 / 进程树</text>
-  <text x="772" y="286" fill="#94a3b8" font-size="9">滑动超时 · 强杀</text>
+  <g filter="url(#sh)"><rect x="780" y="250" width="200" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-clock" x="792" y="260" width="13" height="13" fill="#4b6cb7"/>
+  <text x="812" y="270" fill="#334155" font-size="11" font-weight="600">看门狗 / 进程树</text>
+  <text x="792" y="286" fill="#94a3b8" font-size="9">滑动超时 · 强杀</text>
 
-  <g filter="url(#sh)"><rect x="760" y="304" width="240" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-folder-open" x="772" y="314" width="13" height="13" fill="#4b6cb7"/>
-  <text x="792" y="324" fill="#334155" font-size="11" font-weight="600">会话读取 / 文件浏览</text>
-  <text x="772" y="340" fill="#94a3b8" font-size="9">本地工作目录 · 会话</text>
+  <g filter="url(#sh)"><rect x="780" y="304" width="200" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-folder-open" x="792" y="314" width="13" height="13" fill="#4b6cb7"/>
+  <text x="812" y="324" fill="#334155" font-size="11" font-weight="600">会话读取 / 文件浏览</text>
+  <text x="792" y="340" fill="#94a3b8" font-size="9">本地工作目录 · 会话</text>
 
-  <g filter="url(#sh)"><rect x="760" y="358" width="240" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
-  <use href="#fa-bolt" x="772" y="368" width="13" height="13" fill="#4b6cb7"/>
-  <text x="792" y="378" fill="#334155" font-size="11" font-weight="600">出站调用</text>
-  <text x="772" y="394" fill="#94a3b8" font-size="9">LLM · 文件服务 · 审稿</text>
+  <g filter="url(#sh)"><rect x="780" y="358" width="200" height="44" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/></g>
+  <use href="#fa-bolt" x="792" y="368" width="13" height="13" fill="#4b6cb7"/>
+  <text x="812" y="378" fill="#334155" font-size="11" font-weight="600">出站调用</text>
+  <text x="792" y="394" fill="#94a3b8" font-size="9">LLM · 文件服务 · 审稿</text>
 
   <!-- ══ 底部说明 ══ -->
   <rect x="20" y="428" width="1020" height="106" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
