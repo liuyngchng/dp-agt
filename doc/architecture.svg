@@ -71,7 +71,7 @@
   </g>
   <use href="#fa-server" x="309" y="90" width="18" height="18" fill="#4b6cb7"/>
   <text x="332" y="104" fill="#1e293b" font-size="14" font-weight="700">控制面 (control)</text>
-  <text x="545" y="104" text-anchor="end" fill="#94a3b8" font-size="10">单实例 · 唯一数据写入方</text>
+  <text x="545" y="104" text-anchor="end" fill="#94a3b8" font-size="10">数据写入方</text>
   <line x1="309" y1="113" x2="611" y2="113" stroke="#e2e8f0" stroke-width="0.8"/>
 
   <use href="#fa-key" x="309" y="124" width="13" height="13" fill="#4b6cb7" opacity="0.7"/>
@@ -148,7 +148,7 @@
   </g>
   <use href="#fa-file-lines" x="282" y="429" width="16" height="16" fill="#4b6cb7"/>
   <text x="306" y="441" fill="#1e293b" font-size="12.5" font-weight="600">文件服务</text>
-  <text x="385" y="463" text-anchor="middle" fill="#475569" font-size="10.5">下载 / 链接续期</text>
+  <text x="385" y="463" text-anchor="middle" fill="#475569" font-size="10.5">文件处理 / 文本提取</text>
   <text x="385" y="481" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
 
   <g filter="url(#sh)">

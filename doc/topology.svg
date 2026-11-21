@@ -60,11 +60,11 @@
   </g>
   <use href="#fa-server" x="309" y="90" width="18" height="18" fill="#4b6cb7"/>
   <text x="332" y="104" fill="#1e293b" font-size="14" font-weight="700">控制面节点</text>
-  <text x="546" y="104" text-anchor="end" fill="#94a3b8" font-size="10">单一实例</text>
+  <text x="546" y="104" text-anchor="end" fill="#94a3b8" font-size="10">任务调度</text>
   <line x1="309" y1="113" x2="546" y2="113" stroke="#e2e8f0" stroke-width="0.8"/>
 
   <use href="#fa-database" x="309" y="126" width="13" height="13" fill="#4b6cb7" opacity="0.7"/>
-  <text x="328" y="136" fill="#334155" font-size="11">持久化存储（SQLite）</text>
+  <text x="328" y="136" fill="#334155" font-size="11">持久化存储</text>
 
   <use href="#fa-file-lines" x="309" y="148" width="13" height="13" fill="#4b6cb7" opacity="0.7"/>
   <text x="328" y="158" fill="#334155" font-size="11">提示词模板 / 记忆库</text>
@@ -154,7 +154,7 @@
     <rect x="270" y="405" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
     <use href="#fa-file-lines" x="282" y="414" width="16" height="16" fill="#4b6cb7"/>
     <text x="306" y="426" fill="#1e293b" font-size="12.5" font-weight="600">文件服务</text>
-    <text x="385" y="448" text-anchor="middle" fill="#475569" font-size="10.5">文件下载链接续期</text>
+    <text x="385" y="448" text-anchor="middle" fill="#475569" font-size="10.5">文件处理/文本提取</text>
     <text x="385" y="466" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
   </g>
 
