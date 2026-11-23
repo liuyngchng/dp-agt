@@ -52,7 +52,7 @@ require_token() {
 }
 
 require_image() {
-  local tag="${IMAGE_TAG:-latest}"
+  local tag="${IMAGE_TAG:-$(pkg_version)}"
   if ! docker image inspect "dp-agt:$tag" >/dev/null 2>&1; then
     die "镜像 dp-agt:$tag 不存在。请执行 ./build/build.sh 构建镜像，或将镜像推送到本机 registry。"
   fi
@@ -131,7 +131,7 @@ cmd_up() {
 
   export HOST_UID="${HOST_UID:-$(id -u)}"
   export HOST_GID="${HOST_GID:-$(id -g)}"
-  export IMAGE_TAG="${IMAGE_TAG:-latest}"
+  export IMAGE_TAG="${IMAGE_TAG:-$(pkg_version)}"
   export HOST_PORT="${HOST_PORT:-20001}"
   export RUNNER_PORT="${RUNNER_PORT:-21001}"
   export RUNNER_MAX_CONCURRENT="${RUNNER_MAX_CONCURRENT:-5}"
@@ -172,7 +172,7 @@ cmd_down() {
   local compose_file
   compose_file=$(resolve_compose "$role")
   load_env
-  export IMAGE_TAG="${IMAGE_TAG:-latest}"
+  export IMAGE_TAG="${IMAGE_TAG:-$(pkg_version)}"
   export HOST_PORT="${HOST_PORT:-20001}"
   export RUNNER_PORT="${RUNNER_PORT:-21001}"
 
@@ -186,7 +186,7 @@ cmd_restart() {
   local compose_file
   compose_file=$(resolve_compose "$role")
   load_env
-  export IMAGE_TAG="${IMAGE_TAG:-latest}"
+  export IMAGE_TAG="${IMAGE_TAG:-$(pkg_version)}"
   export HOST_PORT="${HOST_PORT:-20001}"
   export RUNNER_PORT="${RUNNER_PORT:-21001}"
 

@@ -186,7 +186,6 @@ fi
 docker buildx build \
     "${DOCKER_BUILD_ARGS[@]+"${DOCKER_BUILD_ARGS[@]}"}" \
     -t "${FULL_TAG}" \
-    -t "${IMAGE_NAME}:latest" \
     -f "$SCRIPT_DIR/Dockerfile" \
     --load \
     "$PROJECT_ROOT"
@@ -199,7 +198,7 @@ docker builder prune -f --max-storage 2GB || true
 
 BUILD_ELAPSED=$(( $(date +%s) - BUILD_START ))
 echo "============================================"
-echo " Build complete: ${FULL_TAG} (${IMAGE_NAME}:latest)"
+echo " Build complete: ${FULL_TAG}"
 printf " 总耗时: %dm %ds\n" $(( BUILD_ELAPSED / 60 )) $(( BUILD_ELAPSED % 60 ))
 echo "============================================"
 echo ""

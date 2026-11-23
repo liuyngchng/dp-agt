@@ -97,7 +97,7 @@
 ```bash
 # 在构建机上执行一次
 ./build/build.sh 0.1.0
-# 产出 dp-agt:0.1.0 与 dp-agt:latest
+# 产出 dp-agt:0.1.0
 ```
 
 ### 4.2 分发镜像到各服务器（本地打包拷贝）
@@ -224,7 +224,7 @@ curl -k https://<控制面IP>:20001/health
 
 | 变量 | 默认值 | 作用范围 | 说明 |
 |------|--------|---------|------|
-| `IMAGE_TAG` | `latest` | 两者 | 镜像 tag；`deploy.sh` 默认用 `package.json` 版本 |
+| `IMAGE_TAG` | `package.json` 版本 | 两者 | 镜像 tag；`deploy.sh` 默认用 `package.json` 版本 |
 | `COMPOSE_PROJECT_NAME` | 部署目录名 | 两者 | compose 项目名；同机多 runner 时靠不同部署目录自动区分，一般无需手动设置 |
 | `RUNNER_TOKEN` | 空 | 两者 | 控制面↔runner 认证，必填（`gen-token` 生成） |
 | `HOST_UID` / `HOST_GID` | `id -u` / `id -g` | 两者 | 容器运行用户，匹配 `data/` 目录属主 |

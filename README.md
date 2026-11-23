@@ -45,7 +45,7 @@ npm run dev:runner   # 热更启动 runner，监听 RUNNER_PORT（默认 21001�
 当前分支只支持集群模式。控制面与 runner 分离部署，runner 可水平扩容。
 
 ```bash
-./build/build.sh            # 构建镜像（产出 dp-agt:<version> 与 dp-agt:latest）
+./build/build.sh            # 构建镜像（产出 dp-agt:<version>）
 ./build/deploy.sh gen-token # 生成控制面↔runner 认证 token（写入 data/.runner-env）
 ./build/deploy.sh up runner # 在 runner 服务器上启动 runner
 ./build/deploy.sh up control# 在控制面服务器上启动控制面

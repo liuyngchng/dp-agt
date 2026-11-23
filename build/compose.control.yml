@@ -39,7 +39,7 @@ x-extra-hosts: &extra-hosts
 
 services:
   control:
-    image: dp-agt:${IMAGE_TAG:-latest}
+    image: dp-agt:${IMAGE_TAG:-0.1.0}
     container_name: dp-agt-control
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     command: ["node", "dist/index.js"]
