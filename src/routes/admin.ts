@@ -1614,10 +1614,10 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({ code: 0, data: { tables, db_size_bytes: dbSizeBytes } });
   });
 
-  // 获取最新 N 条任务（SDK Trace tab 默认展示，无需先检索）
+  // 获取最新 N 条已完成任务（SDK Trace tab 默认展示，处理中任务尚无 sdk_trace，无需先检索）
   router.get('/admin/data-tables/task_logs/latest', (_req: Request, res: Response) => {
     const limit = Math.min(parseInt(String(_req.query.limit), 10) || 5, 50);
-    const items = taskLogsStore.listLatest(limit);
+    const items = taskLogsStore.listLatestCompleted(limit);
     res.json({
       code: 0,
       data: {

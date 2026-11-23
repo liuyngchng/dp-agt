@@ -803,6 +803,9 @@ document.addEventListener('keydown', function(e) {
         if (document.getElementById('cfgModal').classList.contains('show')) closeCfgModal();
         if (document.getElementById('promptPreviewModal').classList.contains('show')) closePromptPreview();
         if (document.getElementById('chatModal').classList.contains('show')) closeChatModal();
+        if (document.getElementById('traceModal').classList.contains('show')) closeTraceModal();
+        if (document.getElementById('sessionFilesModal').classList.contains('show')) closeSessionFiles();
+        if (document.getElementById('sessionFilePreviewModal').classList.contains('show')) closeSessionFilePreview();
     }
     // 配置弹窗内按回车提交
     if (e.key === 'Enter' && document.getElementById('cfgModal').classList.contains('show')
@@ -1189,7 +1192,7 @@ async function loadLatestTraces() {
         const json = await res.json();
         const items = (json.data && json.data.items) || [];
         const total = (json.data && json.data.total) || 0;
-        renderTraceList(items, total, '最新 5 条任务');
+        renderTraceList(items, total, '最新 5 条已完成任务');
     } catch (err) {
         document.getElementById('traceQueryResult').innerHTML = '<div style="color:#e53e3e;padding:12px 0;">加载失败: ' + escHtml(err.message) + '</div>';
     }
