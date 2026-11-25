@@ -823,7 +823,7 @@ function renderTasksPage(list) {
             <td title="${escHtml(ifacePathTip(t.path))}">${escHtml(t.path || '-')}</td>
             <td><code style="font-size:0.78rem;">${escHtml((t.linkid || '-').substring(0,8))}...</code></td>
             <td>${statusText(t.status)}</td>
-            <td class="col-date">${fmtTs(t.created_at)}</td>
+            <td class="col-date">${fmtTs(t.started_at)}</td>
             <td class="col-date">${fmtTs(t.finished_at)}</td>
             <td class="col-action">${viewBtn}</td>
         </tr>
@@ -836,7 +836,7 @@ function renderTasksPage(list) {
                         <span style="margin-left:auto;">${stopBtn}</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-                        <span><span class="audit-info-label">开始时间:</span> ${fmtTs(t.started_at)}</span>
+                        <span><span class="audit-info-label">创建时间:</span> ${fmtTs(t.created_at)}</span>
                         <span><span class="audit-info-label">执行节点:</span> ${escHtml(t.runner_name || '本机')}</span>
                     </div>
                 </div>
