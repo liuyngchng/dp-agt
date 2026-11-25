@@ -737,6 +737,8 @@ input[type="checkbox"] {
     max-width: 48px;
     text-align: center;
 }
+/* 表头对齐需与单元格一致：.result-table th 的 text-align:left 优先级高于单类选择器 */
+th.col-seq { text-align: center; }
 
 /* 标题列 — 来源不可控，设最大宽度，溢出省略 */
 .col-title {
@@ -1193,6 +1195,26 @@ input[type="checkbox"] {
     overflow-y: auto;
 }
 /* ==== 运行监控 ==== */
+.col-status {
+    width: 80px;
+    min-width: 80px;
+    max-width: 80px;
+    white-space: nowrap;
+}
+.col-node {
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
+}
+.node-name {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+    font-weight: 600;
+}
 .col-num {
     width: 80px;
     min-width: 80px;
@@ -1200,6 +1222,8 @@ input[type="checkbox"] {
     text-align: right;
     white-space: nowrap;
 }
+/* 表头对齐与数字单元格一致（同上，需覆盖 .result-table th 的 text-align:left） */
+th.col-num { text-align: right; }
 
 .monitor-card {
     flex: 1;

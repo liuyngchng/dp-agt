@@ -234,9 +234,16 @@ function fmtDuration(ms) {
     if (!ms || ms <= 0) return '0s';
     if (ms < 1000) return ms + 'ms';
     if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
-    const m = Math.floor(ms / 60000);
-    const s = ((ms % 60000) / 1000).toFixed(1);
-    return m + 'm ' + s + 's';
+    // 按量级取最高位的两个单位（天/时/分），秒作为兜底；长时间段里秒是噪音，不显示。
+    let rest = Math.floor(ms / 1000);
+    const parts = [];
+    for (const [sec, label] of [[86400, 'd'], [3600, 'h'], [60, 'm']]) {
+        const v = Math.floor(rest / sec);
+        rest %= sec;
+        if (v > 0) parts.push(v + label);
+    }
+    if (rest > 0 || parts.length === 0) parts.push(rest + 's');
+    return parts.slice(0, 2).join(' ');
 }
 
 // ==== 运行监控 ====
@@ -316,7 +323,7 @@ async function loadMonitor() {
         const heartbeatMs = d.runner.heartbeat_ms || 5000;
         const staleMs = heartbeatMs * 2;
         let html = '<div class="table-scroll"><table class="result-table"><thead><tr>'
-            + '<th class="col-seq">状态</th><th>节点</th><th>地址</th><th class="col-num">容量</th>'
+            + '<th class="col-status">状态</th><th class="col-node">节点</th><th class="col-num">容量</th>'
             + '<th class="col-num">运行中</th><th class="col-num">派发中</th><th class="col-num">空闲槽位</th>'
             + '<th class="col-date">最后心跳</th><th class="col-date">启动时长</th>'
             + '</tr></thead><tbody>';
@@ -330,9 +337,8 @@ async function loadMonitor() {
                     : escHtml(fmtAgo(lastHb)))
                 : '<span style="color:#999;">-</span>';
             html += '<tr>'
-                + '<td class="col-seq">' + statusDot(up, up ? '在线' : '离线') + ' ' + (up ? '在线' : '<span style="color:#c62828;">离线</span>') + '</td>'
-                + '<td><strong>' + escHtml(r.name) + '</strong></td>'
-                + '<td style="font-family:monospace;font-size:0.82rem;">' + escHtml(r.addr) + '</td>'
+                + '<td class="col-status">' + statusDot(up, up ? '在线' : '离线') + ' ' + (up ? '在线' : '<span style="color:#c62828;">离线</span>') + '</td>'
+                + '<td class="col-node"><span class="node-name" title="' + escHtml(r.name + ' — ' + r.addr) + '">' + escHtml(r.name) + '</span></td>'
                 + '<td class="col-num">' + r.capacity + '</td>'
                 + '<td class="col-num">' + r.running_count + '</td>'
                 + '<td class="col-num">' + r.assigned + '</td>'
