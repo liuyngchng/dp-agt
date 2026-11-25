@@ -1192,3 +1192,54 @@ input[type="checkbox"] {
     max-height: 300px;
     overflow-y: auto;
 }
+/* ==== 运行监控 ==== */
+.col-num {
+    width: 80px;
+    min-width: 80px;
+    max-width: 80px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.monitor-card {
+    flex: 1;
+    min-width: 150px;
+    padding: 16px 20px;
+    background: #f8f9fb;
+    border: 1px solid #e0e3e8;
+    border-radius: 10px;
+}
+.monitor-card-label {
+    color: #888;
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+}
+.monitor-card-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.monitor-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.monitor-control-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    padding: 12px 18px;
+    background: #f8f9fb;
+    border: 1px solid #e0e3e8;
+    border-radius: 10px;
+    color: #555;
+    font-size: 0.85rem;
+}
+.monitor-control-bar strong {
+    color: #2c3e50;
+}

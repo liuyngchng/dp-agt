@@ -61,6 +61,7 @@ async function initNav() {
         // 绑定 tab 点击
         sidebar.querySelectorAll('.cfg-tab').forEach(tab => {
             tab.addEventListener('click', () => {
+                stopMonitorTimer();
                 sidebar.querySelectorAll('.cfg-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
                 document.querySelectorAll('.cfg-section').forEach(s => s.classList.remove('active'));
@@ -70,6 +71,7 @@ async function initNav() {
                 else if (tab.dataset.tab === 'memory') { switchMemoryTab('list'); }
                 else if (tab.dataset.tab === 'simulate') loadSimulateTab();
                 else if (tab.dataset.tab === 'tasks') loadTasks();
+                else if (tab.dataset.tab === 'monitor') { loadMonitor(); startMonitorTimer(); }
                 else if (tab.dataset.tab === 'sys') { switchSysTab('settings'); loadDataTables(); }
                 else if (tab.dataset.tab === 'users') loadUsers();
                 else if (tab.dataset.tab === 'audit') loadAudit(0);
@@ -123,11 +125,37 @@ function ifacePathTip(path) {
 }
 
 // ==== Interfaces ====
+
+// 从标题中提取 [1] / [3.2] 这类序号标签，返回分段数字数组；无标签返回 null（排最后）
+function ifaceOrderKey(name) {
+    const m = (name || '').match(/\[(\d+(?:\.\d+)*)\]/);
+    if (!m) return null;
+    return m[1].split('.').map(Number);
+}
+
+// 自然排序比较：逐段按数值比，[2] < [3.1] < [3.2] < [10]；无标签排最后，其余按名称兜底
+function ifaceOrderCompare(a, b) {
+    const ka = ifaceOrderKey(a.name);
+    const kb = ifaceOrderKey(b.name);
+    if (ka === null && kb === null) return a.name.localeCompare(b.name, 'zh-CN');
+    if (ka === null) return 1;
+    if (kb === null) return -1;
+    const len = Math.max(ka.length, kb.length);
+    for (let i = 0; i < len; i++) {
+        const av = ka[i] ?? 0;
+        const bv = kb[i] ?? 0;
+        if (av !== bv) return av - bv;
+    }
+    return a.name.localeCompare(b.name, 'zh-CN');
+}
+
 async function loadInterfaces() {
     const res = await fetch(API + '/interfaces');
     const json = await res.json();
     const list = Array.isArray(json.data) ? json.data : [];
     _setIfaceNameMap(list);
+    // 按标题序号标签自然排序（[1] < [2] < [3.1] < [3.2] < [10]），无标签排最后
+    list.sort(ifaceOrderCompare);
     const tbody = document.getElementById('ifacesTbody');
     if (list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">暂无访问路径</td></tr>';
@@ -209,6 +237,117 @@ function fmtDuration(ms) {
     const m = Math.floor(ms / 60000);
     const s = ((ms % 60000) / 1000).toFixed(1);
     return m + 'm ' + s + 's';
+}
+
+// ==== 运行监控 ====
+let _monitorTimer = null;
+
+function startMonitorTimer() {
+    stopMonitorTimer();
+    _monitorTimer = setInterval(loadMonitor, 5000);
+}
+
+function stopMonitorTimer() {
+    if (_monitorTimer) {
+        clearInterval(_monitorTimer);
+        _monitorTimer = null;
+    }
+}
+
+/** 相对时间：ts 为 Unix 毫秒，输出「X 秒前 / X 分钟前」，未来时间为「刚刚」 */
+function fmtAgo(ts) {
+    if (!ts) return '-';
+    const diff = Date.now() - ts;
+    if (diff < 0) return '刚刚';
+    if (diff < 1000) return '刚刚';
+    if (diff < 60000) return Math.floor(diff / 1000) + ' 秒前';
+    if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前';
+    return Math.floor(diff / 3600000) + ' 小时前';
+}
+
+function statusDot(up, title) {
+    const color = up ? '#2e7d32' : '#c62828';
+    return '<span class="monitor-dot" style="background:' + color + ';" title="' + escHtml(title) + '"></span>';
+}
+
+async function loadMonitor() {
+    const summaryEl = document.getElementById('monitorSummary');
+    const controlEl = document.getElementById('monitorControl');
+    const listEl = document.getElementById('monitorRunnerList');
+    try {
+        const res = await fetch(API + '/monitor');
+        const json = await res.json();
+        const d = json.data || {};
+        const runners = d.runners || [];
+        const isCluster = d.mode === 'cluster';
+        const upCount = runners.filter(r => r.status === 'up').length;
+        const busySum = runners.reduce((s, r) => s + (r.busy || 0), 0);
+        const freeSum = runners.reduce((s, r) => s + (r.free_slots || 0), 0);
+
+        // 摘要卡片
+        const cards = [
+            { label: '部署模式', value: isCluster ? '集群（' + runners.length + ' 节点）' : '单实例（本机执行）', icon: 'fa-network-wired' },
+            { label: '在线节点', value: upCount + ' / ' + runners.length, icon: 'fa-server' },
+            { label: '运行中', value: d.queue.running, icon: 'fa-play-circle' },
+            { label: '排队中', value: d.queue.pending, icon: 'fa-hourglass-half' },
+            { label: '空闲槽位', value: isCluster ? freeSum : '-', icon: 'fa-battery-half' },
+        ];
+        summaryEl.innerHTML = cards.map(c =>
+            '<div class="monitor-card"><div class="monitor-card-label"><i class="fas ' + c.icon + '"></i> ' + escHtml(c.label) + '</div>'
+            + '<div class="monitor-card-value">' + escHtml(String(c.value)) + '</div></div>'
+        ).join('');
+
+        // 控制面信息条
+        const maxPending = d.queue.max_pending || 0;
+        controlEl.innerHTML =
+            '<div class="monitor-control-bar">'
+            + '<span><i class="fas fa-sliders-h"></i> 全局并发上限：<strong>' + escHtml(String(d.queue.max_concurrent)) + '</strong></span>'
+            + '<span><i class="fas fa-layer-group"></i> 队列上限：<strong>' + escHtml(String(maxPending)) + '</strong></span>'
+            + '<span><i class="fas fa-clock"></i> 控制面已运行：<strong>' + escHtml(fmtDuration(d.control_uptime_ms)) + '</strong></span>'
+            + (isCluster ? '<span><i class="fas fa-heartbeat"></i> 心跳周期：<strong>' + escHtml(fmtDuration(d.runner.heartbeat_ms)) + '</strong></span>' : '')
+            + '</div>';
+
+        // 节点列表
+        if (!isCluster) {
+            listEl.innerHTML = '<p style="color:#888;">未配置远端 runner，任务在本进程内执行（单实例回退模式）。</p>';
+            return;
+        }
+
+        const heartbeatMs = d.runner.heartbeat_ms || 5000;
+        const staleMs = heartbeatMs * 2;
+        let html = '<div class="table-scroll"><table class="result-table"><thead><tr>'
+            + '<th class="col-seq">状态</th><th>节点</th><th>地址</th><th class="col-num">容量</th>'
+            + '<th class="col-num">运行中</th><th class="col-num">派发中</th><th class="col-num">空闲槽位</th>'
+            + '<th class="col-date">最后心跳</th><th class="col-date">启动时长</th>'
+            + '</tr></thead><tbody>';
+        for (const r of runners) {
+            const up = r.status === 'up';
+            const lastHb = r.last_heartbeat_ts;
+            const stale = up && lastHb && (Date.now() - lastHb) > staleMs;
+            const hbCell = up && lastHb
+                ? (stale
+                    ? '<span style="color:#f9a825;font-weight:600;">' + escHtml(fmtAgo(lastHb)) + '（超时）</span>'
+                    : escHtml(fmtAgo(lastHb)))
+                : '<span style="color:#999;">-</span>';
+            html += '<tr>'
+                + '<td class="col-seq">' + statusDot(up, up ? '在线' : '离线') + ' ' + (up ? '在线' : '<span style="color:#c62828;">离线</span>') + '</td>'
+                + '<td><strong>' + escHtml(r.name) + '</strong></td>'
+                + '<td style="font-family:monospace;font-size:0.82rem;">' + escHtml(r.addr) + '</td>'
+                + '<td class="col-num">' + r.capacity + '</td>'
+                + '<td class="col-num">' + r.running_count + '</td>'
+                + '<td class="col-num">' + r.assigned + '</td>'
+                + '<td class="col-num">' + r.free_slots + '</td>'
+                + '<td>' + hbCell + '</td>'
+                + '<td>' + escHtml(up && r.uptime_ms ? fmtDuration(r.uptime_ms) : '-') + '</td>'
+                + '</tr>';
+        }
+        html += '</tbody></table></div>';
+        listEl.innerHTML = html;
+    } catch (err) {
+        summaryEl.innerHTML = '<div style="color:#e53e3e;padding:12px 0;">加载失败: ' + escHtml(err.message) + '</div>';
+        controlEl.innerHTML = '';
+        listEl.innerHTML = '';
+    }
 }
 
 // 文件选择后，在自定义按钮旁显示所选文件名

@@ -12,8 +12,8 @@ import { getSessionMessages, query } from '@anthropic-ai/claude-agent-sdk';
 import type { RunSdkOptions, RunRequest } from '../types.js';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync, promptConfigStore, getDb, sdkTracesStore } from '../store.js';
 import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
-import { cancelTask, cancelByLinkidInQueue } from '../services/task-queue.js';
-import { getRunnerByName, getRunnerById, getRunnerHttpConfig, markDispatched, markFinished } from '../services/dispatcher.js';
+import { cancelTask, cancelByLinkidInQueue, getRunningCount, getPendingCount } from '../services/task-queue.js';
+import { getRunnerByName, getRunnerById, getRunnerHttpConfig, getRunnersOverview, markDispatched, markFinished } from '../services/dispatcher.js';
 import { proxyGet, proxyDelete, streamRun } from '../services/runner-client.js';
 import { getLogger } from '../logger.js';
 import { nowReadable, fmtLocalTs } from '../time.js';
@@ -72,6 +72,7 @@ export function createAdminRouter(cfg: Config): Router {
         { id: 'memory', icon: 'fa-memory', label: '记忆管理' },
         { id: 'simulate', icon: 'fa-flask', label: '操作模拟' },
         { id: 'tasks', icon: 'fa-list-alt', label: '任务监控' },
+        { id: 'monitor', icon: 'fa-heartbeat', label: '运行监控' },
       ] : []),
       { id: 'audit', icon: 'fa-search', label: '任务审查' },
       ...(isAdmin ? [
@@ -107,6 +108,30 @@ export function createAdminRouter(cfg: Config): Router {
   router.use('/admin/memory', adminOnlyMiddleware);
   router.use('/admin/data-tables', adminOnlyMiddleware);
   router.use('/admin/cache', adminOnlyMiddleware);
+
+  // ---- 运行监控（集群节点 / 队列 / 控制面快照） ----
+  router.get('/admin/monitor', adminOnlyMiddleware, (_req: Request, res: Response) => {
+    const runners = getRunnersOverview();
+    const hasRemote = runners.length > 0;
+
+    res.json({
+      code: 0,
+      data: {
+        mode: hasRemote ? 'cluster' : 'local',
+        control_uptime_ms: Math.floor(process.uptime() * 1000),
+        queue: {
+          running: getRunningCount(),
+          pending: getPendingCount(),
+          max_concurrent: cfg.sys.max_concurrent_tasks,
+          max_pending: cfg.sys.max_pending_tasks,
+        },
+        runner: {
+          heartbeat_ms: cfg.runner.heartbeat_ms,
+        },
+        runners,
+      },
+    });
+  });
 
   // ---- Interfaces 列表 — 从 prompts/ 自动发现，DB 同步 ----
   router.get('/admin/interfaces', (_req: Request, res: Response) => {

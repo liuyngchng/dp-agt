@@ -22,6 +22,8 @@ let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 const assigned = new Map<string, number>();
 /** runnerId → 最近一次 /status 上报的 running_count */
 const runningCount = new Map<string, number>();
+/** runnerId → 最近一次 /status 上报的 uptime_ms */
+const uptimeMs = new Map<string, number>();
 
 export function initDispatcher(c: Config): void {
   cfg = c;
@@ -36,6 +38,7 @@ export function initDispatcher(c: Config): void {
   for (const r of runners) {
     assigned.set(r.id, 0);
     runningCount.set(r.id, 0);
+    uptimeMs.set(r.id, 0);
   }
   log.info({ count: runners.length, names: runners.map((r) => r.name) }, 'dispatcher_initialized');
 
@@ -52,6 +55,7 @@ function startHeartbeat(): void {
       try {
         const st = await getRunnerStatus(r.addr, httpCfg);
         runningCount.set(r.id, st.running_count);
+        uptimeMs.set(r.id, st.uptime_ms);
         runnersStore.heartbeat(r.id);
       } catch (err) {
         log.warn({ runner: r.name, error: String(err) }, 'runner_heartbeat_failed');
@@ -150,4 +154,41 @@ export function getRunnerById(id: string): Runner | undefined {
 
 export function getRunnerHttpConfig(): RunnerHttpConfig {
   return httpCfg;
+}
+
+/** 单个 runner 的观测快照（供 admin 监控页使用） */
+export interface RunnerOverview {
+  id: string;
+  name: string;
+  addr: string;
+  capacity: number;
+  status: string;
+  running_count: number;      // 最近一次心跳上报的 runner 真实运行数
+  assigned: number;           // 控制面已派发未收尾的计数（内存态）
+  busy: number;               // max(running_count, assigned)
+  free_slots: number;         // max(0, capacity - busy)
+  last_heartbeat_ts: number | null;
+  uptime_ms: number;          // runner 上报的启动时长
+}
+
+/** 汇总所有 runner（含 down）的观测状态，供 admin 监控页一次性拉取 */
+export function getRunnersOverview(): RunnerOverview[] {
+  return runnersStore.list().map((r) => {
+    const running = runningCount.get(r.id) ?? 0;
+    const assignedCountValue = assignedCount(r.id);
+    const busy = Math.max(running, assignedCountValue);
+    return {
+      id: r.id,
+      name: r.name,
+      addr: r.addr,
+      capacity: r.capacity,
+      status: r.status,
+      running_count: running,
+      assigned: assignedCountValue,
+      busy,
+      free_slots: Math.max(0, r.capacity - busy),
+      last_heartbeat_ts: r.last_heartbeat_ts,
+      uptime_ms: uptimeMs.get(r.id) ?? 0,
+    };
+  });
 }
