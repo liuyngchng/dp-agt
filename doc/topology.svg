@@ -133,79 +133,90 @@
 
   <!-- ── runner 出站汇聚线 ── -->
   <line x1="840" y1="140" x2="870" y2="140" stroke="#94a3b8" stroke-width="1.2"/>
-  <line x1="870" y1="140" x2="870" y2="395" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="870" y1="140" x2="870" y2="368" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
   <line x1="840" y1="284" x2="870" y2="284" stroke="#94a3b8" stroke-width="1.2"/>
-  <line x1="870" y1="284" x2="870" y2="395" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="870" y1="284" x2="870" y2="368" stroke="#94a3b8" stroke-width="1.5"/>
 
-  <rect x="858" y="398" width="36" height="18" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
-  <text x="876" y="411" text-anchor="middle" fill="#4b6cb7" font-size="9" font-weight="600">出站</text>
+  <rect x="858" y="368" width="36" height="18" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+  <text x="876" y="381" text-anchor="middle" fill="#4b6cb7" font-size="9" font-weight="600">出站</text>
 
   <!-- ── 扇出线 ── -->
-  <path d="M870 420 V496" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
-  <path d="M130 496 H870" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
-  <path d="M130 496 V483" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
-  <path d="M385 496 V483" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
-  <path d="M645 496 V483" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
-  <path d="M130 496 V510" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
-  <path d="M385 496 V510" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
-  <path d="M645 496 V510" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M870 393 V496" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M120 496 H870" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M120 496 V483" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M344 496 V483" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M568 496 V483" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M792 496 V483" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M120 496 V510" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M344 496 V510" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <path d="M568 496 V510" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="3,3"/>
 
-  <!-- ── 外部服务卡片（2×3） ── -->
+  <!-- ── 外部服务卡片（2×4） ── -->
 
   <g filter="url(#sh)">
-    <rect x="20" y="405" width="220" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <rect x="20" y="405" width="200" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
     <use href="#fa-brain" x="32" y="414" width="16" height="16" fill="#4b6cb7"/>
     <text x="56" y="426" fill="#1e293b" font-size="12.5" font-weight="600">LLM 网关</text>
-    <rect x="184" y="414" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
-    <text x="206" y="425" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:16001</text>
-    <text x="130" y="448" text-anchor="middle" fill="#475569" font-size="10.5">模型调用</text>
-    <text x="130" y="466" text-anchor="middle" fill="#94a3b8" font-size="10">任务执行依赖</text>
+    <rect x="164" y="414" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+    <text x="186" y="425" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:16001</text>
+    <text x="120" y="448" text-anchor="middle" fill="#475569" font-size="10.5">模型调用</text>
+    <text x="120" y="466" text-anchor="middle" fill="#94a3b8" font-size="10">任务执行依赖</text>
   </g>
 
   <g filter="url(#sh)">
-    <rect x="270" y="405" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
-    <use href="#fa-file-lines" x="282" y="414" width="16" height="16" fill="#4b6cb7"/>
-    <text x="306" y="426" fill="#1e293b" font-size="12.5" font-weight="600">文件服务</text>
-    <rect x="444" y="414" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
-    <text x="466" y="425" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:20002</text>
-    <text x="385" y="448" text-anchor="middle" fill="#475569" font-size="10.5">文件处理/文本提取</text>
-    <text x="385" y="466" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
+    <rect x="244" y="405" width="200" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-file-lines" x="256" y="414" width="16" height="16" fill="#4b6cb7"/>
+    <text x="280" y="426" fill="#1e293b" font-size="12.5" font-weight="600">文件服务</text>
+    <rect x="388" y="414" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+    <text x="410" y="425" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:20002</text>
+    <text x="344" y="448" text-anchor="middle" fill="#475569" font-size="10.5">文件处理/文本提取</text>
+    <text x="344" y="466" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
   </g>
 
   <g filter="url(#sh)">
-    <rect x="530" y="405" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
-    <use href="#fa-magnifying-glass" x="542" y="414" width="16" height="16" fill="#4b6cb7"/>
-    <text x="566" y="426" fill="#1e293b" font-size="12.5" font-weight="600">审稿服务</text>
-    <rect x="704" y="414" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
-    <text x="726" y="425" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:19004</text>
-    <text x="645" y="448" text-anchor="middle" fill="#475569" font-size="10.5">文档校对（异步）</text>
-    <text x="645" y="466" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
+    <rect x="468" y="405" width="200" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-magnifying-glass" x="480" y="414" width="16" height="16" fill="#4b6cb7"/>
+    <text x="504" y="426" fill="#1e293b" font-size="12.5" font-weight="600">审稿服务</text>
+    <rect x="612" y="414" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+    <text x="634" y="425" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:19004</text>
+    <text x="568" y="448" text-anchor="middle" fill="#475569" font-size="10.5">文档校对（异步）</text>
+    <text x="568" y="466" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
   </g>
 
   <g filter="url(#sh)">
-    <rect x="20" y="510" width="220" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <rect x="692" y="405" width="200" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-microchip" x="704" y="414" width="16" height="16" fill="#4b6cb7"/>
+    <text x="728" y="426" fill="#1e293b" font-size="12.5" font-weight="600">LLM API</text>
+    <rect x="836" y="414" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+    <text x="858" y="425" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:xxxx</text>
+    <text x="792" y="448" text-anchor="middle" fill="#475569" font-size="10.5">模型推理</text>
+    <text x="792" y="466" text-anchor="middle" fill="#94a3b8" font-size="10">第三方服务</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="20" y="510" width="200" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
     <use href="#fa-paper-plane" x="32" y="519" width="16" height="16" fill="#4b6cb7"/>
     <text x="56" y="531" fill="#1e293b" font-size="12.5" font-weight="600">业务回调</text>
-    <text x="130" y="553" text-anchor="middle" fill="#475569" font-size="10.5">结果回传</text>
-    <text x="130" y="571" text-anchor="middle" fill="#94a3b8" font-size="10">任务完成后调用</text>
+    <text x="120" y="553" text-anchor="middle" fill="#475569" font-size="10.5">结果回传</text>
+    <text x="120" y="571" text-anchor="middle" fill="#94a3b8" font-size="10">任务完成后调用</text>
   </g>
 
   <g filter="url(#sh)">
-    <rect x="270" y="510" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
-    <use href="#fa-shuffle" x="282" y="519" width="16" height="16" fill="#4b6cb7"/>
-    <text x="306" y="531" fill="#1e293b" font-size="12.5" font-weight="600">工作流服务</text>
-    <rect x="444" y="519" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
-    <text x="466" y="530" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:16005</text>
-    <text x="385" y="553" text-anchor="middle" fill="#475569" font-size="10.5">流转信息查询</text>
-    <text x="385" y="571" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
+    <rect x="244" y="510" width="200" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-shuffle" x="256" y="519" width="16" height="16" fill="#4b6cb7"/>
+    <text x="280" y="531" fill="#1e293b" font-size="12.5" font-weight="600">工作流服务</text>
+    <rect x="388" y="519" width="44" height="16" rx="4" fill="#eef2fb" stroke="#b8c7e0" stroke-width="0.8"/>
+    <text x="410" y="530" text-anchor="middle" fill="#4b6cb7" font-size="9.5" font-weight="600">:16005</text>
+    <text x="344" y="553" text-anchor="middle" fill="#475569" font-size="10.5">流转信息查询</text>
+    <text x="344" y="571" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
   </g>
 
   <g filter="url(#sh)">
-    <rect x="530" y="510" width="230" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
-    <use href="#fa-download" x="542" y="519" width="16" height="16" fill="#4b6cb7"/>
-    <text x="566" y="531" fill="#1e293b" font-size="12.5" font-weight="600">文件下载</text>
-    <text x="645" y="553" text-anchor="middle" fill="#475569" font-size="10.5">获取待处理文件</text>
-    <text x="645" y="571" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
+    <rect x="468" y="510" width="200" height="78" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+    <use href="#fa-download" x="480" y="519" width="16" height="16" fill="#4b6cb7"/>
+    <text x="504" y="531" fill="#1e293b" font-size="12.5" font-weight="600">文件下载</text>
+    <text x="568" y="553" text-anchor="middle" fill="#475569" font-size="10.5">获取待处理文件</text>
+    <text x="568" y="571" text-anchor="middle" fill="#94a3b8" font-size="10">按需调用</text>
   </g>
 
   <!-- ── 网络策略提示 ── -->
